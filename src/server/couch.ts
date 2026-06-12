@@ -60,6 +60,14 @@ export async function couchRequest<T>(
   return (await response.json()) as T;
 }
 
+export async function rawCouchRequest<T>(
+  target: CouchTarget,
+  path = "",
+  init: RequestInit = {}
+): Promise<T> {
+  return couchRequest<T>(target, path, init);
+}
+
 export async function ping(target: CouchTarget): Promise<boolean> {
   try {
     await couchRequest(target);
@@ -109,6 +117,12 @@ export async function putDoc<T extends { _id: string; _rev?: string }>(
   });
 }
 
+export async function deleteDoc(target: CouchTarget, id: string, rev: string) {
+  return couchRequest(target, `/${config.appDb}/${encodeURIComponent(id)}?rev=${encodeURIComponent(rev)}`, {
+    method: "DELETE"
+  });
+}
+
 export async function bulkDocs(target: CouchTarget, docs: object[]) {
   return couchRequest(target, `/${config.appDb}/_bulk_docs`, {
     method: "POST",
@@ -144,4 +158,22 @@ export async function getDesignDoc(target: CouchTarget, id: string) {
 export async function getBusinessDocs(target: CouchTarget, docType = "expense") {
   const docs = await docsByKind<BusinessDocument>(target, "document");
   return docs.filter((doc) => doc.docType === docType && !("_deleted" in doc));
+}
+
+export async function replicateOnce(direction: "push" | "pull") {
+  const body =
+    direction === "push"
+      ? { source: dbUrl("local"), target: dbUrl("server"), create_target: true }
+      : { source: dbUrl("server"), target: dbUrl("local"), create_target: true };
+
+  return couchRequest("local", "/_replicate", {
+    method: "POST",
+    body: JSON.stringify(body)
+  });
+}
+
+export async function replicateBidirectional() {
+  const push = await replicateOnce("push");
+  const pull = await replicateOnce("pull");
+  return { push, pull };
 }
