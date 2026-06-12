@@ -1,0 +1,45 @@
+services:
+  server-couchdb:
+    image: couchdb:3.4
+    container_name: lotus-m1-server-couchdb
+    environment:
+      COUCHDB_USER: admin
+      COUCHDB_PASSWORD: password
+    ports:
+      - "5984:5984"
+    volumes:
+      - server-couchdb-data:/opt/couchdb/data
+
+  local-couchdb:
+    image: couchdb:3.4
+    container_name: lotus-m1-local-couchdb
+    environment:
+      COUCHDB_USER: admin
+      COUCHDB_PASSWORD: password
+    ports:
+      - "5985:5984"
+    volumes:
+      - local-couchdb-data:/opt/couchdb/data
+
+  app:
+    build: .
+    container_name: lotus-m1-runtime
+    environment:
+      APP_DB: expense_app
+      APP_USER: user:alice
+      LOCAL_COUCH_URL: http://admin:password@local-couchdb:5984
+      SERVER_COUCH_URL: http://admin:password@server-couchdb:5984
+      API_PORT: 3001
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    depends_on:
+      - local-couchdb
+      - server-couchdb
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+volumes:
+  local-couchdb-data:
+  server-couchdb-data:
