@@ -253,6 +253,35 @@ app.get(
   })
 );
 
+app.post(
+  "/api/admin/server-definition-demo",
+  asyncRoute(async (_request, response) => {
+    const [form, view] = await Promise.all([
+      getDoc<FormDefinition>("server", "form:expense"),
+      getDoc<ViewDefinition>("server", "view:my-expenses")
+    ]);
+
+    const nextForm: FormDefinition = {
+      ...form,
+      fields: form.fields.some((field) => field.name === "merchant")
+        ? form.fields
+        : [...form.fields, { name: "merchant", type: "text", label: "Merchant" }]
+    };
+    const nextView: ViewDefinition = {
+      ...view,
+      columns: view.columns.some((column) => column.field === "payload.merchant")
+        ? view.columns
+        : [
+            { field: "payload.merchant", label: "Merchant" },
+            ...view.columns
+          ]
+    };
+
+    const [formResult, viewResult] = await Promise.all([putDoc("server", nextForm), putDoc("server", nextView)]);
+    response.json({ formRev: formResult.rev, viewRev: viewResult.rev });
+  })
+);
+
 app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
   console.error(error);
   const status = typeof error === "object" && error && "status" in error ? Number(error.status) : 500;
