@@ -1,5 +1,12 @@
 import { ulid } from "ulid";
-import type { AclRules, AppConfig, BusinessDocument, FormDefinition, ViewDefinition } from "../shared/types";
+import type {
+  AclRules,
+  AppConfig,
+  BusinessDocument,
+  FormDefinition,
+  ViewDefinition,
+  WorkflowDefinition
+} from "../shared/types";
 import { config } from "./config";
 
 const now = () => new Date().toISOString();
@@ -46,7 +53,9 @@ export function createVendorDoc(
   };
 }
 
-export function seedDocuments(): Array<AppConfig | FormDefinition | ViewDefinition | AclRules | BusinessDocument> {
+export function seedDocuments(): Array<
+  AppConfig | FormDefinition | ViewDefinition | WorkflowDefinition | AclRules | BusinessDocument
+> {
   return [
     {
       _id: "app:config",
@@ -194,6 +203,44 @@ export function seedDocuments(): Array<AppConfig | FormDefinition | ViewDefiniti
       sort: [{ field: "payload.name", direction: "asc" }]
     },
     {
+      _id: "view:pending-approvals",
+      kind: "view",
+      appId: "expense",
+      docType: "expense",
+      title: "Pending Approvals",
+      columns: [
+        { field: "payload.description", label: "Description" },
+        { field: "payload.amount", label: "Amount" },
+        { field: "payload.category", label: "Category" },
+        { field: "state", label: "State" }
+      ],
+      filters: [
+        { field: "kind", op: "eq", value: "document" },
+        { field: "docType", op: "eq", value: "expense" },
+        { field: "state", op: "eq", value: "submitted" }
+      ],
+      sort: [{ field: "updatedAt", direction: "desc" }]
+    },
+    {
+      _id: "workflow:expense",
+      kind: "workflow",
+      appId: "expense",
+      docType: "expense",
+      title: "Expense Approval",
+      initialState: "draft",
+      states: [
+        { name: "draft", label: "Draft" },
+        { name: "submitted", label: "Submitted" },
+        { name: "approved", label: "Approved", final: true },
+        { name: "rejected", label: "Rejected", final: true }
+      ],
+      transitions: [
+        { id: "submit", label: "Submit", from: "draft", to: "submitted", guard: "payload.amount > 0" },
+        { id: "approve", label: "Approve", from: "submitted", to: "approved", requiredRole: "role:finance" },
+        { id: "reject", label: "Reject", from: "submitted", to: "rejected", requiredRole: "role:finance" }
+      ]
+    },
+    {
       _id: "acl:rules",
       kind: "acl",
       appId: "expense",
@@ -203,30 +250,48 @@ export function seedDocuments(): Array<AppConfig | FormDefinition | ViewDefiniti
         { user: "user:bob", roles: ["role:sales"] }
       ]
     },
+    // No `state`: exercises back-compat — treated as the workflow's initialState (draft).
     createExpenseDoc({
       amount: 42.5,
       description: "Stationery",
       category: "supplies",
       spentAt: "2026-06-10"
     }),
-    createExpenseDoc({
-      amount: 125.5,
-      description: "Train ticket",
-      category: "travel",
-      reimbursable: true,
-      spentAt: "2026-06-11"
-    }),
-    createExpenseDoc(
-      {
-        amount: 220,
-        description: "Client dinner",
-        category: "meals",
+    {
+      ...createExpenseDoc({
+        amount: 125.5,
+        description: "Train ticket",
+        category: "travel",
         reimbursable: true,
-        spentAt: "2026-06-12"
-      },
-      "user:bob",
-      ["user:bob", "role:finance"]
-    ),
+        spentAt: "2026-06-11"
+      }),
+      state: "submitted",
+      stateUpdatedAt: now(),
+      stateUpdatedBy: "user:alice",
+      history: [
+        { transition: "submit", from: "draft", to: "submitted", at: now(), by: "user:alice" }
+      ]
+    },
+    {
+      ...createExpenseDoc(
+        {
+          amount: 220,
+          description: "Client dinner",
+          category: "meals",
+          reimbursable: true,
+          spentAt: "2026-06-12"
+        },
+        "user:bob",
+        ["user:bob", "role:finance"]
+      ),
+      state: "approved",
+      stateUpdatedAt: now(),
+      stateUpdatedBy: "user:alice",
+      history: [
+        { transition: "submit", from: "draft", to: "submitted", at: now(), by: "user:bob" },
+        { transition: "approve", from: "submitted", to: "approved", at: now(), by: "user:alice" }
+      ]
+    },
     createVendorDoc({ name: "National Rail", category: "travel", preferred: true, contactEmail: "accounts@rail.example" }),
     createVendorDoc({ name: "Paper Market", category: "supplies", preferred: false, contactEmail: "orders@paper.example" })
   ];
