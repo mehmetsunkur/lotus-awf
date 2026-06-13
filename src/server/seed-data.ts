@@ -153,7 +153,7 @@ export function seedDocuments(): Array<AppConfig | FormDefinition | ViewDefiniti
       filters: [
         { field: "kind", op: "eq", value: "document" },
         { field: "docType", op: "eq", value: "expense" },
-        { field: "readers", op: "in", value: "user:alice" }
+        { field: "readers", op: "in", value: ["user:alice", "role:finance"] }
       ],
       sort: [{ field: "updatedAt", direction: "desc" }]
     },

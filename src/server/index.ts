@@ -1,11 +1,22 @@
 import cors from "cors";
 import express from "express";
 import { ulid } from "ulid";
-import type { BusinessDocument, ConflictDetails, FormDefinition, ViewDefinition } from "../shared/types";
+import type {
+  BusinessDocument,
+  ConflictDetails,
+  CouchDocument,
+  FormDefinition,
+  SelectOptionsByField,
+  ViewDefinition,
+  ViewFilter
+} from "../shared/types";
+import { normalizePayload, validatePayload } from "../shared/validation";
 import {
   allDocs,
+  allRuntimeDocs,
   bulkDocs,
   couchRequest,
+  createIndex,
   dbExists,
   deleteDb,
   deleteDoc,
@@ -13,12 +24,13 @@ import {
   getBusinessDocs,
   getDesignDoc,
   getDoc,
+  findDocs,
   ping,
   putDoc,
   replicateBidirectional
 } from "./couch";
 import { config } from "./config";
-import { createExpenseDoc, seedDocuments } from "./seed-data";
+import { createExpenseDoc, createVendorDoc, seedDocuments } from "./seed-data";
 
 const app = express();
 
@@ -39,6 +51,12 @@ async function seedTarget(target: "local" | "server", reset = false) {
   }
   await ensureDb(target);
   await bulkDocs(target, seedDocuments());
+  await ensureIndexes(target);
+}
+
+async function ensureIndexes(target: "local" | "server") {
+  await createIndex(target, "m2-kind-docType-updatedAt", ["kind", "docType", "updatedAt"]);
+  await createIndex(target, "m2-readers", ["readers"]);
 }
 
 async function replicationTasks() {
@@ -53,16 +71,58 @@ async function replicationTasks() {
 }
 
 async function conflictDetails(id: string): Promise<ConflictDetails | null> {
-  const winning = await getDoc<BusinessDocument>("local", id, "?conflicts=true");
+  const winning = await getDoc<CouchDocument & { _conflicts?: string[] }>("local", id, "?conflicts=true");
   if (!winning._conflicts?.length) return null;
 
   const conflicts = await Promise.all(
-    winning._conflicts.map((rev) =>
-      getDoc<BusinessDocument>("local", id, `?rev=${encodeURIComponent(rev)}`)
+    winning._conflicts.map((rev: string) =>
+      getDoc<CouchDocument>("local", id, `?rev=${encodeURIComponent(rev)}`)
     )
   );
 
   return { document: winning, winning, conflicts };
+}
+
+function mangoSelector(filters: ViewFilter[] = [], docType?: string) {
+  const selector: Record<string, unknown> = { kind: "document" };
+  if (docType) selector.docType = docType;
+
+  for (const filter of filters) {
+    const op = filter.op === "eq" ? "$eq" : filter.op === "ne" ? "$ne" : `$${filter.op}`;
+    selector[filter.field] = { [op]: filter.value };
+  }
+
+  return selector;
+}
+
+async function formForDocType(docType: string) {
+  return getDoc<FormDefinition>("local", `form:${docType}`);
+}
+
+async function selectOptionsForForm(form: FormDefinition): Promise<SelectOptionsByField> {
+  const entries = await Promise.all(
+    form.fields
+      .filter((field) => field.type === "select" && field.source)
+      .map(async (field) => {
+        const docs = await getBusinessDocs("local", field.source!.docType);
+        return [
+          field.name,
+          docs.map((doc) => ({
+            value: String(field.source!.valueField ? getPath(doc, field.source!.valueField) : doc._id),
+            label: String(getPath(doc, field.source!.labelField) ?? doc._id)
+          }))
+        ] as const;
+      })
+  );
+
+  return Object.fromEntries(entries);
+}
+
+function getPath(source: Record<string, unknown>, path: string): unknown {
+  return path.split(".").reduce<unknown>((value, segment) => {
+    if (!value || typeof value !== "object") return undefined;
+    return (value as Record<string, unknown>)[segment];
+  }, source);
 }
 
 app.get(
@@ -114,27 +174,69 @@ app.post(
 app.get(
   "/api/definitions",
   asyncRoute(async (_request, response) => {
-    const [appConfig, form, view] = await Promise.all([
+    const [appConfig, forms, views] = await Promise.all([
       getDesignDoc("local", "app:config"),
-      getDesignDoc("local", "form:expense"),
-      getDesignDoc("local", "view:my-expenses")
+      findDocs<FormDefinition>("local", { selector: { kind: "form" }, limit: 100 }),
+      findDocs<ViewDefinition>("local", { selector: { kind: "view" }, limit: 100 })
     ]);
-    response.json({ appConfig, form, view });
+    response.json({
+      appConfig,
+      forms: forms.docs.sort((left, right) => left.title.localeCompare(right.title)),
+      views: views.docs.sort((left, right) => left.title.localeCompare(right.title)),
+      form: forms.docs.find((form) => form._id === "form:expense"),
+      view: views.docs.find((view) => view._id === "view:my-expenses")
+    });
   })
 );
 
 app.get(
   "/api/documents",
   asyncRoute(async (_request, response) => {
-    const docs = await getBusinessDocs("local");
+    const docType = typeof _request.query.docType === "string" ? _request.query.docType : "expense";
+    const docs = await getBusinessDocs("local", docType);
     response.json(docs);
+  })
+);
+
+app.get(
+  "/api/views/:id/documents",
+  asyncRoute(async (request, response) => {
+    const view = await getDoc<ViewDefinition>("local", routeParam(request.params.id));
+    const sort = view.sort?.[0];
+    const body: Record<string, unknown> = {
+      selector: mangoSelector(view.filters, view.docType),
+      limit: 200
+    };
+    if (sort && sort.field === "updatedAt") {
+      body.sort = [{ updatedAt: sort.direction }];
+      body.use_index = "m2-kind-docType-updatedAt";
+    }
+    const result = await findDocs<BusinessDocument>("local", body);
+    response.json(result.docs);
+  })
+);
+
+app.get(
+  "/api/forms/:docType/options",
+  asyncRoute(async (request, response) => {
+    const form = await formForDocType(routeParam(request.params.docType));
+    response.json(await selectOptionsForForm(form));
   })
 );
 
 app.post(
   "/api/documents",
   asyncRoute(async (request, response) => {
-    const doc = createExpenseDoc(request.body.payload ?? {}, config.appUser);
+    const docType = request.body.docType ?? "expense";
+    const form = await formForDocType(docType);
+    const optionsByField = await selectOptionsForForm(form);
+    const payload = normalizePayload(form, request.body.payload ?? {});
+    const errors = validatePayload(form, payload, undefined, optionsByField);
+    if (errors.length) {
+      response.status(422).json({ error: "validation_failed", errors });
+      return;
+    }
+    const doc = docType === "vendor" ? createVendorDoc(payload, config.appUser) : createExpenseDoc(payload, config.appUser);
     const result = await putDoc("local", doc);
     response.status(201).json({ ...doc, _rev: result.rev });
   })
@@ -144,11 +246,18 @@ app.put(
   "/api/documents/:id",
   asyncRoute(async (request, response) => {
     const existing = await getDoc<BusinessDocument>("local", routeParam(request.params.id));
+    const form = await formForDocType(existing.docType);
+    const payload = normalizePayload(form, request.body.payload ?? existing.payload);
+    const errors = validatePayload(form, payload, existing, await selectOptionsForForm(form));
+    if (errors.length) {
+      response.status(422).json({ error: "validation_failed", errors });
+      return;
+    }
     const updated: BusinessDocument = {
       ...existing,
       updatedAt: timestamp(),
       updatedBy: config.appUser,
-      payload: request.body.payload ?? existing.payload
+      payload
     };
     const result = await putDoc("local", updated);
     response.json({ ...updated, _rev: result.rev });
@@ -167,14 +276,29 @@ app.delete(
 app.get(
   "/api/conflicts",
   asyncRoute(async (_request, response) => {
-    const result = await allDocs<BusinessDocument>("local", {
+    const result = await allDocs<CouchDocument>("local", {
       include_docs: true,
       conflicts: true
     });
     const docs = result.rows
       .map((row) => row.doc)
-      .filter((doc): doc is BusinessDocument => Boolean(doc?.kind === "document" && doc._conflicts?.length));
+      .filter((doc): doc is CouchDocument => Boolean((doc as (CouchDocument & { _conflicts?: string[] }) | undefined)?._conflicts?.length));
     response.json(docs);
+  })
+);
+
+app.put(
+  "/api/definitions/:id",
+  asyncRoute(async (request, response) => {
+    const id = routeParam(request.params.id);
+    if (!id.startsWith("form:") && !id.startsWith("view:")) {
+      response.status(400).json({ error: "bad_request", reason: "Only form:* and view:* docs are editable in M2" });
+      return;
+    }
+    const existing = await getDoc<CouchDocument>("local", id);
+    const next = { ...request.body, _id: id, _rev: existing._rev };
+    const result = await putDoc("local", next);
+    response.json({ ...next, _rev: result.rev });
   })
 );
 
@@ -246,6 +370,30 @@ app.post(
 
     await replicateBidirectional();
     response.json({ id: doc._id, baseRev: localPut.rev, details: await conflictDetails(doc._id) });
+  })
+);
+
+app.post(
+  "/api/demo/definition-conflict",
+  asyncRoute(async (_request, response) => {
+    await ensureDb("local");
+    await ensureDb("server");
+    await replicateBidirectional();
+
+    const localForm = await getDoc<FormDefinition>("local", "form:expense");
+    const serverForm = await getDoc<FormDefinition>("server", "form:expense");
+
+    await putDoc("local", {
+      ...localForm,
+      title: `Expense Local ${Date.now()}`
+    });
+    await putDoc("server", {
+      ...serverForm,
+      title: `Expense Server ${Date.now()}`
+    });
+
+    await replicateBidirectional();
+    response.json({ id: "form:expense", details: await conflictDetails("form:expense") });
   })
 );
 
