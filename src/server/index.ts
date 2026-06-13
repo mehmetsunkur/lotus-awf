@@ -2,20 +2,24 @@ import cors from "cors";
 import express from "express";
 import { ulid } from "ulid";
 import type {
+  AclRules,
   BusinessDocument,
   ConflictDetails,
   CouchDocument,
   FormDefinition,
   SelectOptionsByField,
   ViewDefinition,
-  ViewFilter
+  ViewFilter,
+  WorkflowDefinition
 } from "../shared/types";
 import { normalizePayload, validatePayload } from "../shared/validation";
+import { applyTransition, currentState } from "../shared/workflow";
 import {
   allDocs,
   allRuntimeDocs,
   bulkDocs,
   couchRequest,
+  CouchError,
   createIndex,
   dbExists,
   deleteDb,
@@ -57,6 +61,7 @@ async function seedTarget(target: "local" | "server", reset = false) {
 async function ensureIndexes(target: "local" | "server") {
   await createIndex(target, "m2-kind-docType-updatedAt", ["kind", "docType", "updatedAt"]);
   await createIndex(target, "m2-readers", ["readers"]);
+  await createIndex(target, "m3-docType-state", ["docType", "state"]);
 }
 
 async function replicationTasks() {
@@ -97,6 +102,79 @@ function mangoSelector(filters: ViewFilter[] = [], docType?: string) {
 
 async function formForDocType(docType: string) {
   return getDoc<FormDefinition>("local", `form:${docType}`);
+}
+
+async function workflowForDocType(docType: string): Promise<WorkflowDefinition | null> {
+  try {
+    return await getDoc<WorkflowDefinition>("local", `workflow:${docType}`);
+  } catch (error) {
+    if (error instanceof CouchError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+/** Roles held by a user according to acl:rules; [] if the doc or user is absent. */
+async function rolesForUser(user: string): Promise<string[]> {
+  try {
+    const acl = await getDoc<AclRules>("local", "acl:rules");
+    return acl.users.find((entry) => entry.user === user)?.roles ?? [];
+  } catch (error) {
+    if (error instanceof CouchError && error.status === 404) return [];
+    throw error;
+  }
+}
+
+/**
+ * Post-sync reconcile (aspect A4). The CouchDB server cannot reject a replicated
+ * revision, so authority over offline transitions is exercised here: we surface
+ * documents whose conflicting revisions disagree on `state` (concurrent offline
+ * transitions) and flag any winning state the workflow does not declare, so
+ * nothing passes silently. The conflicting docs already appear in the conflict
+ * queue; this report makes the state divergence explicit.
+ */
+async function reconcileStates(): Promise<{
+  stateConflicts: Array<{ id: string; states: string[] }>;
+  invalidStates: Array<{ id: string; state: string }>;
+}> {
+  const result = await allDocs<CouchDocument & { _conflicts?: string[] }>("local", {
+    include_docs: true,
+    conflicts: true
+  });
+
+  const stateConflicts: Array<{ id: string; states: string[] }> = [];
+  const invalidStates: Array<{ id: string; state: string }> = [];
+  const workflowCache = new Map<string, WorkflowDefinition | null>();
+
+  for (const row of result.rows) {
+    const doc = row.doc;
+    if (!doc || doc.kind !== "document") continue;
+
+    if (!workflowCache.has(doc.docType)) {
+      workflowCache.set(doc.docType, await workflowForDocType(doc.docType));
+    }
+    const def = workflowCache.get(doc.docType);
+    if (!def) continue;
+
+    if (doc._conflicts?.length) {
+      const revs = await Promise.all(
+        doc._conflicts.map((rev) =>
+          getDoc<BusinessDocument>("local", doc._id, `?rev=${encodeURIComponent(rev)}`)
+        )
+      );
+      const states = Array.from(new Set([currentState(doc, def), ...revs.map((rev) => currentState(rev, def))]));
+      if (states.length > 1) stateConflicts.push({ id: doc._id, states });
+    }
+
+    const winningState = currentState(doc, def);
+    if (!def.states.some((state) => state.name === winningState)) {
+      invalidStates.push({ id: doc._id, state: winningState });
+    }
+  }
+
+  if (stateConflicts.length || invalidStates.length) {
+    console.warn("reconcileStates findings", { stateConflicts, invalidStates });
+  }
+  return { stateConflicts, invalidStates };
 }
 
 async function selectOptionsForForm(form: FormDefinition): Promise<SelectOptionsByField> {
@@ -167,22 +245,26 @@ app.post(
 app.post(
   "/api/replicate",
   asyncRoute(async (_request, response) => {
-    response.json(await replicateBidirectional());
+    const replication = await replicateBidirectional();
+    const reconcile = await reconcileStates();
+    response.json({ ...replication, reconcile });
   })
 );
 
 app.get(
   "/api/definitions",
   asyncRoute(async (_request, response) => {
-    const [appConfig, forms, views] = await Promise.all([
+    const [appConfig, forms, views, workflows] = await Promise.all([
       getDesignDoc("local", "app:config"),
       findDocs<FormDefinition>("local", { selector: { kind: "form" }, limit: 100 }),
-      findDocs<ViewDefinition>("local", { selector: { kind: "view" }, limit: 100 })
+      findDocs<ViewDefinition>("local", { selector: { kind: "view" }, limit: 100 }),
+      findDocs<WorkflowDefinition>("local", { selector: { kind: "workflow" }, limit: 100 })
     ]);
     response.json({
       appConfig,
       forms: forms.docs.sort((left, right) => left.title.localeCompare(right.title)),
       views: views.docs.sort((left, right) => left.title.localeCompare(right.title)),
+      workflows: workflows.docs.sort((left, right) => left.title.localeCompare(right.title)),
       form: forms.docs.find((form) => form._id === "form:expense"),
       view: views.docs.find((view) => view._id === "view:my-expenses")
     });
@@ -270,6 +352,28 @@ app.delete(
     const existing = await getDoc<BusinessDocument>("local", routeParam(request.params.id));
     await deleteDoc("local", existing._id, existing._rev ?? "");
     response.status(204).end();
+  })
+);
+
+app.post(
+  "/api/documents/:id/transition",
+  asyncRoute(async (request, response) => {
+    const existing = await getDoc<BusinessDocument>("local", routeParam(request.params.id));
+    const def = await workflowForDocType(existing.docType);
+    if (!def) {
+      response.status(404).json({ error: "not_found", reason: `No workflow for ${existing.docType}` });
+      return;
+    }
+    const roles = await rolesForUser(config.appUser);
+    // Same shared engine the client uses to offer the action — authoritative here (A2/A3).
+    const result = applyTransition(existing, def, request.body.transition, config.appUser, roles, timestamp());
+    if (!result.ok) {
+      response.status(422).json({ error: "transition_failed", errors: result.errors });
+      return;
+    }
+    const updated: BusinessDocument = { ...result.document, updatedAt: timestamp(), updatedBy: config.appUser };
+    const put = await putDoc("local", updated);
+    response.json({ ...updated, _rev: put.rev });
   })
 );
 
