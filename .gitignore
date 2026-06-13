@@ -3,3 +3,6 @@ dist/
 .env
 .DS_Store
 npm-debug.log*
+
+# bv (beads viewer) local config and caches
+.bv/
