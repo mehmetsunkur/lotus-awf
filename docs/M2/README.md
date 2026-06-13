@@ -29,6 +29,7 @@ Build a richer metadata-driven local app runtime:
 | [03-expression-runtime.md](03-expression-runtime.md) | Expression and validation runtime decisions |
 | [04-build-plan.md](04-build-plan.md) | Suggested implementation order |
 | [05-acceptance.md](05-acceptance.md) | Demo scenarios and exit criteria |
+| [06-implementation-notes.md](06-implementation-notes.md) | Implemented M2 behavior, verification, and limitations |
 
 ## Core posture
 
@@ -37,4 +38,3 @@ M2 deliberately still avoids workflow.
 The working question is:
 
 > Can replicated definitions drive enough local runtime behavior to justify building workflow on top?
-
