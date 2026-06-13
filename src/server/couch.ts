@@ -138,6 +138,13 @@ export async function bulkDocs(target: CouchTarget, docs: object[]) {
   });
 }
 
+export async function createIndex(target: CouchTarget, name: string, fields: string[]) {
+  return couchRequest(target, `/${config.appDb}/_index`, {
+    method: "POST",
+    body: JSON.stringify({ index: { fields }, name, type: "json" })
+  });
+}
+
 export async function allDocs<T>(target: CouchTarget, options: Record<string, unknown> = {}) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(options)) {
