@@ -86,6 +86,44 @@ export type ViewDefinition = {
   sort?: ViewSort[];
 };
 
+export type WorkflowState = {
+  name: string;
+  label: string;
+  final?: boolean;
+};
+
+export type WorkflowTransition = {
+  id: string;
+  label: string;
+  /** Source state name, or "*" to allow from any non-final state. */
+  from: string;
+  to: string;
+  /** M2 expression over { payload, doc, user, now }; must be truthy to allow. */
+  guard?: string;
+  /** Role (as in acl:rules) required to perform this transition. */
+  requiredRole?: string;
+};
+
+export type WorkflowDefinition = {
+  _id: `workflow:${string}`;
+  _rev?: string;
+  kind: "workflow";
+  appId: string;
+  docType: string;
+  title: string;
+  initialState: string;
+  states: WorkflowState[];
+  transitions: WorkflowTransition[];
+};
+
+export type TransitionEvent = {
+  transition: string;
+  from: string;
+  to: string;
+  at: string;
+  by: string;
+};
+
 export type BusinessDocument = {
   _id: `doc:${string}:${string}`;
   _rev?: string;
@@ -100,6 +138,15 @@ export type BusinessDocument = {
   readers: string[];
   authors: string[];
   payload: Record<string, unknown>;
+  /**
+   * Workflow lifecycle (M3). All optional and absent until the first transition,
+   * so already-replicated M1/M2 documents stay valid. A document with no `state`
+   * is treated as the workflow's `initialState`.
+   */
+  state?: string;
+  stateUpdatedAt?: string;
+  stateUpdatedBy?: string;
+  history?: TransitionEvent[];
 };
 
 export type AclRules = {
@@ -111,7 +158,7 @@ export type AclRules = {
   users: Array<{ user: string; roles: string[] }>;
 };
 
-export type DesignDocument = AppConfig | FormDefinition | ViewDefinition | AclRules;
+export type DesignDocument = AppConfig | FormDefinition | ViewDefinition | WorkflowDefinition | AclRules;
 
 export type ReplicationStatus = {
   localReachable: boolean;
