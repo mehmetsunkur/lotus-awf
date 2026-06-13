@@ -26,6 +26,7 @@ Build a minimal modern NSF-like replica:
 | [03-data-contract.md](03-data-contract.md) | App/database unit, document envelope, form/view definitions |
 | [04-build-plan.md](04-build-plan.md) | Suggested implementation order |
 | [05-acceptance.md](05-acceptance.md) | Demo scenarios and exit criteria |
+| [06-implementation-notes.md](06-implementation-notes.md) | Implemented topology, commands, conflict handling, ACL spike findings |
 
 ## Core posture
 
@@ -36,4 +37,3 @@ The project is replication-first for M1:
 
 The key technical bet is that CouchDB can provide the base replication model closely enough to Lotus
 Notes to avoid inventing a custom sync layer at the start.
-

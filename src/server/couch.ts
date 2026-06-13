@@ -30,19 +30,27 @@ export const targetUrl = (target: CouchTarget) =>
   target === "local" ? config.localCouchUrl : config.serverCouchUrl;
 
 export const dbUrl = (target: CouchTarget, db = config.appDb) => `${targetUrl(target)}/${db}`;
+export const replicationDbUrl = (target: CouchTarget, db = config.appDb) =>
+  `${target === "local" ? config.localReplicationUrl : config.serverReplicationUrl}/${db}`;
 
 export async function couchRequest<T>(
   target: CouchTarget,
   path = "",
   init: RequestInit = {}
 ): Promise<T> {
-  const url = `${targetUrl(target)}${path}`;
+  const parsedUrl = new URL(`${targetUrl(target)}${path}`);
   const headers = new Headers(init.headers);
+  if (parsedUrl.username || parsedUrl.password) {
+    const credentials = Buffer.from(`${decodeURIComponent(parsedUrl.username)}:${decodeURIComponent(parsedUrl.password)}`);
+    headers.set("authorization", `Basic ${credentials.toString("base64")}`);
+    parsedUrl.username = "";
+    parsedUrl.password = "";
+  }
   if (init.body && !headers.has("content-type")) {
     headers.set("content-type", "application/json");
   }
 
-  const response = await fetch(url, { ...init, headers });
+  const response = await fetch(parsedUrl, { ...init, headers });
   if (!response.ok) {
     let body: CouchErrorBody = {};
     try {
@@ -163,8 +171,8 @@ export async function getBusinessDocs(target: CouchTarget, docType = "expense") 
 export async function replicateOnce(direction: "push" | "pull") {
   const body =
     direction === "push"
-      ? { source: dbUrl("local"), target: dbUrl("server"), create_target: true }
-      : { source: dbUrl("server"), target: dbUrl("local"), create_target: true };
+      ? { source: replicationDbUrl("local"), target: replicationDbUrl("server"), create_target: true }
+      : { source: replicationDbUrl("server"), target: replicationDbUrl("local"), create_target: true };
 
   return couchRequest("local", "/_replicate", {
     method: "POST",

@@ -13,8 +13,8 @@ const scopes: UserScope[] = [
   { user: "user:bob", roles: ["role:sales"], db: `${config.appDb}_bob_acl_spike` }
 ];
 
-const localDbUrl = (db: string) => `${config.localCouchUrl}/${db}`;
-const serverDbUrl = () => `${config.serverCouchUrl}/${config.appDb}`;
+const localDbUrl = (db: string) => `${config.localReplicationUrl}/${db}`;
+const serverDbUrl = () => `${config.serverReplicationUrl}/${config.appDb}`;
 
 async function countDocs(db: string) {
   const result = await couchRequest<{ rows: Array<{ id: string; doc?: BusinessDocument }> }>(
