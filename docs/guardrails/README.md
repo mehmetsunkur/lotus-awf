@@ -26,7 +26,7 @@ ensure coverage of a dimension nobody wrote down.
 | File | Role | Status |
 |---|---|---|
 | [`aspect-taxonomy.md`](./aspect-taxonomy.md) | **Keystone.** The enumerated aspects + the blast-radius trigger table that routes a change to its lenses. | Drafted |
-| `lens-mandates.md` | The per-aspect reviewer prompts (one single-aspect, adversarially-framed mandate each). | TODO |
+| [`lens-mandates.md`](./lens-mandates.md) | The per-aspect reviewer prompts (one single-aspect, adversarially-framed mandate each) + shared preamble and plan/diff mode framing. | Drafted |
 | review workflow | Reusable multi-agent fan-out (review → adversarial verify → synthesize → gate), parameterized by the taxonomy; runnable on a **plan** or a **diff**. | TODO |
 
 The taxonomy is the dependency for everything else — context routing, the
