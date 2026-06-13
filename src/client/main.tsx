@@ -96,38 +96,46 @@ function StatusStrip({
   onRefresh: () => void;
 }) {
   return (
-    <header className="topbar">
+    <header className="topbar" data-testid="topbar">
       <div>
         <p className="kicker">M2 Metadata Runtime</p>
         <h1>Expense Replica</h1>
       </div>
       <div className="statusCluster">
-        <span className={status?.localReachable ? "pill ok" : "pill bad"}>
+        <span
+          className={status?.localReachable ? "pill ok" : "pill bad"}
+          data-testid="status-local"
+          data-online={status?.localReachable ? "true" : "false"}
+        >
           <Database size={16} /> Local {status?.localReachable ? "online" : "offline"}
         </span>
-        <span className={status?.serverReachable ? "pill ok" : "pill bad"}>
+        <span
+          className={status?.serverReachable ? "pill ok" : "pill bad"}
+          data-testid="status-server"
+          data-online={status?.serverReachable ? "true" : "false"}
+        >
           {status?.serverReachable ? <Wifi size={16} /> : <WifiOff size={16} />} Server{" "}
           {status?.serverReachable ? "online" : "offline"}
         </span>
-        <button onClick={onRefresh} disabled={busy} title="Refresh local runtime state">
+        <button onClick={onRefresh} disabled={busy} title="Refresh local runtime state" data-testid="status-refresh">
           <RefreshCcw size={16} /> Refresh
         </button>
-        <button onClick={onSetup} disabled={busy} title="Create and seed databases">
+        <button onClick={onSetup} disabled={busy} title="Create and seed databases" data-testid="status-setup">
           <Database size={16} /> Setup
         </button>
-        <button onClick={onReplicate} disabled={busy} title="Run bidirectional replication">
+        <button onClick={onReplicate} disabled={busy} title="Run bidirectional replication" data-testid="status-sync">
           <GitCompare size={16} /> Sync
         </button>
-        <button onClick={onConflictDemo} disabled={busy} title="Create a business document conflict">
+        <button onClick={onConflictDemo} disabled={busy} title="Create a business document conflict" data-testid="status-data-conflict">
           <AlertTriangle size={16} /> Data Conflict
         </button>
-        <button onClick={onDefinitionConflictDemo} disabled={busy} title="Create a form definition conflict">
+        <button onClick={onDefinitionConflictDemo} disabled={busy} title="Create a form definition conflict" data-testid="status-def-conflict">
           <AlertTriangle size={16} /> Def Conflict
         </button>
-        <button onClick={onDesignDemo} disabled={busy} title="Change form and view definitions on server">
+        <button onClick={onDesignDemo} disabled={busy} title="Change form and view definitions on server" data-testid="status-server-design">
           <FilePenLine size={16} /> Server Design
         </button>
-        <button onClick={onReset} disabled={busy} title="Reset both databases">
+        <button onClick={onReset} disabled={busy} title="Reset both databases" data-testid="status-reset">
           <RotateCcw size={16} /> Reset
         </button>
       </div>
@@ -145,13 +153,15 @@ function ViewPicker({
   onSelect: (id: string) => void;
 }) {
   return (
-    <section className="band">
+    <section className="band" data-testid="view-picker">
       <div className="segmented">
         {views.map((view) => (
           <button
             key={view._id}
             className={view._id === selectedViewId ? "active" : ""}
             onClick={() => onSelect(view._id)}
+            data-testid={`view-tab-${view._id}`}
+            data-active={view._id === selectedViewId ? "true" : "false"}
           >
             <List size={16} /> {view.title}
           </button>
@@ -173,13 +183,13 @@ function DocumentTable({
   onSelect: (doc: BusinessDocument) => void;
 }) {
   return (
-    <section className="listPanel">
+    <section className="listPanel" data-testid="document-table">
       <div className="panelHead">
         <div>
           <p className="kicker">{view._id}</p>
           <h2>{view.title}</h2>
         </div>
-        <strong>{documents.length}</strong>
+        <strong data-testid="document-count">{documents.length}</strong>
       </div>
       <div className="tableWrap">
         <table>
@@ -193,11 +203,17 @@ function DocumentTable({
           </thead>
           <tbody>
             {documents.map((doc) => (
-              <tr key={doc._id} className={doc._id === selectedId ? "selected" : ""} onClick={() => onSelect(doc)}>
+              <tr
+                key={doc._id}
+                className={doc._id === selectedId ? "selected" : ""}
+                onClick={() => onSelect(doc)}
+                data-testid="doc-row"
+                data-doc-id={doc._id}
+              >
                 {view.columns.map((column) => (
                   <td key={column.field}>{displayValue(getPath(doc, column.field))}</td>
                 ))}
-                <td>{doc._conflicts?.length ? "Conflict" : "Clean"}</td>
+                <td data-testid="doc-row-state">{doc._conflicts?.length ? "Conflict" : "Clean"}</td>
               </tr>
             ))}
           </tbody>
@@ -236,16 +252,17 @@ function DocumentForm({
     : [{ title: form.title, fields: form.fields.map((field) => field.name) }];
 
   return (
-    <section className="editorPanel">
+    <section className="editorPanel" data-testid="document-form">
       <div className="panelHead">
         <div>
-          <p className="kicker">{selected ? selected._id : `New ${form.docType}`}</p>
+          <p className="kicker" data-testid="form-record-id">{selected ? selected._id : `New ${form.docType}`}</p>
           <h2>{form.title}</h2>
         </div>
-        <button onClick={onNew}>New</button>
+        <button onClick={onNew} data-testid="form-new">New</button>
       </div>
       <form
         className="fieldGrid"
+        data-testid="form"
         onSubmit={(event) => {
           event.preventDefault();
           if (!errors.length) onSave(normalized);
@@ -271,19 +288,19 @@ function DocumentForm({
           </fieldset>
         ))}
         {errors.length ? (
-          <div className="errorBox">
+          <div className="errorBox" data-testid="form-errors">
             {errors.map((error) => (
-              <p key={`${error.field}-${error.message}`}>{error.message}</p>
+              <p key={`${error.field}-${error.message}`} data-testid={`form-error-${error.field}`}>{error.message}</p>
             ))}
           </div>
         ) : null}
         <div className="formActions">
           {selected ? (
-            <button className="danger" type="button" onClick={() => onDelete(selected)}>
+            <button className="danger" type="button" onClick={() => onDelete(selected)} data-testid="form-delete">
               <Trash2 size={16} /> Delete
             </button>
           ) : null}
-          <button className="primary" type="submit" disabled={Boolean(errors.length)}>
+          <button className="primary" type="submit" disabled={Boolean(errors.length)} data-testid="form-save">
             <Save size={16} /> Save Local
           </button>
         </div>
@@ -317,11 +334,11 @@ function FieldEditor({
         {required ? " *" : ""}
       </span>
       {field.type === "textarea" ? (
-        <textarea value={String(value ?? "")} disabled={readOnly} onChange={(event) => onChange(event.target.value)} />
+        <textarea data-testid={`field-${field.name}`} value={String(value ?? "")} disabled={readOnly} onChange={(event) => onChange(event.target.value)} />
       ) : field.type === "boolean" ? (
-        <input type="checkbox" checked={Boolean(value)} disabled={readOnly} onChange={(event) => onChange(event.target.checked)} />
+        <input data-testid={`field-${field.name}`} type="checkbox" checked={Boolean(value)} disabled={readOnly} onChange={(event) => onChange(event.target.checked)} />
       ) : field.type === "select" ? (
-        <select value={String(value ?? "")} disabled={readOnly} required={required} onChange={(event) => onChange(event.target.value)}>
+        <select data-testid={`field-${field.name}`} value={String(value ?? "")} disabled={readOnly} required={required} onChange={(event) => onChange(event.target.value)}>
           <option value="">Select...</option>
           {options.map((option) => (
             <option key={option.value} value={option.value}>
@@ -331,6 +348,7 @@ function FieldEditor({
         </select>
       ) : (
         <input
+          data-testid={`field-${field.name}`}
           required={required}
           disabled={readOnly}
           type={field.type}
@@ -364,13 +382,13 @@ function DefinitionEditor({
   }, [selected]);
 
   return (
-    <section className="definitionPanel">
+    <section className="definitionPanel" data-testid="definition-editor">
       <div className="panelHead">
         <div>
           <p className="kicker">Local definition editor</p>
           <h2>Forms & Views</h2>
         </div>
-        <select value={selected?._id ?? ""} onChange={(event) => onSelect(event.target.value)}>
+        <select data-testid="definition-select" value={selected?._id ?? ""} onChange={(event) => onSelect(event.target.value)}>
           {definitions.map((doc) => (
             <option key={doc._id} value={doc._id}>
               {doc._id}
@@ -378,11 +396,12 @@ function DefinitionEditor({
           ))}
         </select>
       </div>
-      <textarea className="jsonEditor" value={text} onChange={(event) => setText(event.target.value)} />
-      {error ? <p className="inlineError">{error}</p> : null}
+      <textarea data-testid="definition-json" className="jsonEditor" value={text} onChange={(event) => setText(event.target.value)} />
+      {error ? <p className="inlineError" data-testid="definition-error">{error}</p> : null}
       <div className="formActions definitionActions">
         <button
           className="primary"
+          data-testid="definition-save"
           onClick={() => {
             try {
               const parsed = JSON.parse(text) as FormDefinition | ViewDefinition;
@@ -412,30 +431,30 @@ function ConflictPanel({
   onResolve: (doc: CouchDocument) => void;
 }) {
   return (
-    <section className="conflictPanel">
+    <section className="conflictPanel" data-testid="conflict-panel">
       <div className="panelHead">
         <div>
           <p className="kicker">CouchDB conflicts</p>
           <h2>Resolution Queue</h2>
         </div>
-        <strong>{conflicts.length}</strong>
+        <strong data-testid="conflict-count">{conflicts.length}</strong>
       </div>
       <div className="conflictGrid">
         <div className="conflictList">
           {conflicts.map((doc) => (
-            <button key={doc._id} onClick={() => onInspect(doc)}>
+            <button key={doc._id} onClick={() => onInspect(doc)} data-testid="conflict-item" data-doc-id={doc._id}>
               <AlertTriangle size={16} /> {doc._id}
             </button>
           ))}
-          {!conflicts.length ? <p className="empty">No local conflicts.</p> : null}
+          {!conflicts.length ? <p className="empty" data-testid="conflict-empty">No local conflicts.</p> : null}
         </div>
         {selectedConflict ? (
-          <div className="revisionCompare">
+          <div className="revisionCompare" data-testid="conflict-detail">
             <Revision title="Winning revision" doc={selectedConflict.winning} />
             {selectedConflict.conflicts.map((doc) => (
               <Revision key={doc._rev} title={`Conflicting ${doc._rev}`} doc={doc} />
             ))}
-            <button className="primary" onClick={() => onResolve(selectedConflict.winning)}>
+            <button className="primary" onClick={() => onResolve(selectedConflict.winning)} data-testid="conflict-resolve">
               <Save size={16} /> Keep Winning Revision
             </button>
           </div>
@@ -527,12 +546,12 @@ function App() {
     return (
       <main className="shell">
         <StatusStrip {...shellActions} />
-        <section className="emptyState">
+        <section className="emptyState" data-testid="empty-state">
           <h2>Local replica is not seeded</h2>
-          <button className="primary" onClick={shellActions.onSetup}>
+          <button className="primary" onClick={shellActions.onSetup} data-testid="empty-setup">
             <Database size={16} /> Setup Database
           </button>
-          <p>{message}</p>
+          <p data-testid="message">{message}</p>
         </section>
       </main>
     );
@@ -541,7 +560,7 @@ function App() {
   return (
     <main className="shell">
       <StatusStrip {...shellActions} />
-      <p className="message">{message}</p>
+      <p className="message" data-testid="message">{message}</p>
       <ViewPicker
         views={definitions.views}
         selectedViewId={selectedView._id}
