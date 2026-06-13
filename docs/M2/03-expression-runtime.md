@@ -48,5 +48,8 @@ The same validation module is used by the client and API save path.
 - Imports.
 - Global access.
 - Mutation.
-- Workflow transition rules.
+
+(M2 did not use expressions for workflow transition rules. M3 lifts this: transition guards in
+`workflow:*` definitions reuse this same evaluator and `{ payload, doc, user, now }` context —
+see `docs/M3/03-workflow-runtime.md`.)
 
