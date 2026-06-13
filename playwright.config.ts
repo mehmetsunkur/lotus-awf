@@ -36,7 +36,9 @@ export default defineConfig({
     }
   ],
   webServer: {
-    command: "npm run dev",
+    // Non-watch server: avoids tsx/vite file watchers that exhaust the host's
+    // limited fs.inotify instances. See package.json "test:serve".
+    command: "npm run test:serve",
     // /api/health is proxied through Vite to the Express API and does not touch
     // CouchDB, so a 200 here means both the web and API tiers are ready.
     url: "http://localhost:3000/api/health",

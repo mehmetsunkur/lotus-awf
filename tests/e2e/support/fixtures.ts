@@ -12,17 +12,44 @@ export class RuntimeApp {
     await this.waitForReady();
   }
 
-  /** Wait until the seeded runtime shell (not the empty/booting state) is shown. */
+  /**
+   * Wait until the seeded runtime shell is shown AND the initial refresh has
+   * fully settled. The boot sequence issues several refreshes that re-set the
+   * selected row and reload definition objects; interacting before they finish
+   * races those state updates, so we gate on the completion message.
+   */
   async waitForReady(): Promise<void> {
     await expect(this.page.getByTestId("view-picker")).toBeVisible();
+    await expect(this.message()).toHaveText("Initial refresh complete.");
   }
 
   async selectView(viewId: string): Promise<void> {
     await this.page.getByTestId(`view-tab-${viewId}`).click();
   }
 
+  /**
+   * Click Refresh and wait for the runtime to fully settle. Switching a view tab
+   * alone does not refetch documents, so specs that change views call this to
+   * load the matching rows deterministically. We wait on the completion message
+   * (not a single HTTP response) because a refresh cycle issues several requests
+   * and only sets the selected row once all of them have applied.
+   */
+  async refresh(): Promise<void> {
+    await this.page.getByTestId("status-refresh").click();
+    await expect(this.message()).toHaveText("Refresh complete.");
+  }
+
+  /** Switch to a view and load its documents in one deterministic step. */
+  async openView(viewId: string): Promise<void> {
+    await this.selectView(viewId);
+    await this.refresh();
+  }
+
   async newDocument(): Promise<void> {
     await this.page.getByTestId("form-new").click();
+    // New documents have no Delete button; wait for it to confirm the form
+    // really cleared the selection before we start filling fields.
+    await expect(this.page.getByTestId("form-delete")).toBeHidden();
   }
 
   async fillField(name: string, value: string): Promise<void> {
@@ -35,6 +62,22 @@ export class RuntimeApp {
 
   async save(): Promise<void> {
     await this.page.getByTestId("form-save").click();
+  }
+
+  /**
+   * Set the definition JSON editor's value. Playwright's fill() is unreliable on
+   * this controlled textarea, so we drive React's onChange via the native value
+   * setter + an input event (works instantly regardless of content size).
+   */
+  async setDefinitionJson(value: string): Promise<void> {
+    await this.page.getByTestId("definition-json").evaluate((element, next) => {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype,
+        "value"
+      )?.set;
+      setter?.call(element, next);
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+    }, value);
   }
 
   documentRows() {
