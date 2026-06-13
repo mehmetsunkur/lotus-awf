@@ -15,6 +15,7 @@ import {
 import type {
   BusinessDocument,
   ConflictDetails,
+  CouchDocument,
   FormDefinition,
   FormField,
   ReplicationStatus,
@@ -262,7 +263,7 @@ function ConflictPanel({
   conflicts: BusinessDocument[];
   selectedConflict?: ConflictDetails;
   onInspect: (doc: BusinessDocument) => void;
-  onResolve: (payload: Record<string, unknown>) => void;
+  onResolve: (doc: CouchDocument) => void;
 }) {
   return (
     <section className="conflictPanel">
@@ -288,7 +289,7 @@ function ConflictPanel({
             {selectedConflict.conflicts.map((doc) => (
               <Revision key={doc._rev} title={`Conflicting ${doc._rev}`} doc={doc} />
             ))}
-            <button className="primary" onClick={() => onResolve(selectedConflict.winning.payload)}>
+            <button className="primary" onClick={() => onResolve(selectedConflict.winning)}>
               <Save size={16} /> Keep Winning Revision
             </button>
           </div>
@@ -298,11 +299,11 @@ function ConflictPanel({
   );
 }
 
-function Revision({ title, doc }: { title: string; doc: BusinessDocument }) {
+function Revision({ title, doc }: { title: string; doc: CouchDocument }) {
   return (
     <article className="revision">
       <h3>{title}</h3>
-      <pre>{JSON.stringify({ _rev: doc._rev, updatedAt: doc.updatedAt, payload: doc.payload }, null, 2)}</pre>
+      <pre>{JSON.stringify(doc, null, 2)}</pre>
     </article>
   );
 }
@@ -429,12 +430,12 @@ function App() {
             setSelectedConflict(await api<ConflictDetails>(`/api/conflicts/${encodeURIComponent(doc._id)}`));
           })
         }
-        onResolve={(payload) =>
+        onResolve={(doc) =>
           selectedConflict
             ? run("Resolve conflict", () =>
                 api(`/api/conflicts/${encodeURIComponent(selectedConflict.document._id)}/resolve`, {
                   method: "POST",
-                  body: JSON.stringify({ payload })
+                  body: JSON.stringify(doc.kind === "document" ? { payload: doc.payload } : { document: doc })
                 })
               )
             : undefined

@@ -9,13 +9,42 @@ export type AppConfig = {
   database: string;
 };
 
-export type FieldType = "text" | "number" | "date";
+export type FieldType = "text" | "textarea" | "number" | "date" | "boolean" | "select";
+
+export type ExpressionRule = {
+  expression: string;
+  message?: string;
+};
+
+export type SelectOption = {
+  label: string;
+  value: string;
+};
+
+export type FieldSource = {
+  docType: string;
+  labelField: string;
+  valueField?: string;
+};
 
 export type FormField = {
   name: string;
   type: FieldType;
   label: string;
   required?: boolean;
+  requiredWhen?: string;
+  visibleWhen?: string;
+  readOnlyWhen?: string;
+  defaultValue?: unknown;
+  helpText?: string;
+  options?: SelectOption[];
+  source?: FieldSource;
+  validate?: ExpressionRule[];
+};
+
+export type FormSection = {
+  title: string;
+  fields: string[];
 };
 
 export type FormDefinition = {
@@ -25,6 +54,7 @@ export type FormDefinition = {
   appId: string;
   docType: string;
   title: string;
+  sections?: FormSection[];
   fields: FormField[];
 };
 
@@ -38,6 +68,12 @@ export type ViewSort = {
   direction: "asc" | "desc";
 };
 
+export type ViewFilter = {
+  field: string;
+  op: "eq" | "ne" | "gt" | "gte" | "lt" | "lte" | "in";
+  value: unknown;
+};
+
 export type ViewDefinition = {
   _id: `view:${string}`;
   _rev?: string;
@@ -46,6 +82,7 @@ export type ViewDefinition = {
   docType: string;
   title: string;
   columns: ViewColumn[];
+  filters?: ViewFilter[];
   sort?: ViewSort[];
 };
 
@@ -85,7 +122,16 @@ export type ReplicationStatus = {
 };
 
 export type ConflictDetails = {
-  document: BusinessDocument;
-  winning: BusinessDocument;
-  conflicts: BusinessDocument[];
+  document: CouchDocument;
+  winning: CouchDocument;
+  conflicts: CouchDocument[];
 };
+
+export type CouchDocument = BusinessDocument | DesignDocument;
+
+export type ValidationError = {
+  field: string;
+  message: string;
+};
+
+export type SelectOptionsByField = Record<string, SelectOption[]>;

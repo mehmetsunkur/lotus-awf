@@ -199,13 +199,20 @@ app.post(
       return;
     }
 
-    const resolved: BusinessDocument = {
-      ...details.winning,
-      _conflicts: undefined,
-      updatedAt: timestamp(),
-      updatedBy: config.appUser,
-      payload: request.body.payload ?? details.winning.payload
-    };
+    const resolved =
+      details.winning.kind === "document"
+        ? {
+            ...details.winning,
+            _conflicts: undefined,
+            updatedAt: timestamp(),
+            updatedBy: config.appUser,
+            payload: request.body.payload ?? details.winning.payload
+          }
+        : {
+            ...details.winning,
+            _conflicts: undefined,
+            ...(request.body.document ?? {})
+          };
     const result = await putDoc("local", resolved);
 
     await Promise.all(details.conflicts.map((conflict) => deleteDoc("local", conflict._id, conflict._rev ?? "")));
