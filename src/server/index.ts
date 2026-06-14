@@ -61,7 +61,7 @@ async function seedTarget(target: "local" | "server", reset = false) {
 async function ensureIndexes(target: "local" | "server") {
   await createIndex(target, "m2-kind-docType-updatedAt", ["kind", "docType", "updatedAt"]);
   await createIndex(target, "m2-readers", ["readers"]);
-  await createIndex(target, "m3-docType-state", ["docType", "state"]);
+  await createIndex(target, "m3-docType-state-updatedAt", ["docType", "state", "updatedAt"]);
 }
 
 async function replicationTasks() {

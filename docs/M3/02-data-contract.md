@@ -68,7 +68,10 @@ actions).
 M3 adds one Mango index for state-filtered worklists, created in all three index locations
 (`scripts/seed.ts`, `scripts/reset.ts`, `seedTarget`/`ensureIndexes` in `src/server/index.ts`):
 
-- `m3-docType-state` over `["docType", "state"]`
+- `m3-docType-state-updatedAt` over `["docType", "state", "updatedAt"]`
+
+The field order matches the worklist query shape — filter on `docType` + `state`, sort by `updatedAt`
+(e.g. `view:pending-approvals`).
 
 ## Views
 

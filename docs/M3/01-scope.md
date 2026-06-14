@@ -17,13 +17,15 @@ and server, which is the evidence Option A needed.
 Practically, on the CouchDB substrate "server-authoritative" cannot mean an online gatekeeper that
 rejects a write — a replicated revision simply arrives. So M3's authority is exercised two ways:
 
-- **Online:** transitions go through `POST /api/documents/:id/transition`, which runs the shared
-  engine authoritatively before writing.
-- **Offline:** the client applies the same shared engine optimistically and writes locally; on sync a
-  **server-side reconcile pass** re-validates and surfaces illegal or concurrent transitions through
-  the existing conflict queue.
+- **At write time:** every transition goes through `POST /api/documents/:id/transition`, which runs the
+  shared engine before writing the **local** CouchDB replica. This is offline-capable because the
+  device's local stack (local Express + local CouchDB) serves it without the remote peer — the same
+  local-first posture as M1/M2 document writes.
+- **On sync:** a **reconcile pass** surfaces concurrent transitions made on different replicas (and
+  flags any unreachable state) through the existing conflict queue.
 
-See [03-workflow-runtime.md](03-workflow-runtime.md) for the full model.
+See [03-workflow-runtime.md](03-workflow-runtime.md) for the full model, including why the browser
+client does not apply transitions itself.
 
 ## In scope
 
@@ -33,7 +35,7 @@ See [03-workflow-runtime.md](03-workflow-runtime.md) for the full model.
 - A portable shared workflow engine reused by client and server.
 - Transition guards evaluated with the M2 expression runtime.
 - Role-gated transitions enforced via `acl:rules`.
-- Online transition endpoint plus optimistic offline transitions.
+- A transition endpoint that runs against the local stack, so it works offline.
 - Reconciliation of transitions on sync, surfacing state conflicts.
 - A state-filtered worklist view and a supporting Mango index.
 - Runtime UI: state badge, available transition actions, transition history, state-aware conflicts.

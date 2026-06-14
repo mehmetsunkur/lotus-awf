@@ -36,23 +36,28 @@ guards must therefore not gate on `now` (the only shipped guard is `payload.amou
 making `now`-dependent gating deterministic (a single threaded timestamp, or server-only evaluation) is
 deferred.
 
-## What "server-authoritative" means on CouchDB
+## Where transitions run, and what "server-authoritative" means on CouchDB
 
-A CouchDB server does not get to reject a replicated revision — when a device syncs, the new revision
-simply arrives. So authority is exercised in two complementary places:
+There is **one** transition path. The browser client does not run its own replica or apply
+`applyTransition` itself — it imports only `availableTransitions`/`currentState` (to render which
+actions to offer) and always calls `POST /api/documents/:id/transition`. That endpoint runs
+`applyTransition` (loading the `workflow:*` def and the user's roles from `acl:rules`) and writes the
+**local** CouchDB replica; an illegal transition returns `422`, exactly like validation does today.
 
-1. **Online transitions** go through `POST /api/documents/:id/transition`. The server loads the doc,
-   the `workflow:*` def, and the user's roles from `acl:rules`, runs `applyTransition`, and only then
-   writes. Illegal transitions return `422` — exactly like validation does today.
+This path is offline-first because the device's local stack — the local Express layer and the local
+CouchDB replica — is what serves it. A transition succeeds whether or not the *remote* server CouchDB
+is reachable; the new revision simply replicates upward on the next sync (the same posture as M1/M2
+document writes). "Server-authoritative" therefore means the engine runs in the local server process
+before any write, **not** an online round-trip to a central authority.
 
-2. **Offline transitions** are applied by the client via the same `applyTransition` and written
-   locally. On the next sync, the new revision replicates up. A **reconcile pass** (run as part of the
-   replicate flow) then:
-   - detects documents with `_conflicts` whose revisions disagree on `state` — these are concurrent
-     offline transitions and are surfaced through the existing conflict queue for human resolution
-     (aspect A4);
-   - re-checks that the winning revision's `state` was reachable; an unreachable state is reported so
-     it does not pass silently.
+A CouchDB peer cannot reject a replicated revision — when a device syncs, the new revision just
+arrives. So the second half of authority is a **reconcile pass** (run as part of the replicate flow)
+that:
+- detects documents with `_conflicts` whose revisions disagree on `state` — these are concurrent
+  transitions made on different replicas, surfaced through the existing conflict queue for human
+  resolution (aspect A4);
+- re-checks that the winning revision's `state` was reachable; an unreachable state is reported so it
+  does not pass silently.
 
 This is deliberately **not** a CouchDB `validate_doc_update` design function. Such a function would
 have to be hand-written in JavaScript inside the database and kept byte-for-byte in step with the

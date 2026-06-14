@@ -34,11 +34,19 @@ function roleAllows(transition: WorkflowTransition, roles: string[]): boolean {
 }
 
 function guardAllows(transition: WorkflowTransition, doc: BusinessDocument, user: string, now: string): boolean {
-  return evaluateBoolean(
-    transition.guard,
-    { payload: doc.payload, doc: doc as unknown as Record<string, unknown>, user, now },
-    true
-  );
+  // Fail closed: a malformed or blocked-token guard denies the transition rather
+  // than throwing into the server route (500) or the client render. Mirrors the
+  // try/catch posture in validation.ts. An empty guard already returns the
+  // fallback (true) inside evaluateBoolean.
+  try {
+    return evaluateBoolean(
+      transition.guard,
+      { payload: doc.payload, doc: doc as unknown as Record<string, unknown>, user, now },
+      true
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**

@@ -8,21 +8,23 @@ M3 adds a metadata-driven document lifecycle on top of the M2 runtime:
 - documents carry workflow state on the envelope (`state`/`stateUpdatedAt`/`stateUpdatedBy`/`history`);
 - a shared engine (`src/shared/workflow.ts`) decides available transitions and applies them;
 - the runtime shows a state badge, the transitions the user may perform, and a transition history;
-- transitions can be performed online via the API and optimistically offline against the local replica;
-- concurrent offline transitions surface as conflicts with their states shown, and the human elects
-  which revision (and its `state`/`history`) survives;
+- transitions go through one endpoint that runs the engine and writes the local replica, so they work
+  offline (the local stack serves them without the remote peer);
+- concurrent transitions on different replicas surface as conflicts with their states shown, and the
+  human elects which revision (and its `state`/`history`) survives;
 - a `pending-approvals` worklist filters expenses by `state`.
 
 The runtime stays local-first: transitions read and write local CouchDB. The server is authoritative
-in two ways — it runs the same engine on the online transition endpoint, and it reconciles transitions
-on sync (see below).
+in two ways — it runs the engine in the local process before every transition write, and it reconciles
+transitions on sync (see below).
 
 ## Transition model (Option A)
 
-Vision Q-1 is resolved as **Option A**: offline transitions are allowed and reconciled on sync. The
-engine is one pure module imported by both client and server, so "which actions can I take" (client)
-and "is this write legal" (server) are decided by identical code (`availableTransitions` /
-`applyTransition`). Guards reuse the M2 evaluator unchanged over `{ payload, doc, user, now }`; the
+Vision Q-1 is resolved as **Option A**: transitions are allowed offline (served by the local stack) and
+reconciled on sync. The engine is one pure module: the browser uses `availableTransitions` to decide
+"which actions can I take", and the local server uses `applyTransition` to decide "is this write legal"
+— identical code, but the browser does not apply transitions itself (every transition is the single
+`POST /api/documents/:id/transition` call). Guards reuse the M2 evaluator unchanged over `{ payload, doc, user, now }`; the
 `doc` context already exposes `state`, so no change to `src/shared/expression.ts` was needed. The
 `now` value is the one exception to identical client/server evaluation — it is sampled per-side, so M3
 guards must not gate on `now` (see `03-workflow-runtime.md`).
@@ -67,13 +69,17 @@ unauthorized state; the reconcile pass is where such divergence would be surface
 
 ## Index strategy
 
-Reset/seed creates one new Mango index, `m3-docType-state` over `["docType", "state"]`, in all three
-index locations (`scripts/seed.ts`, `scripts/reset.ts`, `ensureIndexes` in `src/server/index.ts`).
+Reset/seed creates one new Mango index, `m3-docType-state-updatedAt` over
+`["docType", "state", "updatedAt"]`, in all three index locations (`scripts/seed.ts`,
+`scripts/reset.ts`, `ensureIndexes` in `src/server/index.ts`). The field order matches the state
+worklist query shape (filter `docType` + `state`, sort `updatedAt`), e.g. `view:pending-approvals`.
 
 Note: as in M2, the `use_index` hint is passed by index name but `createIndex` lets CouchDB
 auto-generate the design-doc id, so the hint does not resolve and CouchDB selects an index (or scans)
-on its own. Queries return correct results; this is a pre-existing M2 quirk, not introduced by M3, and
-is worth fixing wholesale in a later cleanup by setting an explicit `ddoc`.
+on its own. This affects every index equally (the M2 indexes too), so it is a pre-existing M2 quirk,
+not introduced by M3; queries return correct results regardless. Binding hints by index name (by
+setting an explicit `ddoc`) is worth a wholesale cleanup in a later milestone — at which point the
+correctly-shaped `m3-docType-state-updatedAt` will serve the worklist directly.
 
 ## Verification performed
 
