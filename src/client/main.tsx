@@ -22,7 +22,8 @@ import type {
   FormField,
   ReplicationStatus,
   SelectOptionsByField,
-  ViewDefinition
+  ViewDefinition,
+  WorkflowDefinition
 } from "../shared/types";
 import {
   applyFormDefaults,
@@ -32,12 +33,16 @@ import {
   normalizePayload,
   validatePayload
 } from "../shared/validation";
+import { availableTransitions, currentState } from "../shared/workflow";
 import "./styles.css";
 
 type Definitions = {
   appConfig: unknown;
   forms: FormDefinition[];
   views: ViewDefinition[];
+  workflows: WorkflowDefinition[];
+  user: string;
+  roles: string[];
   form?: FormDefinition;
   view?: ViewDefinition;
 };
@@ -213,7 +218,11 @@ function DocumentTable({
                 {view.columns.map((column) => (
                   <td key={column.field}>{displayValue(getPath(doc, column.field))}</td>
                 ))}
-                <td data-testid="doc-row-state">{doc._conflicts?.length ? "Conflict" : "Clean"}</td>
+                <td data-testid="doc-row-state">
+                  {doc.state ? <span className="statePill" data-state={doc.state}>{doc.state}</span> : null}
+                  {doc._conflicts?.length ? <span className="conflictTag"> ⚠ conflict</span> : null}
+                  {!doc.state && !doc._conflicts?.length ? "—" : null}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -223,20 +232,86 @@ function DocumentTable({
   );
 }
 
+function WorkflowBar({
+  doc,
+  workflow,
+  user,
+  roles,
+  onTransition
+}: {
+  doc: BusinessDocument;
+  workflow: WorkflowDefinition;
+  user: string;
+  roles: string[];
+  onTransition: (transitionId: string) => void;
+}) {
+  const state = currentState(doc, workflow);
+  const stateDef = workflow.states.find((candidate) => candidate.name === state);
+  // Same engine the server uses to authorize the write, so we never offer an
+  // action the transition endpoint would reject (A2/A3).
+  const actions = availableTransitions(doc, workflow, user, roles);
+
+  return (
+    <div className="workflowBar" data-testid="workflow-bar">
+      <span className="statePill" data-testid="workflow-state" data-state={state}>
+        {stateDef?.label ?? state}
+      </span>
+      <div className="workflowActions">
+        {actions.map((transition) => (
+          <button
+            key={transition.id}
+            type="button"
+            data-testid={`workflow-action-${transition.id}`}
+            onClick={() => onTransition(transition.id)}
+          >
+            {transition.label}
+          </button>
+        ))}
+        {!actions.length ? <span className="empty" data-testid="workflow-no-actions">No actions available</span> : null}
+      </div>
+    </div>
+  );
+}
+
+function WorkflowHistory({ doc }: { doc: BusinessDocument }) {
+  const history = doc.history ?? [];
+  if (!history.length) return null;
+  return (
+    <div className="workflowHistory" data-testid="workflow-history">
+      <h3>History</h3>
+      <ol>
+        {history.map((event, index) => (
+          <li key={`${event.at}-${index}`}>
+            <strong>{event.from} → {event.to}</strong> · {event.by} · {event.at}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function DocumentForm({
   form,
   selected,
   optionsByField,
+  workflow,
+  user,
+  roles,
   onSave,
   onDelete,
-  onNew
+  onNew,
+  onTransition
 }: {
   form: FormDefinition;
   selected?: BusinessDocument;
   optionsByField: SelectOptionsByField;
+  workflow?: WorkflowDefinition;
+  user: string;
+  roles: string[];
   onSave: (payload: Record<string, unknown>) => void;
   onDelete: (doc: BusinessDocument) => void;
   onNew: () => void;
+  onTransition: (doc: BusinessDocument, transitionId: string) => void;
 }) {
   const [draft, setDraft] = React.useState<Draft>(() => applyFormDefaults(form, selected?.payload ?? {}));
   const normalized = normalizePayload(form, draft);
@@ -260,6 +335,15 @@ function DocumentForm({
         </div>
         <button onClick={onNew} data-testid="form-new">New</button>
       </div>
+      {selected && workflow ? (
+        <WorkflowBar
+          doc={selected}
+          workflow={workflow}
+          user={user}
+          roles={roles}
+          onTransition={(transitionId) => onTransition(selected, transitionId)}
+        />
+      ) : null}
       <form
         className="fieldGrid"
         data-testid="form"
@@ -305,6 +389,7 @@ function DocumentForm({
           </button>
         </div>
       </form>
+      {selected && workflow ? <WorkflowHistory doc={selected} /> : null}
     </section>
   );
 }
@@ -465,9 +550,15 @@ function ConflictPanel({
 }
 
 function Revision({ title, doc }: { title: string; doc: CouchDocument }) {
+  const state = doc.kind === "document" ? doc.state : undefined;
   return (
     <article className="revision">
       <h3>{title}</h3>
+      {state ? (
+        <span className="statePill" data-testid="revision-state" data-state={state}>
+          {state}
+        </span>
+      ) : null}
       <pre>{JSON.stringify(doc, null, 2)}</pre>
     </article>
   );
@@ -488,6 +579,7 @@ function App() {
 
   const selectedView = definitions?.views.find((view) => view._id === selectedViewId) ?? definitions?.views[0];
   const selectedForm = definitions?.forms.find((form) => form.docType === selectedView?.docType) ?? definitions?.form;
+  const selectedWorkflow = definitions?.workflows.find((workflow) => workflow.docType === selectedForm?.docType);
   const selected = documents.find((doc) => doc._id === selectedId);
   const editableDefinitions = [...(definitions?.forms ?? []), ...(definitions?.views ?? [])];
 
@@ -575,7 +667,18 @@ function App() {
           form={selectedForm}
           selected={selected}
           optionsByField={optionsByField}
+          workflow={selectedWorkflow}
+          user={definitions.user}
+          roles={definitions.roles}
           onNew={() => setSelectedId(undefined)}
+          onTransition={(doc, transitionId) =>
+            run("Transition", () =>
+              api(`/api/documents/${encodeURIComponent(doc._id)}/transition`, {
+                method: "POST",
+                body: JSON.stringify({ transition: transitionId })
+              })
+            )
+          }
           onDelete={(doc) =>
             run("Delete local document", () => api(`/api/documents/${encodeURIComponent(doc._id)}`, { method: "DELETE" }))
           }

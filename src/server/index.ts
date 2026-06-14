@@ -265,6 +265,10 @@ app.get(
       forms: forms.docs.sort((left, right) => left.title.localeCompare(right.title)),
       views: views.docs.sort((left, right) => left.title.localeCompare(right.title)),
       workflows: workflows.docs.sort((left, right) => left.title.localeCompare(right.title)),
+      user: config.appUser,
+      // Roles are surfaced so the client offers only the actions the server would
+      // accept; the transition endpoint re-checks them authoritatively (A5).
+      roles: await rolesForUser(config.appUser),
       form: forms.docs.find((form) => form._id === "form:expense"),
       view: views.docs.find((view) => view._id === "view:my-expenses")
     });

@@ -431,3 +431,65 @@ pre {
     justify-content: center;
   }
 }
+
+/* M3 workflow */
+.workflowBar {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: space-between;
+  margin: 0 0 14px;
+  padding: 0.55rem 0.7rem;
+}
+
+.workflowActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.statePill {
+  background: rgb(43 92 158 / 10%);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.6rem;
+  text-transform: capitalize;
+}
+
+.statePill[data-state="approved"] {
+  background: rgb(31 122 77 / 12%);
+  color: var(--good);
+}
+
+.statePill[data-state="rejected"] {
+  background: rgb(189 75 42 / 12%);
+  color: var(--warn);
+}
+
+.conflictTag {
+  color: var(--warn);
+  font-size: 0.8rem;
+}
+
+.workflowHistory {
+  border-top: 1px solid var(--line);
+  margin-top: 14px;
+  padding-top: 10px;
+}
+
+.workflowHistory h3 {
+  font-size: 0.9rem;
+  margin: 0 0 6px;
+}
+
+.workflowHistory ol {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin: 0;
+  padding-left: 1.1rem;
+}
