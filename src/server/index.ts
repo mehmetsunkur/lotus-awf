@@ -431,17 +431,27 @@ app.post(
       return;
     }
 
+    // The human may elect which revision wins by passing its _rev. For a
+    // concurrent transition this is how the intended terminal state is chosen,
+    // not just payload (A4): the elected revision's state/history survive. The
+    // chosen content is written onto the surviving (winning) lineage and every
+    // conflict leaf is deleted, so exactly one revision remains.
+    const chosenRev = request.body.chosenRev as string | undefined;
+    const chosen = (chosenRev && details.conflicts.find((rev) => rev._rev === chosenRev)) || details.winning;
+
     const resolved =
-      details.winning.kind === "document"
+      chosen.kind === "document"
         ? {
-            ...details.winning,
+            ...chosen,
+            _rev: details.winning._rev,
             _conflicts: undefined,
             updatedAt: timestamp(),
             updatedBy: config.appUser,
-            payload: request.body.payload ?? details.winning.payload
+            payload: request.body.payload ?? chosen.payload
           }
         : {
-            ...details.winning,
+            ...chosen,
+            _rev: details.winning._rev,
             _conflicts: undefined,
             ...(request.body.document ?? {})
           };
@@ -502,6 +512,35 @@ app.post(
 
     await replicateBidirectional();
     response.json({ id: "form:expense", details: await conflictDetails("form:expense") });
+  })
+);
+
+app.post(
+  "/api/demo/state-conflict",
+  asyncRoute(async (_request, response) => {
+    await ensureDb("local");
+    await ensureDb("server");
+    const def = await getDoc<WorkflowDefinition>("local", "workflow:expense");
+    const roles = ["role:finance"];
+
+    // Submit a fresh expense and replicate it to both replicas.
+    const base = createExpenseDoc({ amount: 88, description: `State conflict ${ulid()}`, spentAt: "2026-06-13" });
+    const submitted = applyTransition(base, def, "submit", config.appUser, roles, timestamp());
+    if (!submitted.ok) throw new Error(submitted.errors[0]?.message ?? "submit failed");
+    await putDoc("local", submitted.document);
+    await replicateBidirectional();
+
+    // Diverge: approve on local, reject on server — both from `submitted`.
+    const localBase = await getDoc<BusinessDocument>("local", base._id);
+    const serverBase = await getDoc<BusinessDocument>("server", base._id);
+    const approved = applyTransition(localBase, def, "approve", config.appUser, roles, timestamp());
+    const rejected = applyTransition(serverBase, def, "reject", config.appUser, roles, timestamp());
+    if (!approved.ok || !rejected.ok) throw new Error("divergent transitions failed");
+    await putDoc("local", { ...approved.document, updatedAt: timestamp() });
+    await putDoc("server", { ...rejected.document, updatedAt: timestamp() });
+
+    await replicateBidirectional();
+    response.json({ id: base._id, details: await conflictDetails(base._id) });
   })
 );
 

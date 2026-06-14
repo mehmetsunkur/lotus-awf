@@ -535,13 +535,20 @@ function ConflictPanel({
         </div>
         {selectedConflict ? (
           <div className="revisionCompare" data-testid="conflict-detail">
-            <Revision title="Winning revision" doc={selectedConflict.winning} />
+            <Revision
+              title="Winning revision"
+              doc={selectedConflict.winning}
+              primary
+              onResolve={() => onResolve(selectedConflict.winning)}
+            />
             {selectedConflict.conflicts.map((doc) => (
-              <Revision key={doc._rev} title={`Conflicting ${doc._rev}`} doc={doc} />
+              <Revision
+                key={doc._rev}
+                title={`Conflicting ${doc._rev}`}
+                doc={doc}
+                onResolve={() => onResolve(doc)}
+              />
             ))}
-            <button className="primary" onClick={() => onResolve(selectedConflict.winning)} data-testid="conflict-resolve">
-              <Save size={16} /> Keep Winning Revision
-            </button>
           </div>
         ) : null}
       </div>
@@ -549,7 +556,17 @@ function ConflictPanel({
   );
 }
 
-function Revision({ title, doc }: { title: string; doc: CouchDocument }) {
+function Revision({
+  title,
+  doc,
+  primary,
+  onResolve
+}: {
+  title: string;
+  doc: CouchDocument;
+  primary?: boolean;
+  onResolve: () => void;
+}) {
   const state = doc.kind === "document" ? doc.state : undefined;
   return (
     <article className="revision">
@@ -560,6 +577,15 @@ function Revision({ title, doc }: { title: string; doc: CouchDocument }) {
         </span>
       ) : null}
       <pre>{JSON.stringify(doc, null, 2)}</pre>
+      <button
+        className="primary"
+        onClick={onResolve}
+        data-testid={primary ? "conflict-resolve" : "conflict-keep"}
+        data-rev={doc._rev}
+        data-state={state ?? ""}
+      >
+        <Save size={16} /> {primary ? "Keep Winning Revision" : "Keep This Revision"}
+      </button>
     </article>
   );
 }
@@ -723,7 +749,12 @@ function App() {
             ? run("Resolve conflict", () =>
                 api(`/api/conflicts/${encodeURIComponent(selectedConflict.document._id)}/resolve`, {
                   method: "POST",
-                  body: JSON.stringify(doc.kind === "document" ? { payload: doc.payload } : { document: doc })
+                  // chosenRev elects which revision (and its state/history) wins.
+                  body: JSON.stringify(
+                    doc.kind === "document"
+                      ? { chosenRev: doc._rev, payload: doc.payload }
+                      : { chosenRev: doc._rev, document: doc }
+                  )
                 })
               )
             : undefined

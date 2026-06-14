@@ -9,7 +9,8 @@ M3 adds a metadata-driven document lifecycle on top of the M2 runtime:
 - a shared engine (`src/shared/workflow.ts`) decides available transitions and applies them;
 - the runtime shows a state badge, the transitions the user may perform, and a transition history;
 - transitions can be performed online via the API and optimistically offline against the local replica;
-- concurrent offline transitions surface as conflicts with their states shown;
+- concurrent offline transitions surface as conflicts with their states shown, and the human elects
+  which revision (and its `state`/`history`) survives;
 - a `pending-approvals` worklist filters expenses by `state`.
 
 The runtime stays local-first: transitions read and write local CouchDB. The server is authoritative
@@ -22,7 +23,9 @@ Vision Q-1 is resolved as **Option A**: offline transitions are allowed and reco
 engine is one pure module imported by both client and server, so "which actions can I take" (client)
 and "is this write legal" (server) are decided by identical code (`availableTransitions` /
 `applyTransition`). Guards reuse the M2 evaluator unchanged over `{ payload, doc, user, now }`; the
-`doc` context already exposes `state`, so no change to `src/shared/expression.ts` was needed.
+`doc` context already exposes `state`, so no change to `src/shared/expression.ts` was needed. The
+`now` value is the one exception to identical client/server evaluation — it is sampled per-side, so M3
+guards must not gate on `now` (see `03-workflow-runtime.md`).
 
 A document with no `state` is treated as the workflow's `initialState`. This keeps every already-
 replicated M1/M2 document valid — verified by seeding one sample expense with no state and confirming
@@ -58,6 +61,9 @@ unauthorized state; the reconcile pass is where such divergence would be surface
   optional, so older replicated documents remain valid.
 - `GET /api/definitions` now returns `workflows`, `user`, and `roles`.
 - New `POST /api/documents/:id/transition`.
+- `POST /api/conflicts/:id/resolve` accepts an optional `chosenRev` so the human elects which
+  revision's `state`/`history` survives (not just `payload`).
+- New `POST /api/demo/state-conflict` seeds an approve-vs-reject conflict for inspection/testing.
 
 ## Index strategy
 
@@ -75,7 +81,7 @@ is worth fixing wholesale in a later cleanup by setting an explicit `ddoc`.
 npm run build                 # tsc --noEmit + vite build, clean
 npm run reset                 # seeds workflow:expense, states, pending-approvals, index
 npm run force-state-conflict  # seeds a concurrent-transition conflict
-npm run test:e2e              # 13 passed (includes 3 new workflow specs)
+npm run test:e2e              # 14 passed (includes 4 new workflow specs)
 ```
 
 Live API checks (against `npm run test:serve`-style server):
@@ -91,7 +97,8 @@ Live API checks (against `npm run test:serve`-style server):
 
 - Role gating is not a production security boundary (offline clients can write unauthorized states;
   the reconcile pass surfaces, but does not prevent, divergence).
-- Conflict resolution keeps a winning revision; no automatic state merge (correct for a lifecycle).
+- Conflict resolution lets the human elect which revision (and its state/history) survives; there is
+  no automatic state merge, which is correct for a lifecycle.
 - The reconcile pass reports state conflicts but does not auto-resolve them.
 - `onEnter`/`onExit` side effects, timers, and parallel/branching workflows are out of scope.
 - The `use_index` hint does not resolve (pre-existing M2 behavior; see Index strategy).

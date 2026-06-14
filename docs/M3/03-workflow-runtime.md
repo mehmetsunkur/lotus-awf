@@ -16,9 +16,10 @@ server (aspect A3). It exposes:
 - `availableTransitions(doc, def, user, roles)` — transitions whose `from` matches the current state,
   whose `guard` evaluates truthy over `{ payload, doc, user, now }`, and whose `requiredRole` (if any)
   is held by the user.
-- `applyTransition(doc, def, transitionId, user, now)` — returns the next envelope (new `state`,
-  stamped `stateUpdatedAt`/`stateUpdatedBy`, appended `history`) **or** a `ValidationError[]` if the
-  transition is not currently legal.
+- `applyTransition(doc, def, transitionId, user, roles, now)` — `roles` are the user's `acl:rules`
+  roles, used to enforce `requiredRole` (mirroring `availableTransitions`). Returns the next envelope
+  (new `state`, stamped `stateUpdatedAt`/`stateUpdatedBy`, appended `history`) **or** a
+  `ValidationError[]` if the transition is not currently legal.
 
 The engine performs no I/O and mutates nothing. The same function decides "what can I do" in the UI
 and "is this write legal" on the server, so client and server can never diverge.
@@ -26,6 +27,14 @@ and "is this write legal" on the server, so client and server can never diverge.
 Guards reuse `evaluateBoolean` from `src/shared/expression.ts` unchanged — the existing
 `{ payload, doc, user, now }` context already exposes `doc.state`, so guards can branch on state
 without touching the evaluator (its safety surface stays exactly as audited in M2).
+
+**Caveat on `now`:** `now` is sampled from the local wall clock independently on each side (client at
+render time, server at request time), so a guard that branches on `now` is *not* guaranteed to evaluate
+identically across client and server — the client could offer an action the server then rejects. M3
+guards must therefore not gate on `now` (the only shipped guard is `payload.amount > 0`). The
+"evaluates identically" guarantee applies to guards over the replicated `{ payload, doc, user }` only;
+making `now`-dependent gating deterministic (a single threaded timestamp, or server-only evaluation) is
+deferred.
 
 ## What "server-authoritative" means on CouchDB
 
