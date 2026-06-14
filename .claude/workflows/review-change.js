@@ -11,8 +11,8 @@ export const meta = {
 }
 
 // ---------------------------------------------------------------------------
-// Config: the lens set (mirrors docs/guardrails/aspect-taxonomy.md). The full
-// mandates live in docs/guardrails/lens-mandates.md; reviewers read them there.
+// Config: the lens set (mirrors the aspect categories in docs/invariants.md). The
+// full mandates live in docs/review-lenses.md; reviewers read them there.
 // ---------------------------------------------------------------------------
 const LENS_TITLES = {
   A1: 'Definitions-as-data contract & back-compat',
@@ -91,7 +91,7 @@ phase('Route')
 const route = await agent(
   `You are the routing step of a multi-lens code review. Working directory is the repo root.
 
-Read docs/guardrails/aspect-taxonomy.md — especially the "Blast-radius trigger table" — which maps changed paths/symbols to aspects A1..A9.
+Read docs/invariants.md — the path-tagged rules (their nested Paths globs map changed paths to aspects A1..A9) — and docs/taxonomy.md (risk classes). Treat each invariant category as a lens.
 
 MODE = ${mode}.
 ${mode === 'diff'
@@ -121,7 +121,7 @@ const reviewed = await pipeline(
     agent(
       `You are a single-lens reviewer in a multi-lens review. Working directory is the repo root.
 
-Read docs/guardrails/lens-mandates.md. Follow the "Shared preamble" exactly, then apply ONLY the mandate for lens ${lensId} — ${LENS_TITLES[lensId]}. Ignore every concern owned by other lenses.
+Read docs/review-lenses.md. Follow the "Shared preamble" exactly, then apply ONLY the mandate for lens ${lensId} — ${LENS_TITLES[lensId]}. Its underlying rule is the same-named category in docs/invariants.md. Ignore every concern owned by other lenses.
 
 MODE = ${mode}.
 ${mode === 'diff'
@@ -188,7 +188,7 @@ Do four things:
 1. Dedupe/cluster findings that describe the same underlying issue (same file region + same claim).
 2. Rank and bucket by severity into blockers, majors, minors.
 3. Run a COMPLETENESS CRITIC: which activated lens produced neither a finding nor an explicit all-clear? Which changed file appears in NO finding and was plausibly relevant? List these as "gaps".
-4. Write a 2-4 sentence summary with the gating verdict (per docs/guardrails/aspect-taxonomy.md: any blocker => not done; majors must be fixed or waived).
+4. Write a 2-4 sentence summary with the gating verdict (per docs/review-lenses.md: any blocker => not done; majors must be fixed or waived).
 
 Return per the schema.`,
   { schema: REPORT_SCHEMA, label: 'synthesize', phase: 'Synthesize' }

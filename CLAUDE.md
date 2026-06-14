@@ -1,59 +1,50 @@
-# Lotus Notes — agent working agreement
+# Claude Code Guidance
 
-Metadata-driven, **offline-first** replicated app (CouchDB + React + Express).
-Form/view **definitions are data** (`form:*` / `view:*` documents) that replicate
-to clients and drive the runtime. Design: `docs/vision`, `docs/M2`. Review system:
-`docs/guardrails`.
+This project uses the Agent Workflow System template (`04-agent-workflow-system`). The
+full agent contract — task flow, layering, aspects, commands — is in **`AGENTS.md`; read
+it first.** This file adds Claude Code specifics.
 
-## Layering (do not cross)
-- `src/shared/**` — pure, portable; imported by **both** client and server. No DOM,
-  no Node/server-only APIs.
-- `src/server/**` — Express + CouchDB. May import `shared`.
-- `src/client/**` — React. May import `shared`. **Never** imports `server`.
+## Workflow
 
-## Before finishing ANY change (and when writing a plan): aspect check
-This codebase has 9 review **aspects** (`docs/guardrails/aspect-taxonomy.md`).
-Name which aspects your change touches using the **blast-radius trigger table**,
-and satisfy each touched aspect's questions in `docs/guardrails/lens-mandates.md`.
+Follow the task flow in `AGENTS.md`: classify with `docs/taxonomy.md`, check doc-sync
+status, read the relevant context cards / ADRs / invariants / tests, surface blockers,
+then implement and verify. Run `/preflight <task>` to produce the brief before coding.
 
-**Do not skip an aspect because the change "looks inert."** That judgment is the
-exact blind spot this guards against — if a path is in a trigger row, walk that
-aspect's questions and confirm (a clean pass is a fine answer; an unconsidered one
-is not).
+## Claude Code automation
 
-Quick map (authoritative table is in the taxonomy doc):
+Two `PostToolUse` hooks fire on every `Edit`/`Write`, plus two commands:
 
-| If you touch… | Consider |
-|---|---|
-| `src/shared/validation.ts` | **A2** — enforce the rule on **both** client and API paths |
-| `src/shared/expression.ts` | **A3** — eval safety + identical result client/server |
-| `src/shared/types.ts` (`FormDefinition`/`ViewDefinition`) | **A1** — back-compat for already-replicated docs |
-| `form:*`/`view:*` defs, `seed-data.ts` | **A1** + **A7** (+ **A5** if `readers`) |
-| `/api/documents` save paths | **A2** + **A6** (must work offline) |
-| view `sort`/`filter`, `mangoSelector` | **A7** — indexes live in **THREE** places (`scripts/seed.ts`, `scripts/reset.ts`, `seedTarget` in `src/server/index.ts`) — update all three |
-| replication / `_rev` / `_conflicts` | **A4** |
-| `readers`/`authors`, filtered replication | **A5** |
-| any behavior/contract change | **A8** — update `docs/M*/0X-*` so the spec stays true |
+- **Invariant hook** (`.claude/hooks/invariants.mjs`): surfaces the path-tagged invariants
+  from `docs/invariants.md` that govern the file you just edited. Confirm each; do not skip
+  one because the change "looks inert". Surface a needed break before continuing.
+- **Doc-sync hook** (`.claude/hooks/doc-sync.mjs`): when you edit a path a knowledge doc
+  watches (`docs/context/*`), names the docs to reconcile and re-baseline. A no-op is fine;
+  an unreviewed drift is not.
+- **`/preflight <task>`**: classified task brief (context, invariants, blockers, test plan).
+- **`/doc-sync-check`**: reports which docs are stale against their baseline.
 
-## Tier-3 substrate changes
-If a change touches replication (`src/server/couch.ts`), ACL, the definition
-contract types, or index seeding, a miss is high-stakes and often irreversible
-(data loss on sync, ACL leak, stranded replicated docs). For these — and at
-milestone boundaries — consider the full multi-lens review before finishing:
+All read `docs/*.md` as data and stay silent while metadata is `TBD`.
+
+## Detective layer (reserved)
+
+For Tier-3 substrate changes (replication, ACL, definition contract, index seeding) and at
+milestones, run the multi-lens review workflow — expensive, not for routine edits:
 
 ```
 Workflow { scriptPath: ".claude/workflows/review-change.js",
            args: { mode: "diff", range: "<base>..HEAD" } }
 ```
 
-This is the **expensive** layer — reserve it for substrate/milestone, not routine
-edits. Everything above (the aspect check) is the cheap default that should run on
-every change.
+Lens prompts live in `docs/review-lenses.md`.
 
-## Commands / environment
-- `npm run build` — typecheck (`tsc --noEmit`) + build.
-- `npm run test:e2e` — Playwright; needs the CouchDB pair up (see `tests/e2e/README.md`).
-- **Do not** run `tsx watch` or Vite watch mode here — file watchers exhaust the
-  host's `fs.inotify` limit (`EMFILE`). Use `npm run test:serve` (non-watch).
-- Commit messages end with the `Co-Authored-By` trailer; branch before committing
-  on `main`.
+## Environment notes
+
+- `npm run test:e2e` needs the CouchDB pair up; use `npm run test:serve` (non-watch) — plain
+  `npm run dev` exhausts the host `fs.inotify` limit (`EMFILE`).
+- Commit messages end with the `Co-Authored-By` trailer; branch before committing on `main`.
+
+## Updating this template
+
+`.claude/` hook/scanner logic and `docs/doc-sync.md`/`docs/template-sync.*` are template-owned
+(see `docs/template-sync.yml`). Put project knowledge in the docs the tools read
+(`docs/invariants.md`, `docs/taxonomy.md`, `docs/context/*`) — not in the hook logic.
