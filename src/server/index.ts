@@ -3,11 +3,14 @@ import express from "express";
 import { ulid } from "ulid";
 import type {
   AclRules,
+  AppConfig,
   BusinessDocument,
   ConflictDetails,
   CouchDocument,
+  DesignDocument,
   FormDefinition,
   SelectOptionsByField,
+  TemplateArtifact,
   ViewDefinition,
   ViewFilter,
   WorkflowDefinition
@@ -20,6 +23,12 @@ import {
   type PrincipalScope
 } from "../shared/access";
 import { validateDesignDefinition } from "../shared/definition-validation";
+import {
+  diffTemplateDefinitions,
+  normalizeDefinitions,
+  stripDefinitionRev,
+  validateTemplateArtifact
+} from "../shared/template";
 import { normalizePayload, validatePayload } from "../shared/validation";
 import { applyTransition, currentState } from "../shared/workflow";
 import {
@@ -123,6 +132,53 @@ async function workflowForDocType(docType: string): Promise<WorkflowDefinition |
     if (error instanceof CouchError && error.status === 404) return null;
     throw error;
   }
+}
+
+async function currentDefinitions(): Promise<DesignDocument[]> {
+  const [appConfig, acl, forms, views, workflows] = await Promise.all([
+    getDoc<AppConfig>("local", "app:config"),
+    getDoc<AclRules>("local", "acl:rules"),
+    findDocs<FormDefinition>("local", { selector: { kind: "form" }, limit: 100 }),
+    findDocs<ViewDefinition>("local", { selector: { kind: "view" }, limit: 100 }),
+    findDocs<WorkflowDefinition>("local", { selector: { kind: "workflow" }, limit: 100 })
+  ]);
+
+  return normalizeDefinitions([appConfig, acl, ...forms.docs, ...views.docs, ...workflows.docs]);
+}
+
+function generatedTemplateVersion() {
+  return `v${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}`;
+}
+
+function validateTemplateDefinitions(template: TemplateArtifact) {
+  const messages = validateTemplateArtifact(template);
+  for (const definition of template.definitions ?? []) {
+    if (definition.kind === "form" || definition.kind === "view" || definition.kind === "workflow") {
+      messages.push(...validateDesignDefinition(definition).map((error) => `${definition._id}.${error.field}: ${error.message}`));
+    } else if (definition.kind === "app") {
+      if (definition._id !== "app:config") messages.push("app definition id must be app:config");
+      if (!definition.appId?.trim()) messages.push("app:config appId is required");
+      if (!definition.title?.trim()) messages.push("app:config title is required");
+    } else if (definition.kind === "acl") {
+      if (definition._id !== "acl:rules") messages.push("acl definition id must be acl:rules");
+      if (!Array.isArray(definition.users)) messages.push("acl:rules users must be an array");
+    } else {
+      messages.push(`${(definition as { _id?: string })._id ?? "unknown"} kind is not template-eligible`);
+    }
+  }
+  return messages;
+}
+
+async function applyDefinition(definition: DesignDocument) {
+  let currentRev: string | undefined;
+  try {
+    currentRev = (await getDoc<DesignDocument>("local", definition._id))._rev;
+  } catch (error) {
+    if (!(error instanceof CouchError) || error.status !== 404) throw error;
+  }
+
+  const next = { ...stripDefinitionRev(definition), _rev: currentRev } as DesignDocument;
+  return putDoc("local", next);
 }
 
 /** Roles held by a user according to acl:rules; [] if the doc or user is absent. */
@@ -329,6 +385,60 @@ app.get(
       roles: await rolesForUser(config.appUser),
       form: forms.docs.find((form) => form._id === "form:expense"),
       view: views.docs.find((view) => view._id === "view:my-expenses")
+    });
+  })
+);
+
+app.post(
+  "/api/templates/export",
+  asyncRoute(async (request, response) => {
+    const appConfig = await getDoc<AppConfig>("local", "app:config");
+    const version = String(request.body.version || generatedTemplateVersion());
+    const source = String(request.body.source || "local");
+    const template: TemplateArtifact = {
+      kind: "template",
+      templateId: `${appConfig.appId}:${version}`,
+      appId: appConfig.appId,
+      version,
+      createdAt: timestamp(),
+      createdBy: config.appUser,
+      source,
+      definitions: await currentDefinitions()
+    };
+    response.json(template);
+  })
+);
+
+app.post(
+  "/api/templates/diff",
+  asyncRoute(async (request, response) => {
+    const template = request.body.template as TemplateArtifact;
+    const errors = validateTemplateDefinitions(template);
+    if (errors.length) {
+      response.status(422).json({ error: "template_validation_failed", errors });
+      return;
+    }
+    response.json(diffTemplateDefinitions(await currentDefinitions(), template.definitions));
+  })
+);
+
+app.post(
+  "/api/templates/apply",
+  asyncRoute(async (request, response) => {
+    const template = request.body.template as TemplateArtifact;
+    const errors = validateTemplateDefinitions(template);
+    if (errors.length) {
+      response.status(422).json({ error: "template_validation_failed", errors });
+      return;
+    }
+    const before = await currentDefinitions();
+    const diff = diffTemplateDefinitions(before, template.definitions);
+    const results = await Promise.all(normalizeDefinitions(template.definitions).map(applyDefinition));
+    response.json({
+      ok: true,
+      templateId: template.templateId,
+      diff,
+      applied: results.map((result) => ({ id: result.id, rev: result.rev }))
     });
   })
 );
