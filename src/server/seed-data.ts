@@ -71,7 +71,7 @@ export function seedDocuments(): Array<
       docType: "expense",
       title: "Expense",
       sections: [
-        { title: "Spend", fields: ["amount", "description", "category", "vendorId"] },
+        { title: "Spend", fields: ["amount", "gross", "description", "category", "vendorId"] },
         { title: "Accounting", fields: ["spentAt", "reimbursable", "notes"] }
       ],
       fields: [
@@ -81,6 +81,13 @@ export function seedDocuments(): Array<
           label: "Amount",
           required: true,
           validate: [{ expression: "payload.amount > 0", message: "Amount must be greater than zero" }]
+        },
+        {
+          name: "gross",
+          type: "number",
+          label: "Gross (incl. tax)",
+          compute: "expense-total-with-tax",
+          helpText: "Computed from amount via the expense-total-with-tax handler (amount + 20% tax)."
         },
         { name: "description", type: "text", label: "Description", required: true },
         {
@@ -235,7 +242,7 @@ export function seedDocuments(): Array<
         { name: "rejected", label: "Rejected", final: true }
       ],
       transitions: [
-        { id: "submit", label: "Submit", from: "draft", to: "submitted", guard: "payload.amount > 0" },
+        { id: "submit", label: "Submit", from: "draft", to: "submitted", guard: "payload.amount > 0", action: "audit-transition" },
         { id: "approve", label: "Approve", from: "submitted", to: "approved", requiredRole: "role:finance" },
         { id: "reject", label: "Reject", from: "submitted", to: "rejected", requiredRole: "role:finance" }
       ]
