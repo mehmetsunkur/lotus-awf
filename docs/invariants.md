@@ -63,7 +63,7 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 
 ## Index & query
 
-- A new view `sort`/`filter` field may need a Mango index, and the two indexes (`m2-kind-docType-updatedAt`, `m2-readers`) are defined in THREE places (`scripts/seed.ts`, `scripts/reset.ts`, `seedTarget` in `src/server/index.ts`) that must be kept in sync.
+- A new view `sort`/`filter` field may need a Mango index, and the three indexes (`m2-kind-docType-updatedAt`, `m2-readers`, `m3-docType-state-updatedAt`) are defined in THREE places (`scripts/seed.ts`, `scripts/reset.ts`, `ensureIndexes` in `src/server/index.ts`) that must be kept in sync. `createIndex` pins `ddoc === name` so a `use_index: "<name>"` hint resolves and binds.
   - Paths: `src/server/couch.ts`, `src/server/index.ts`, `scripts/seed.ts`, `scripts/reset.ts`
 
 ## Documentation & acceptance

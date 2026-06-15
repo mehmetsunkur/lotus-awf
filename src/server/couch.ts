@@ -139,9 +139,13 @@ export async function bulkDocs(target: CouchTarget, docs: object[]) {
 }
 
 export async function createIndex(target: CouchTarget, name: string, fields: string[]) {
+  // Pin the design-doc id to the index name (ddoc === name). Without this CouchDB
+  // auto-generates a hashed ddoc id, and a `use_index: "<name>"` hint — which
+  // CouchDB resolves as a ddoc id — never binds, silently falling back to
+  // auto-selection. With an explicit ddoc the name resolves and hints bind.
   return couchRequest(target, `/${config.appDb}/_index`, {
     method: "POST",
-    body: JSON.stringify({ index: { fields }, name, type: "json" })
+    body: JSON.stringify({ index: { fields }, name, ddoc: name, type: "json" })
   });
 }
 
