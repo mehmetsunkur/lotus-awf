@@ -34,7 +34,7 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 ## Definitions-as-data contract & back-compat
 
 - A change to a `form:*`/`view:*` definition or its TypeScript shape must preserve documents already replicated to clients — provide a default or migration, and never make an existing field newly required without one.
-  - Paths: `src/shared/types.ts`, `src/server/seed-data.ts`, `src/server/index.ts`
+  - Paths: `src/shared/types.ts`, `src/shared/template.ts`, `src/server/seed-data.ts`, `src/server/index.ts`
 
 ## Validation parity (client + API)
 

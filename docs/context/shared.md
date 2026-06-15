@@ -28,6 +28,8 @@ No DOM, no Node/server-only APIs.
 - `src/shared/validation.ts` — `validatePayload`, `applyFormDefaults`, `normalizePayload`, `isFieldRequired/Visible/ReadOnly`.
 - `src/shared/definition-validation.ts` (M4) — shared validators for `form:*`, `view:*`, and
   `workflow:*` documents before local definition writes.
+- `src/shared/template.ts` (M6) — template normalization, `_rev` stripping, artifact validation, and
+  document-level diff helpers.
 - `src/shared/expression.ts` — `evaluateExpression`, `evaluateBoolean` (portable evaluator).
 - `src/shared/workflow.ts` (M3) — portable workflow engine: `currentState`, `availableTransitions`,
   `applyTransition`. Pure; reuses `evaluateBoolean` for guards and fails closed on a bad guard.
@@ -45,6 +47,9 @@ JSON editor, and the API uses it before writing `form:*`, `view:*`, or `workflow
 
 M5 adds shared access policy: the server uses the same `readers`/`authors` helpers for document lists,
 view rows, sourced select options, payload writes, transitions, replication selectors, and purge.
+
+M6 adds shared template helpers so export/diff/apply all compare definition documents consistently
+without carrying source-environment `_rev` values.
 
 ## Existing Patterns
 
@@ -70,5 +75,6 @@ exercised indirectly through `tests/e2e/**`.
 - Adding a rule to the client or a definition only, breaking client/API parity.
 - Adding definition validation only in the client or only in the API.
 - Inlining an access rule in server routes instead of using `src/shared/access.ts`.
+- Comparing or applying templates with ad hoc JSON logic instead of `src/shared/template.ts`.
 - Importing anything Node- or DOM-specific into `src/shared` (breaks portability).
 - Widening the expression evaluator in a way that is unsafe or non-deterministic.

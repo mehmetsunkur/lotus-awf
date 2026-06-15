@@ -20,8 +20,8 @@
 
 Express API over **two** CouchDB replicas (local `:5985`, server `:5984`). Owns definitions,
 definition validation, business documents, ACL-scoped query/write paths, bidirectional replication,
-revocation purge, conflict inspection/resolution, Mango indexes, and (M3) workflow transitions + sync
-reconciliation.
+revocation purge, conflict inspection/resolution, Mango indexes, (M3) workflow transitions + sync
+reconciliation, and (M6) template export/diff/apply.
 
 ## Main Files
 
@@ -47,6 +47,9 @@ reconciliation.
 - Definition save (M4): `PUT /api/definitions/:id` accepts `form:*`, `view:*`, and `workflow:*`,
   runs shared `validateDesignDefinition`, then writes **local** Couch; invalid definitions return
   `422 definition_validation_failed`.
+- Template promotion (M6): `POST /api/templates/export|diff|apply` packages only design docs
+  (`app:config`, `acl:rules`, `form:*`, `view:*`, `workflow:*`), strips stale `_rev`, compares by
+  definition id, and applies add/update changes to **local** Couch without touching business docs.
 - Sync: `POST /api/replicate` → scoped `replicateBidirectional` → local `_purge` of server-revoked
   docs → `reconcileStates` reports concurrent state divergence; conflicts surfaced via
   `/api/conflicts`. Resolve accepts `chosenRev` to elect the winning revision's state.
@@ -57,6 +60,7 @@ reconciliation.
 - Payload and definition validation always go via `src/shared` (never re-implemented server-side).
 - Access checks go through `src/shared/access.ts`; do not inline ad hoc `readers`/`authors` logic in
   routes.
+- Template normalization/diff goes through `src/shared/template.ts`.
 
 ## Invariants
 
@@ -70,6 +74,8 @@ See `docs/invariants.md`: **Replication & conflict**, **ACL / readers**, **Offli
 - `docs/decisions/0003-mango-index-strategy.md`
 - `docs/M5/02-access-policy.md`
 - `docs/M5/03-replication-purge.md`
+- `docs/M6/02-template-contract.md`
+- `docs/M6/03-promotion-runtime.md`
 
 ## Tests
 
@@ -82,6 +88,8 @@ See `docs/invariants.md`: **Replication & conflict**, **ACL / readers**, **Offli
   `src/server/index.ts` — update all three together.
 - Adding a server save path that bypasses shared validation.
 - Letting `PUT /api/definitions/:id` accept a new definition kind without updating shared validation.
+- Letting template apply write stale `_rev` values from the source artifact.
+- Accidentally including `kind: "document"` business docs in template export/apply.
 - A query path that ignores `readers` filtering and leaks across users/roles.
 - Using normal `DELETE` for revocation cleanup; it can replicate as a global delete. Use local
   `_purge` for M5 revocation shape.
