@@ -172,6 +172,17 @@ export async function allDocs<T>(target: CouchTarget, options: Record<string, un
   );
 }
 
+export type ChangesResponse = {
+  last_seq: string | number;
+  results: Array<{ id: string; seq: string | number; deleted?: boolean; doc?: CouchDocument }>;
+};
+
+/** Drain the CouchDB `_changes` feed since a checkpoint sequence (M8 agent CDC). */
+export async function changesSince(target: CouchTarget, since: string): Promise<ChangesResponse> {
+  const params = new URLSearchParams({ since, include_docs: "true" });
+  return couchRequest<ChangesResponse>(target, `/${config.appDb}/_changes?${params.toString()}`);
+}
+
 export async function findDocs<T>(target: CouchTarget, body: Record<string, unknown>) {
   return couchRequest<{ docs: T[] }>(target, `/${config.appDb}/_find`, {
     method: "POST",

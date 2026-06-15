@@ -3,6 +3,9 @@ import express from "express";
 import { ulid } from "ulid";
 import type {
   AclRules,
+  AgentDefinition,
+  AgentRun,
+  AgentState,
   AppConfig,
   BusinessDocument,
   ConflictDetails,
@@ -31,12 +34,15 @@ import {
 } from "../shared/template";
 import { applyComputedFields, normalizePayload, validatePayload } from "../shared/validation";
 import { applyTransition, currentState } from "../shared/workflow";
+import { agentIsDue, agentIsEnabled, agentMatchesChange, agentRunKey } from "../shared/agents";
 import { HANDLER_MANIFEST } from "../shared/handlers/manifest";
 import { clearEffectLog, readEffectLog, runEffect } from "./handlers/effects";
+import { runAgentHandler } from "./handlers/agents";
 import {
   allDocs,
   allRuntimeDocs,
   bulkDocs,
+  changesSince,
   couchRequest,
   CouchError,
   createIndex,
@@ -288,6 +294,98 @@ async function reconcileStates(): Promise<{
     console.warn("reconcileStates findings", { stateConflicts, invalidStates });
   }
   return { stateConflicts, invalidStates };
+}
+
+/**
+ * Agent tick (M8). Server-authoritative and explicit, mirroring the manual
+ * `/api/replicate` idiom: run scheduled agents that are due, then drain the
+ * `_changes` feed since the stored checkpoint and run matching on-change agents.
+ * At-least-once and idempotent — on-change work is deduped by (agentId + rev) so
+ * a reprocessed change never runs twice, the checkpoint advances only after runs
+ * are written, and a failing handler records a failed run via the fail-closed
+ * `runAgentHandler` rather than crashing the tick or its siblings. Devices never
+ * run agents; results replicate like any other local write.
+ */
+async function loadAgentState(appId: string): Promise<AgentState> {
+  try {
+    return await getDoc<AgentState>("local", "agent:state");
+  } catch {
+    return { _id: "agent:state", kind: "agentstate", appId, lastSeq: "0", lastRunAt: {} };
+  }
+}
+
+async function existingRunKeys(): Promise<Set<string>> {
+  // {kind:"agentrun"} binds the m2 index (kind is its leading field) — no new index.
+  const result = await findDocs<AgentRun>("local", { selector: { kind: "agentrun" }, limit: 2000 });
+  return new Set(result.docs.map((run) => agentRunKey(run.agentId, run.sourceRev)));
+}
+
+function buildAgentRun(
+  appId: string,
+  agent: AgentDefinition,
+  trigger: AgentRun["trigger"],
+  document: BusinessDocument | undefined,
+  result: { ok: boolean; detail: string },
+  now: string
+): AgentRun {
+  return {
+    _id: `agentrun:${ulid()}`,
+    kind: "agentrun",
+    appId,
+    agentId: agent._id,
+    trigger,
+    sourceId: document?._id,
+    sourceRev: document?._rev,
+    startedAt: now,
+    ok: result.ok,
+    detail: result.detail,
+    readers: document?.readers ?? [config.appUser]
+  };
+}
+
+async function runAgents(now = timestamp()): Promise<{ ran: number; runs: AgentRun[] }> {
+  const agents = (await findDocs<AgentDefinition>("local", { selector: { kind: "agent" }, limit: 100 })).docs.filter(
+    agentIsEnabled
+  );
+  if (!agents.length) return { ran: 0, runs: [] };
+
+  const appConfig = await getDoc<AppConfig>("local", "app:config");
+  const state = await loadAgentState(appConfig.appId);
+  const seenKeys = await existingRunKeys();
+  const runs: AgentRun[] = [];
+
+  // Scheduled agents that are due (dedupe via the per-agent lastRunAt stamp).
+  for (const agent of agents) {
+    if (agent.trigger.type !== "schedule" || !agentIsDue(agent, state.lastRunAt[agent._id], now)) continue;
+    const result = await runAgentHandler(agent.handler, { agent, trigger: "schedule", now });
+    runs.push(buildAgentRun(appConfig.appId, agent, "schedule", undefined, result, now));
+    state.lastRunAt[agent._id] = now;
+  }
+
+  // On-change agents: drain the changes feed since the checkpoint.
+  const onChangeAgents = agents.filter((agent) => agent.trigger.type === "on-change");
+  if (onChangeAgents.length) {
+    const changes = await changesSince("local", state.lastSeq);
+    for (const change of changes.results) {
+      const doc = change.doc;
+      if (change.deleted || !doc || doc.kind !== "document") continue;
+      for (const agent of onChangeAgents) {
+        if (!agentMatchesChange(agent, doc)) continue;
+        const key = agentRunKey(agent._id, doc._rev);
+        if (seenKeys.has(key)) continue;
+        seenKeys.add(key);
+        const result = await runAgentHandler(agent.handler, { agent, trigger: "on-change", document: doc, now });
+        runs.push(buildAgentRun(appConfig.appId, agent, "on-change", doc, result, now));
+      }
+    }
+    state.lastSeq = String(changes.last_seq);
+  }
+
+  // Write runs first, then advance the checkpoint — a crash in between only
+  // causes a (deduped) replay, never a lost run.
+  for (const run of runs) await putDoc("local", run);
+  await putDoc("local", state);
+  return { ran: runs.length, runs };
 }
 
 async function selectOptionsForForm(form: FormDefinition): Promise<SelectOptionsByField> {
@@ -594,6 +692,30 @@ app.get(
   })
 );
 
+app.post(
+  "/api/agents/run",
+  asyncRoute(async (_request, response) => {
+    const result = await runAgents();
+    response.json({ ok: true, ran: result.ran, runs: result.runs });
+  })
+);
+
+app.get(
+  "/api/agents",
+  asyncRoute(async (_request, response) => {
+    const result = await findDocs<AgentDefinition>("local", { selector: { kind: "agent" }, limit: 100 });
+    response.json(result.docs.sort((left, right) => left._id.localeCompare(right._id)));
+  })
+);
+
+app.get(
+  "/api/agents/runs",
+  asyncRoute(async (_request, response) => {
+    const result = await findDocs<AgentRun>("local", { selector: { kind: "agentrun" }, limit: 200 });
+    response.json(result.docs.sort((left, right) => right.startedAt.localeCompare(left.startedAt)));
+  })
+);
+
 app.get(
   "/api/conflicts",
   asyncRoute(async (_request, response) => {
@@ -839,3 +961,14 @@ app.use((error: unknown, _request: express.Request, response: express.Response, 
 app.listen(config.apiPort, () => {
   console.log(`M1 API listening on ${config.apiPort}`);
 });
+
+// Optional background agent loop. Off by default (and in tests) — agents are
+// otherwise driven by explicit POST /api/agents/run, like POST /api/replicate —
+// so set AGENTS_INTERVAL_MS only for a real always-on node.
+const agentIntervalMs = Number(process.env.AGENTS_INTERVAL_MS ?? 0);
+if (agentIntervalMs > 0) {
+  setInterval(() => {
+    runAgents().catch((error) => console.error("agent tick failed", error));
+  }, agentIntervalMs);
+  console.log(`Agent tick loop enabled every ${agentIntervalMs}ms`);
+}
