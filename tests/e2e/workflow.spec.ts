@@ -78,4 +78,53 @@ test.describe("workflow lifecycle", () => {
     const row = app.documentRows().filter({ hasText: "State conflict" });
     await expect(row.getByTestId("doc-row-state")).toContainText("approved");
   });
+
+  // Second API instance (playwright.config.ts) runs as user:bob (role:sales)
+  // against the same local CouchDB.
+  const BOB_API = "http://localhost:3003";
+
+  test("role gating refuses a transition the actor's role does not allow", async ({ app, page }) => {
+    await app.goto();
+
+    // Submit the draft via the default API (user:alice / role:finance).
+    const docs = await page.request.get("/api/documents?docType=expense").then((r) => r.json());
+    const id: string = docs.find((d: { payload: { description: string } }) => d.payload.description === "Stationery")._id;
+    const path = `/api/documents/${encodeURIComponent(id)}/transition`;
+    await page.request.post(path, { data: { transition: "submit" } });
+
+    // user:bob (role:sales) cannot approve — the server refuses with 422.
+    const refused = await page.request.post(`${BOB_API}${path}`, { data: { transition: "approve" } });
+    expect(refused.status()).toBe(422);
+    expect(JSON.stringify(await refused.json())).toContain("role:finance");
+
+    // user:alice (role:finance) can approve via the default API.
+    const allowed = await page.request.post(path, { data: { transition: "approve" } });
+    expect(allowed.ok()).toBeTruthy();
+    expect((await allowed.json()).state).toBe("approved");
+  });
+
+  test("a transition writes only the local replica until an explicit sync", async ({ app, page }) => {
+    await app.goto();
+
+    const docs = await page.request.get("/api/documents?docType=expense").then((r) => r.json());
+    const id: string = docs.find((d: { payload: { description: string } }) => d.payload.description === "Stationery")._id;
+
+    // Transitioning hits the local stack only — no server CouchDB round-trip.
+    await page.request.post(`/api/documents/${encodeURIComponent(id)}/transition`, { data: { transition: "submit" } });
+
+    // Local reflects the new state immediately.
+    const local = await page.request.get("/api/documents?docType=expense").then((r) => r.json());
+    expect(local.find((d: { _id: string }) => d._id === id).state).toBe("submitted");
+
+    // The server replica is still untouched (proves the transition was offline-capable).
+    const serverAuth = { authorization: `Basic ${Buffer.from("admin:password").toString("base64")}` };
+    const serverDocUrl = `http://localhost:5984/expense_app/${encodeURIComponent(id)}`;
+    const before = await page.request.get(serverDocUrl, { headers: serverAuth }).then((r) => r.json());
+    expect(before.state ?? null).toBeNull();
+
+    // Only after an explicit replicate does the server receive the transitioned state.
+    await page.request.post("/api/replicate");
+    const after = await page.request.get(serverDocUrl, { headers: serverAuth }).then((r) => r.json());
+    expect(after.state).toBe("submitted");
+  });
 });

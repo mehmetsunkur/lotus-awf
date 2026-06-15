@@ -87,7 +87,7 @@ correctly-shaped `m3-docType-state-updatedAt` will serve the worklist directly.
 npm run build                 # tsc --noEmit + vite build, clean
 npm run reset                 # seeds workflow:expense, states, pending-approvals, index
 npm run force-state-conflict  # seeds a concurrent-transition conflict
-npm run test:e2e              # 14 passed (includes 4 new workflow specs)
+npm run test:e2e              # 16 passed (includes 6 workflow specs)
 ```
 
 Live API checks (against `npm run test:serve`-style server):
@@ -98,6 +98,13 @@ Live API checks (against `npm run test:serve`-style server):
 - a `user:bob` (`role:sales`) server instance is refused `approve` with a role message;
 - `POST /api/replicate` returns a `reconcile` report listing the seeded state conflict
   (`states: [rejected, approved]`), which also appears in `GET /api/conflicts`.
+
+The e2e suite (`tests/e2e/workflow.spec.ts`) covers the lifecycle, the `initialState` back-compat
+default, the pending-approvals worklist, electing the winning state in a concurrent-transition
+conflict, **role-gating refusal** (a second API instance running as `user:bob`/`role:sales` — see the
+`webServer` array in `playwright.config.ts` — is refused `approve` with `422`), and the **offline
+property** (a transition writes only the local replica; the server replica is unchanged until an
+explicit `POST /api/replicate`).
 
 ## Known limitations and risks
 
