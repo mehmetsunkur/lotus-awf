@@ -23,6 +23,8 @@ No DOM, no Node/server-only APIs.
 
 - `src/shared/types.ts` — `FormDefinition`, `ViewDefinition`, `WorkflowDefinition`, `FormField`,
   `BusinessDocument` (incl. optional `state`/`history`), `TransitionEvent`, etc.
+- `src/shared/access.ts` (M5) — pure helpers for principals, readable docs, editable docs, derived
+  readers, and access selectors.
 - `src/shared/validation.ts` — `validatePayload`, `applyFormDefaults`, `normalizePayload`, `isFieldRequired/Visible/ReadOnly`.
 - `src/shared/definition-validation.ts` (M4) — shared validators for `form:*`, `view:*`, and
   `workflow:*` documents before local definition writes.
@@ -40,6 +42,9 @@ non-deterministic context value (sampled per side), so guards must not gate on i
 
 M4 adds shared definition validation: the browser uses it before saving from the authoring studio or
 JSON editor, and the API uses it before writing `form:*`, `view:*`, or `workflow:*` to local CouchDB.
+
+M5 adds shared access policy: the server uses the same `readers`/`authors` helpers for document lists,
+view rows, sourced select options, payload writes, transitions, replication selectors, and purge.
 
 ## Existing Patterns
 
@@ -64,5 +69,6 @@ exercised indirectly through `tests/e2e/**`.
 
 - Adding a rule to the client or a definition only, breaking client/API parity.
 - Adding definition validation only in the client or only in the API.
+- Inlining an access rule in server routes instead of using `src/shared/access.ts`.
 - Importing anything Node- or DOM-specific into `src/shared` (breaks portability).
 - Widening the expression evaluator in a way that is unsafe or non-deterministic.

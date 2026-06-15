@@ -1,4 +1,5 @@
 import type { BusinessDocument, CouchDocument } from "../shared/types";
+import { accessSelector, type PrincipalScope } from "../shared/access";
 import { config } from "./config";
 
 export type CouchTarget = "local" | "server";
@@ -115,6 +116,10 @@ export async function getDoc<T>(target: CouchTarget, id: string, query = ""): Pr
   return couchRequest<T>(target, `/${config.appDb}/${encodeURIComponent(id)}${query}`);
 }
 
+export async function getDocFromDb<T>(target: CouchTarget, db: string, id: string, query = ""): Promise<T> {
+  return couchRequest<T>(target, `/${db}/${encodeURIComponent(id)}${query}`);
+}
+
 export async function putDoc<T extends { _id: string; _rev?: string }>(
   target: CouchTarget,
   doc: T
@@ -128,6 +133,13 @@ export async function putDoc<T extends { _id: string; _rev?: string }>(
 export async function deleteDoc(target: CouchTarget, id: string, rev: string) {
   return couchRequest(target, `/${config.appDb}/${encodeURIComponent(id)}?rev=${encodeURIComponent(rev)}`, {
     method: "DELETE"
+  });
+}
+
+export async function purgeDocs(target: CouchTarget, revisions: Record<string, string[]>) {
+  return couchRequest(target, `/${config.appDb}/_purge`, {
+    method: "POST",
+    body: JSON.stringify(revisions)
   });
 }
 
@@ -191,11 +203,12 @@ export async function getDesignDoc(target: CouchTarget, id: string) {
   return getDoc(target, id);
 }
 
-export async function getBusinessDocs(target: CouchTarget, docType = "expense") {
+export async function getBusinessDocs(target: CouchTarget, docType = "expense", scope?: PrincipalScope) {
   const result = await findDocs<BusinessDocument>(target, {
     selector: {
       kind: "document",
-      docType
+      docType,
+      ...(scope ? accessSelector(scope) : {})
     },
     sort: [{ updatedAt: "desc" }],
     use_index: "m2-kind-docType-updatedAt",
@@ -204,20 +217,33 @@ export async function getBusinessDocs(target: CouchTarget, docType = "expense") 
   return result.docs.filter((doc) => !("_deleted" in doc));
 }
 
-export async function replicateOnce(direction: "push" | "pull") {
+export async function replicateOnce(direction: "push" | "pull", selector?: Record<string, unknown>) {
   const body =
     direction === "push"
-      ? { source: replicationDbUrl("local"), target: replicationDbUrl("server"), create_target: true }
-      : { source: replicationDbUrl("server"), target: replicationDbUrl("local"), create_target: true };
+      ? { source: replicationDbUrl("local"), target: replicationDbUrl("server"), create_target: true, selector }
+      : { source: replicationDbUrl("server"), target: replicationDbUrl("local"), create_target: true, selector };
 
   return couchRequest("local", "/_replicate", {
     method: "POST",
-    body: JSON.stringify(body)
+    body: JSON.stringify(Object.fromEntries(Object.entries(body).filter(([, value]) => value !== undefined)))
   });
 }
 
-export async function replicateBidirectional() {
+export async function replicateBidirectional(scope?: PrincipalScope) {
   const push = await replicateOnce("push");
-  const pull = await replicateOnce("pull");
-  return { push, pull };
+  if (!scope) {
+    const pull = await replicateOnce("pull");
+    return { push, pull };
+  }
+
+  const pullDesign = await replicateOnce("pull", {
+    kind: {
+      $in: ["app", "form", "view", "workflow", "acl"]
+    }
+  });
+  const pullBusiness = await replicateOnce("pull", {
+    kind: "document",
+    ...accessSelector(scope)
+  });
+  return { push, pull: { design: pullDesign, business: pullBusiness } };
 }

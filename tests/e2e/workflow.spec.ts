@@ -86,13 +86,24 @@ test.describe("workflow lifecycle", () => {
   test("role gating refuses a transition the actor's role does not allow", async ({ app, page }) => {
     await app.goto();
 
-    // Submit the draft via the default API (user:alice / role:finance).
-    const docs = await page.request.get("/api/documents?docType=expense").then((r) => r.json());
-    const id: string = docs.find((d: { payload: { description: string } }) => d.payload.description === "Stationery")._id;
+    // Bob authors and submits an expense he can read; approval is still gated to finance.
+    const created = await page.request.post(`${BOB_API}/api/documents`, {
+      data: {
+        docType: "expense",
+        payload: {
+          amount: 55,
+          description: "Bob approval check",
+          category: "travel",
+          spentAt: "2026-06-14"
+        }
+      }
+    });
+    expect(created.ok()).toBeTruthy();
+    const id: string = (await created.json())._id;
     const path = `/api/documents/${encodeURIComponent(id)}/transition`;
-    await page.request.post(path, { data: { transition: "submit" } });
+    await page.request.post(`${BOB_API}${path}`, { data: { transition: "submit" } });
 
-    // user:bob (role:sales) cannot approve — the server refuses with 422.
+    // user:bob (role:sales) can read it but cannot approve — the server refuses with 422.
     const refused = await page.request.post(`${BOB_API}${path}`, { data: { transition: "approve" } });
     expect(refused.status()).toBe(422);
     expect(JSON.stringify(await refused.json())).toContain("role:finance");

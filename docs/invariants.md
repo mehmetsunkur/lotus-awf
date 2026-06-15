@@ -54,7 +54,7 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 ## ACL / readers
 
 - `readers`/`authors` must be set correctly on documents this code creates, no row/field/select-option may leak across users or roles, and new query paths must still honour `readers` filtering.
-  - Paths: `src/server/seed-data.ts`, `src/server/index.ts`, `scripts/acl-spike.ts`
+  - Paths: `src/shared/access.ts`, `src/server/seed-data.ts`, `src/server/index.ts`, `scripts/acl-spike.ts`
 
 ## Offline editing
 

@@ -12,6 +12,13 @@ import type {
   ViewFilter,
   WorkflowDefinition
 } from "../shared/types";
+import {
+  accessSelector,
+  canEditDocument,
+  canReadDocument,
+  readersForNewDocument,
+  type PrincipalScope
+} from "../shared/access";
 import { validateDesignDefinition } from "../shared/definition-validation";
 import { normalizePayload, validatePayload } from "../shared/validation";
 import { applyTransition, currentState } from "../shared/workflow";
@@ -32,6 +39,7 @@ import {
   findDocs,
   ping,
   putDoc,
+  purgeDocs,
   replicateBidirectional
 } from "./couch";
 import { config } from "./config";
@@ -76,8 +84,11 @@ async function replicationTasks() {
   ];
 }
 
-async function conflictDetails(id: string): Promise<ConflictDetails | null> {
+async function conflictDetails(id: string, scope?: PrincipalScope): Promise<ConflictDetails | null> {
   const winning = await getDoc<CouchDocument & { _conflicts?: string[] }>("local", id, "?conflicts=true");
+  if (scope && winning.kind === "document" && !canReadDocument(winning, scope)) {
+    throw new CouchError(403, { error: "forbidden", reason: "Document is not readable by current user" });
+  }
   if (!winning._conflicts?.length) return null;
 
   const conflicts = await Promise.all(
@@ -123,6 +134,49 @@ async function rolesForUser(user: string): Promise<string[]> {
     if (error instanceof CouchError && error.status === 404) return [];
     throw error;
   }
+}
+
+async function currentScope(): Promise<PrincipalScope> {
+  return { user: config.appUser, roles: await rolesForUser(config.appUser) };
+}
+
+async function getReadableDocument(id: string, scope: PrincipalScope): Promise<BusinessDocument> {
+  const doc = await getDoc<BusinessDocument>("local", id);
+  if (!canReadDocument(doc, scope)) {
+    throw new CouchError(403, { error: "forbidden", reason: "Document is not readable by current user" });
+  }
+  return doc;
+}
+
+async function purgeUnreadableLocalDocs(scope: PrincipalScope) {
+  const [localResult, serverVisible] = await Promise.all([
+    allDocs<BusinessDocument & { _conflicts?: string[] }>("local", {
+      include_docs: true,
+      conflicts: true
+    }),
+    findDocs<BusinessDocument>("server", {
+      selector: {
+        kind: "document",
+        ...accessSelector(scope)
+      },
+      limit: 1000
+    })
+  ]);
+  const serverVisibleIds = new Set(serverVisible.docs.map((doc) => doc._id));
+  const result = localResult;
+  const revisions: Record<string, string[]> = {};
+
+  for (const row of result.rows) {
+    const doc = row.doc;
+    if (!doc || doc.kind !== "document") continue;
+    if (canReadDocument(doc, scope) && serverVisibleIds.has(doc._id)) continue;
+    const revs = [doc._rev, ...(doc._conflicts ?? [])].filter((rev): rev is string => Boolean(rev));
+    if (revs.length) revisions[doc._id] = revs;
+  }
+
+  if (!Object.keys(revisions).length) return { purged: [] };
+  await purgeDocs("local", revisions);
+  return { purged: Object.keys(revisions) };
 }
 
 /**
@@ -179,11 +233,12 @@ async function reconcileStates(): Promise<{
 }
 
 async function selectOptionsForForm(form: FormDefinition): Promise<SelectOptionsByField> {
+  const scope = await currentScope();
   const entries = await Promise.all(
     form.fields
       .filter((field) => field.type === "select" && field.source)
       .map(async (field) => {
-        const docs = await getBusinessDocs("local", field.source!.docType);
+        const docs = await getBusinessDocs("local", field.source!.docType, scope);
         return [
           field.name,
           docs.map((doc) => ({
@@ -246,9 +301,11 @@ app.post(
 app.post(
   "/api/replicate",
   asyncRoute(async (_request, response) => {
-    const replication = await replicateBidirectional();
+    const scope = await currentScope();
+    const replication = await replicateBidirectional(scope);
+    const purge = await purgeUnreadableLocalDocs(scope);
     const reconcile = await reconcileStates();
-    response.json({ ...replication, reconcile });
+    response.json({ ...replication, purge, reconcile });
   })
 );
 
@@ -280,7 +337,7 @@ app.get(
   "/api/documents",
   asyncRoute(async (_request, response) => {
     const docType = typeof _request.query.docType === "string" ? _request.query.docType : "expense";
-    const docs = await getBusinessDocs("local", docType);
+    const docs = await getBusinessDocs("local", docType, await currentScope());
     response.json(docs);
   })
 );
@@ -288,10 +345,11 @@ app.get(
 app.get(
   "/api/views/:id/documents",
   asyncRoute(async (request, response) => {
+    const scope = await currentScope();
     const view = await getDoc<ViewDefinition>("local", routeParam(request.params.id));
     const sort = view.sort?.[0];
     const body: Record<string, unknown> = {
-      selector: mangoSelector(view.filters, view.docType),
+      selector: { ...mangoSelector(view.filters, view.docType), ...accessSelector(scope) },
       limit: 200
     };
     if (sort && sort.field === "updatedAt") {
@@ -303,7 +361,7 @@ app.get(
       body.use_index = filtersByState ? "m3-docType-state-updatedAt" : "m2-kind-docType-updatedAt";
     }
     const result = await findDocs<BusinessDocument>("local", body);
-    response.json(result.docs);
+    response.json(result.docs.filter((doc) => canReadDocument(doc, scope)));
   })
 );
 
@@ -327,7 +385,9 @@ app.post(
       response.status(422).json({ error: "validation_failed", errors });
       return;
     }
-    const doc = docType === "vendor" ? createVendorDoc(payload, config.appUser) : createExpenseDoc(payload, config.appUser);
+    const scope = await currentScope();
+    const readers = readersForNewDocument(scope, docType);
+    const doc = docType === "vendor" ? createVendorDoc(payload, config.appUser, readers) : createExpenseDoc(payload, config.appUser, readers);
     const result = await putDoc("local", doc);
     response.status(201).json({ ...doc, _rev: result.rev });
   })
@@ -336,7 +396,12 @@ app.post(
 app.put(
   "/api/documents/:id",
   asyncRoute(async (request, response) => {
-    const existing = await getDoc<BusinessDocument>("local", routeParam(request.params.id));
+    const scope = await currentScope();
+    const existing = await getReadableDocument(routeParam(request.params.id), scope);
+    if (!canEditDocument(existing, scope)) {
+      response.status(403).json({ error: "forbidden", reason: "Document is not editable by current user" });
+      return;
+    }
     const form = await formForDocType(existing.docType);
     const payload = normalizePayload(form, request.body.payload ?? existing.payload);
     const errors = validatePayload(form, payload, existing, await selectOptionsForForm(form));
@@ -358,7 +423,12 @@ app.put(
 app.delete(
   "/api/documents/:id",
   asyncRoute(async (request, response) => {
-    const existing = await getDoc<BusinessDocument>("local", routeParam(request.params.id));
+    const scope = await currentScope();
+    const existing = await getReadableDocument(routeParam(request.params.id), scope);
+    if (!canEditDocument(existing, scope)) {
+      response.status(403).json({ error: "forbidden", reason: "Document is not editable by current user" });
+      return;
+    }
     await deleteDoc("local", existing._id, existing._rev ?? "");
     response.status(204).end();
   })
@@ -367,15 +437,15 @@ app.delete(
 app.post(
   "/api/documents/:id/transition",
   asyncRoute(async (request, response) => {
-    const existing = await getDoc<BusinessDocument>("local", routeParam(request.params.id));
+    const scope = await currentScope();
+    const existing = await getReadableDocument(routeParam(request.params.id), scope);
     const def = await workflowForDocType(existing.docType);
     if (!def) {
       response.status(404).json({ error: "not_found", reason: `No workflow for ${existing.docType}` });
       return;
     }
-    const roles = await rolesForUser(config.appUser);
     // Same shared engine the client uses to offer the action — authoritative here (A2/A3).
-    const result = applyTransition(existing, def, request.body.transition, config.appUser, roles, timestamp());
+    const result = applyTransition(existing, def, request.body.transition, config.appUser, scope.roles, timestamp());
     if (!result.ok) {
       response.status(422).json({ error: "transition_failed", errors: result.errors });
       return;
@@ -389,13 +459,15 @@ app.post(
 app.get(
   "/api/conflicts",
   asyncRoute(async (_request, response) => {
+    const scope = await currentScope();
     const result = await allDocs<CouchDocument>("local", {
       include_docs: true,
       conflicts: true
     });
     const docs = result.rows
       .map((row) => row.doc)
-      .filter((doc): doc is CouchDocument => Boolean((doc as (CouchDocument & { _conflicts?: string[] }) | undefined)?._conflicts?.length));
+      .filter((doc): doc is CouchDocument => Boolean((doc as (CouchDocument & { _conflicts?: string[] }) | undefined)?._conflicts?.length))
+      .filter((doc) => doc.kind !== "document" || canReadDocument(doc, scope));
     response.json(docs);
   })
 );
@@ -423,7 +495,7 @@ app.put(
 app.get(
   "/api/conflicts/:id",
   asyncRoute(async (request, response) => {
-    const details = await conflictDetails(routeParam(request.params.id));
+    const details = await conflictDetails(routeParam(request.params.id), await currentScope());
     if (!details) {
       response.status(404).json({ error: "not_found", reason: "Document has no local conflicts" });
       return;
@@ -435,7 +507,8 @@ app.get(
 app.post(
   "/api/conflicts/:id/resolve",
   asyncRoute(async (request, response) => {
-    const details = await conflictDetails(routeParam(request.params.id));
+    const scope = await currentScope();
+    const details = await conflictDetails(routeParam(request.params.id), scope);
     if (!details) {
       response.status(404).json({ error: "not_found", reason: "Document has no local conflicts" });
       return;
@@ -448,6 +521,10 @@ app.post(
     // conflict leaf is deleted, so exactly one revision remains.
     const chosenRev = request.body.chosenRev as string | undefined;
     const chosen = (chosenRev && details.conflicts.find((rev) => rev._rev === chosenRev)) || details.winning;
+    if (chosen.kind === "document" && !canEditDocument(chosen, scope)) {
+      response.status(403).json({ error: "forbidden", reason: "Document conflict is not editable by current user" });
+      return;
+    }
 
     const resolved =
       chosen.kind === "document"
@@ -551,6 +628,26 @@ app.post(
 
     await replicateBidirectional();
     response.json({ id: base._id, details: await conflictDetails(base._id) });
+  })
+);
+
+app.post(
+  "/api/admin/revoke-reader",
+  asyncRoute(async (request, response) => {
+    const id = String(request.body.id ?? "");
+    const readers = Array.isArray(request.body.readers) ? request.body.readers.map(String) : [];
+    if (!id || !readers.length) {
+      response.status(400).json({ error: "bad_request", reason: "id and readers are required" });
+      return;
+    }
+    const doc = await getDoc<BusinessDocument>("server", id);
+    const next: BusinessDocument = {
+      ...doc,
+      readers: doc.readers.filter((reader) => !readers.includes(reader)),
+      updatedAt: timestamp()
+    };
+    const result = await putDoc("server", next);
+    response.json({ ...next, _rev: result.rev });
   })
 );
 
