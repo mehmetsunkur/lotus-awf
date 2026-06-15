@@ -32,6 +32,7 @@ import type {
 } from "../shared/types";
 import { validateDesignDefinition } from "../shared/definition-validation";
 import {
+  applyComputedFields,
   applyFormDefaults,
   isFieldReadOnly,
   isFieldRequired,
@@ -321,7 +322,10 @@ function DocumentForm({
   onTransition: (doc: BusinessDocument, transitionId: string) => void;
 }) {
   const [draft, setDraft] = React.useState<Draft>(() => applyFormDefaults(form, selected?.payload ?? {}));
-  const normalized = normalizePayload(form, draft);
+  // M7: derive computed fields from the live draft via the SAME shared pure
+  // runtime the server uses on save (validation parity), entirely offline. The
+  // rendered + saved payload always carries the derived value.
+  const normalized = applyComputedFields(form, normalizePayload(form, draft), selected);
   const errors = validatePayload(form, normalized, selected, optionsByField);
 
   React.useEffect(() => {
@@ -415,7 +419,8 @@ function FieldEditor({
   onChange: (value: unknown) => void;
 }) {
   const value = draft[field.name];
-  const readOnly = isFieldReadOnly(field, doc, draft);
+  // A computed field is intrinsically read-only — its value comes from a handler.
+  const readOnly = Boolean(field.compute) || isFieldReadOnly(field, doc, draft);
   const required = isFieldRequired(field, doc, draft);
   const options = field.options ?? optionsByField[field.name] ?? [];
 
