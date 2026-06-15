@@ -160,6 +160,29 @@ export type AclRules = {
 
 export type DesignDocument = AppConfig | FormDefinition | ViewDefinition | WorkflowDefinition | AclRules;
 
+export type TemplateArtifact = {
+  kind: "template";
+  templateId: string;
+  appId: string;
+  version: string;
+  createdAt: string;
+  createdBy: string;
+  source: string;
+  definitions: DesignDocument[];
+};
+
+export type TemplateDiffEntry = {
+  id: string;
+  kind: DesignDocument["kind"];
+};
+
+export type TemplateDiff = {
+  added: TemplateDiffEntry[];
+  removed: TemplateDiffEntry[];
+  changed: TemplateDiffEntry[];
+  unchanged: TemplateDiffEntry[];
+};
+
 export type ReplicationStatus = {
   localReachable: boolean;
   serverReachable: boolean;
