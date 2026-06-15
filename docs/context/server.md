@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `52270b3`
+- Last code review baseline: `df23606`
 - Last reviewed date: `2026-06-15`
 - Code areas:
   - `src/server/**`
@@ -34,7 +34,7 @@ business documents, bidirectional replication, conflict inspection/resolution, M
 ## Key Flows
 
 - Save: `POST/PUT /api/documents` → shared `validatePayload` → write to **local** Couch.
-- List: `GET /api/views/:id/documents` → `mangoSelector(view.filters)` → `findDocs` (uses `use_index` for `updatedAt` sort).
+- List: `GET /api/views/:id/documents` → `mangoSelector(view.filters)` → `findDocs`; on `updatedAt` sort binds `m3-docType-state-updatedAt` for state-filtered views, else `m2-kind-docType-updatedAt` (hints bind because `createIndex` pins `ddoc === name`).
 - Transition (M3): `POST /api/documents/:id/transition` → shared `applyTransition` (roles from `acl:rules`) → write **local** Couch; `422` on an illegal/role-gated transition.
 - Sync: `POST /api/replicate` → `replicateBidirectional` → `reconcileStates` reports concurrent state divergence; conflicts surfaced via `/api/conflicts`. Resolve accepts `chosenRev` to elect the winning revision's state.
 
