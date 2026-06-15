@@ -48,8 +48,13 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 
 ## Handler / plugin runtime
 
-- A definition may reference only a manifest-declared handler of the matching kind (`compute`→pure, `action`→effect); pure handlers stay portable, deterministic, and fail closed (identical client and server, no I/O), and effect handlers are server-only and best-effort — never blocking, reverting, or running before the authoritative transition write.
+- A definition may reference only a manifest-declared handler of the matching kind (`compute`→pure, `action`→effect, agent `handler`→agent); pure handlers stay portable, deterministic, and fail closed (identical client and server, no I/O), and effect/agent handlers are server-only and best-effort — never blocking, reverting, or running before the authoritative write.
   - Paths: `src/shared/handlers/**`, `src/server/handlers/**`, `src/shared/definition-validation.ts`, `src/shared/validation.ts`
+
+## Agent runtime
+
+- Agent execution is server-authoritative and tick-driven (never on a device): runs must be durable and at-least-once with (agentId+rev) dedupe, the `agent:state` checkpoint advances only after `agentrun:*` records are written, a failing handler records a failed run without crashing the tick, and `agentrun`/`agent:state` are runtime docs — never templated, never returned as business documents.
+  - Paths: `src/shared/agents.ts`, `src/server/handlers/agents.ts`, `src/server/index.ts`, `src/server/couch.ts`
 
 ## Replication & conflict
 

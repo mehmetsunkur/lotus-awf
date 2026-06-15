@@ -58,6 +58,7 @@ Mapped to the path-tagged aspects in `docs/invariants.md`.
 | Validation parity | Validation parity | Rule enforced on BOTH client and API via `src/shared` |
 | Expression safety | Expression runtime | No eval escape; deterministic; portable; fails closed |
 | Handler safety | Handler / plugin runtime | Manifest-declared + kind-matched references; pure handlers portable & fail closed; effects server-only, best-effort, never block the transition |
+| Agent safety | Agent runtime | Server-authoritative tick; durable at-least-once runs with dedupe; checkpoint advances after writes; failing handler never crashes the tick; runtime docs never templated |
 | Data integrity | Replication & conflict | `_rev`/`_conflicts` correctness; no silent loss on resolve |
 | Security | ACL / readers | No cross-user/role leak; `readers` honoured |
 | Availability | Offline editing | Works against local replica with no server round-trip |

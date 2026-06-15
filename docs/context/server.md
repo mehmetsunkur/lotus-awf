@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `89536b0`
+- Last code review baseline: `0dba944`
 - Last reviewed date: `2026-06-15`
 - Code areas:
   - `src/server/**`
@@ -32,6 +32,8 @@ reconciliation, and (M6) template export/diff/apply.
 - `src/server/seed-data.ts` — seed definitions (incl. `workflow:expense`) + sample documents.
 - `src/server/handlers/effects.ts` (M7) — server-only effect registry + `runEffect` (best-effort,
   in-memory log).
+- `src/server/handlers/agents.ts` (M8) — server-only agent-handler registry + `runAgentHandler`
+  (fail-closed). The `runAgents()` tick orchestrator lives in `index.ts`.
 - `scripts/*.ts` — `seed`, `reset`, `replicate`, `force-conflict`, `force-state-conflict`,
   `acl-spike`, and `app` (M7 definitions-as-code `extract`/`apply` CLI).
 
@@ -51,6 +53,11 @@ reconciliation, and (M6) template export/diff/apply.
 - Compute (M7): `POST/PUT /api/documents` apply `applyComputedFields` (shared) so computed fields are
   derived identically to the client. `GET /api/plugins/manifest` and `GET /api/plugins/log` expose
   the handler manifest and the in-memory effect log (cleared on `/api/reset`).
+- Agents (M8): `POST /api/agents/run` ticks `runAgents()` — runs due scheduled agents and drains
+  `changesSince(checkpoint)` for on-change agents, writing durable `agentrun:*` records and advancing
+  the `agent:state` checkpoint (at-least-once, dedupe by agentId+rev, fail-closed). `GET /api/agents`
+  and `GET /api/agents/runs` list definitions and run history. Server-authoritative; optional
+  `AGENTS_INTERVAL_MS` loop is off by default.
 - Definition save (M4): `PUT /api/definitions/:id` accepts `form:*`, `view:*`, and `workflow:*`,
   runs shared `validateDesignDefinition`, then writes **local** Couch; invalid definitions return
   `422 definition_validation_failed`.
@@ -73,7 +80,7 @@ reconciliation, and (M6) template export/diff/apply.
 
 See `docs/invariants.md`: **Replication & conflict**, **ACL / readers**, **Offline editing**,
 **Index & query**, **Validation parity**, **Definitions-as-data contract**, **Handler / plugin
-runtime** govern this subsystem.
+runtime**, **Agent runtime** govern this subsystem.
 
 ## Relevant Decisions
 
@@ -104,3 +111,6 @@ runtime** govern this subsystem.
 - A change that makes an offline action depend on the server replica.
 - Running a transition effect before the authoritative write, or letting an effect throw into the
   route (it must be best-effort and never block/revert the transition).
+- Advancing the agent checkpoint before writing runs, or letting an agent handler throw into the tick
+  (runs are durable + at-least-once; the tick must be fail-closed per agent).
+- Templating or returning `agentrun:*` / `agent:state` as business documents (they are runtime data).

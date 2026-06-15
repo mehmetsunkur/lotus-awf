@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `89536b0`
+- Last code review baseline: `0dba944`
 - Last reviewed date: `2026-06-15`
 - Code areas:
   - `src/shared/**`
@@ -34,6 +34,8 @@ No DOM, no Node/server-only APIs.
 - `src/shared/expression.ts` — `evaluateExpression`, `evaluateBoolean` (portable evaluator).
 - `src/shared/workflow.ts` (M3) — portable workflow engine: `currentState`, `availableTransitions`,
   `applyTransition`. Pure; reuses `evaluateBoolean` for guards and fails closed on a bad guard.
+- `src/shared/agents.ts` (M8) — pure agent matching/scheduling: `agentIsDue`, `agentMatchesChange`,
+  `agentRunKey`. The server orchestrates I/O around these; they hold the decisions.
 - `src/shared/handlers/manifest.ts` (M7) — declared handler manifest (`name`, `kind`); the portable
   source of truth for validating `compute`/`action` references.
 - `src/shared/handlers/pure.ts` (M7) — pure handler registry + `runPureHandler` (fails closed).
@@ -59,6 +61,9 @@ without carrying source-environment `_rev` values.
 M7 adds the pure-handler runtime: a definition's `compute`/`action` reference is validated against the
 shared manifest on both tiers, and `applyComputedFields` derives computed fields with the same pure
 code in the browser and on the API save path.
+
+M8 adds the agent contract (`agent:*`) and pure matching engine; the agent `handler` reference is
+validated against the manifest (kind `agent`) by the same shared definition validator.
 
 ## Existing Patterns
 
