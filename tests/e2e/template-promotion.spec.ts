@@ -22,6 +22,8 @@ test.describe("template promotion", () => {
     expect(template.version).toBe("vtest001");
     expect(template.definitions.map((definition) => definition._id)).toEqual([
       "acl:rules",
+      "agent:daily-digest",
+      "agent:on-expense-change",
       "app:config",
       "form:expense",
       "form:vendor",
