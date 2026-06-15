@@ -349,7 +349,7 @@ function buildAgentRun(
   };
 }
 
-async function runAgents(now = timestamp()): Promise<{ ran: number; runs: AgentRun[] }> {
+async function runAgentsOnce(now = timestamp()): Promise<{ ran: number; runs: AgentRun[] }> {
   const agents = (await findDocs<AgentDefinition>("local", { selector: { kind: "agent" }, limit: 100 })).docs.filter(
     agentIsEnabled
   );
@@ -392,6 +392,17 @@ async function runAgents(now = timestamp()): Promise<{ ran: number; runs: AgentR
   for (const run of runs) await putDoc("local", run);
   await putDoc("local", state);
   return { ran: runs.length, runs };
+}
+
+// Serialize ticks: agent:state is read at tick start and written at tick end, so
+// two overlapping ticks (a manual POST overlapping the optional interval loop, or
+// two manual POSTs) could double-run or 409 on the checkpoint write. Chaining
+// every tick onto the previous one makes the runtime single-writer in-process.
+let agentTickChain: Promise<unknown> = Promise.resolve();
+function runAgents(now = timestamp()): Promise<{ ran: number; runs: AgentRun[] }> {
+  const next = agentTickChain.catch(() => undefined).then(() => runAgentsOnce(now));
+  agentTickChain = next;
+  return next;
 }
 
 async function selectOptionsForForm(form: FormDefinition): Promise<SelectOptionsByField> {

@@ -56,14 +56,16 @@ reconciliation, and (M6) template export/diff/apply.
 - Agents (M8): `POST /api/agents/run` ticks `runAgents()` — runs due scheduled agents and drains
   `changesSince(checkpoint)` for on-change agents, writing durable `agentrun:*` records and advancing
   the `agent:state` checkpoint (at-least-once, dedupe by agentId+rev, fail-closed). `GET /api/agents`
-  and `GET /api/agents/runs` list definitions and run history. Server-authoritative; optional
+  and `GET /api/agents/runs` list definitions and run history. Server-authoritative; ticks are
+  serialized in-process so overlapping calls cannot double-run or 409 the checkpoint; optional
   `AGENTS_INTERVAL_MS` loop is off by default.
-- Definition save (M4): `PUT /api/definitions/:id` accepts `form:*`, `view:*`, and `workflow:*`,
-  runs shared `validateDesignDefinition`, then writes **local** Couch; invalid definitions return
-  `422 definition_validation_failed`.
-- Template promotion (M6): `POST /api/templates/export|diff|apply` packages only design docs
-  (`app:config`, `acl:rules`, `form:*`, `view:*`, `workflow:*`), strips stale `_rev`, compares by
-  definition id, and applies add/update changes to **local** Couch without touching business docs.
+- Definition save (M4/M8): `PUT /api/definitions/:id` accepts `form:*`, `view:*`, `workflow:*`, and
+  `agent:*` (M8), runs shared `validateDesignDefinition`, then writes **local** Couch; invalid
+  definitions return `422 definition_validation_failed`.
+- Template promotion (M6/M8): `POST /api/templates/export|diff|apply` packages only design docs
+  (`app:config`, `acl:rules`, `form:*`, `view:*`, `workflow:*`, `agent:*`), strips stale `_rev`,
+  compares by definition id, and applies add/update changes to **local** Couch without touching
+  business docs. Runtime `agentrun:*` / `agent:state` docs are NOT packaged.
 - Sync: `POST /api/replicate` → scoped `replicateBidirectional` → local `_purge` of server-revoked
   docs → `reconcileStates` reports concurrent state divergence; conflicts surfaced via
   `/api/conflicts`. Resolve accepts `chosenRev` to elect the winning revision's state.

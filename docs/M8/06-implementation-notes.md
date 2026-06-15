@@ -22,7 +22,9 @@ clock) around them. Agent handlers are server-only (`src/server/handlers/agents.
 ## Durability and correctness
 
 Runs are written before the checkpoint advances; replays are idempotent (on-change deduped by
-agentId + rev, scheduled gated by `lastRunAt`). `runAgentHandler` never throws, so a failing handler
+agentId + rev, scheduled gated by `lastRunAt`). Ticks are serialized in-process (a promise chain)
+so an overlapping manual call and interval loop cannot read the same checkpoint and double-run or
+409 the `agent:state` write. `runAgentHandler` never throws, so a failing handler
 records `ok: false` without crashing the tick. `agentrun`/`agent:state` writes reappear in the feed
 but are skipped (not `kind: "document"`) — no feedback loop.
 
