@@ -48,5 +48,10 @@ npm run test:e2e           # full suite
   fire its effect on reconcile.
 - Effects are in-memory and best-effort — no persistence, no retry, no queue.
 - The plugin endpoints share the non-production trust posture of definition editing (no admin auth).
+- `GET /api/plugins/log` returns the in-memory effect log (carrying `docId` and the transition
+  detail) without a `readers`/`canReadDocument` filter — like the other unfiltered admin routes. Under
+  the single-`appUser` model this leaks nothing (every entry was produced by that one principal acting
+  on a then-readable doc, and the log clears on reset). If the server becomes multi-principal, filter
+  `readEffectLog()` by `canReadDocument(scope)` or drop `docId` from entries (ACL aspect A5).
 - Handlers are first-party native code; replicated/sandboxed code plugins remain out of scope.
 - The manifest and pure-handler registry are kept in sync by a unit test, not by derivation.
