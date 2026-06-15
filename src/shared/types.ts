@@ -16,6 +16,21 @@ export type ExpressionRule = {
   message?: string;
 };
 
+/**
+ * Plugin/handler runtime (M7). Handlers are name-registered native code, NOT
+ * replicated data: definitions reference a handler by name and the code ships
+ * with the app. `pure` handlers are portable (run identically on client and
+ * server, offline); `effect` handlers do server-only I/O. The manifest is the
+ * portable source of truth that validation checks a reference against.
+ */
+export type HandlerKind = "pure" | "effect";
+
+export type HandlerManifestEntry = {
+  name: string;
+  kind: HandlerKind;
+  description: string;
+};
+
 export type SelectOption = {
   label: string;
   value: string;
@@ -40,6 +55,12 @@ export type FormField = {
   options?: SelectOption[];
   source?: FieldSource;
   validate?: ExpressionRule[];
+  /**
+   * M7: name of a registered `pure` handler that derives this field's value from
+   * the rest of the payload. Optional — absent on every M1–M6 form. A computed
+   * field is read-only in the runtime and recomputed on both client and server.
+   */
+  compute?: string;
 };
 
 export type FormSection = {
@@ -102,6 +123,12 @@ export type WorkflowTransition = {
   guard?: string;
   /** Role (as in acl:rules) required to perform this transition. */
   requiredRole?: string;
+  /**
+   * M7: name of a registered `effect` handler run after the authoritative state
+   * change on the online transition route. Optional — absent on every M1–M6
+   * workflow. Effects are best-effort: they never block or revert the transition.
+   */
+  action?: string;
 };
 
 export type WorkflowDefinition = {
