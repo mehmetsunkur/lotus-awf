@@ -46,6 +46,11 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 - Expression evaluation must stay safe (no eval escape, host/global/prototype access, network, or unbounded loops), deterministic, and portable (identical result client and server), and must fail closed on malformed or hostile input.
   - Paths: `src/shared/expression.ts`
 
+## Handler / plugin runtime
+
+- A definition may reference only a manifest-declared handler of the matching kind (`compute`→pure, `action`→effect); pure handlers stay portable, deterministic, and fail closed (identical client and server, no I/O), and effect handlers are server-only and best-effort — never blocking, reverting, or running before the authoritative transition write.
+  - Paths: `src/shared/handlers/**`, `src/server/handlers/**`, `src/shared/definition-validation.ts`, `src/shared/validation.ts`
+
 ## Replication & conflict
 
 - Changes must preserve bidirectional replication and correct `_rev`/`_conflicts` handling — never drop or silently lose a revision on resolve, and never let a payload-shape change break how conflicting revisions are compared.

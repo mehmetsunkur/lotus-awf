@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `52270b3`
+- Last code review baseline: `89536b0`
 - Last reviewed date: `2026-06-15`
 - Code areas:
   - `src/client/**`
@@ -33,6 +33,8 @@ resolution panel.
 - Boot → `GET /api/status|definitions|conflicts` → render shell (`definitions` carries `workflows`,
   `user`, `roles`).
 - Edit → shared `validatePayload` runs client-side → `POST/PUT /api/documents` (local replica).
+- Compute (M7) → `applyComputedFields` (shared) derives `compute` fields from the live draft, offline;
+  computed fields render read-only and recompute as inputs change.
 - Transition (M3) → `WorkflowBar` renders `availableTransitions` (shared engine) → `POST
   /api/documents/:id/transition` → refresh.
 - Authoring (M4) → structured form/view/workflow controls update the JSON definition in memory →

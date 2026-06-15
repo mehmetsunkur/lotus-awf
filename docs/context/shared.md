@@ -2,11 +2,12 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `52270b3`
+- Last code review baseline: `89536b0`
 - Last reviewed date: `2026-06-15`
 - Code areas:
   - `src/shared/**`
 - Tests:
+  - `tests/unit/**`
   - `tests/e2e/**`
 - Config/runtime areas:
   - `tsconfig.json`
@@ -33,6 +34,10 @@ No DOM, no Node/server-only APIs.
 - `src/shared/expression.ts` — `evaluateExpression`, `evaluateBoolean` (portable evaluator).
 - `src/shared/workflow.ts` (M3) — portable workflow engine: `currentState`, `availableTransitions`,
   `applyTransition`. Pure; reuses `evaluateBoolean` for guards and fails closed on a bad guard.
+- `src/shared/handlers/manifest.ts` (M7) — declared handler manifest (`name`, `kind`); the portable
+  source of truth for validating `compute`/`action` references.
+- `src/shared/handlers/pure.ts` (M7) — pure handler registry + `runPureHandler` (fails closed).
+  `validation.ts` exposes `applyComputedFields` over it.
 
 ## Key Flows
 
@@ -51,6 +56,10 @@ view rows, sourced select options, payload writes, transitions, replication sele
 M6 adds shared template helpers so export/diff/apply all compare definition documents consistently
 without carrying source-environment `_rev` values.
 
+M7 adds the pure-handler runtime: a definition's `compute`/`action` reference is validated against the
+shared manifest on both tiers, and `applyComputedFields` derives computed fields with the same pure
+code in the browser and on the API save path.
+
 ## Existing Patterns
 
 - Pure functions over definitions, payloads, and docs — no I/O, no DOM, no Node/server-only APIs.
@@ -67,8 +76,8 @@ contract** all govern this subsystem.
 
 ## Tests
 
-No direct unit tests yet (a known gap — `src/shared` is pure and ideal for them). Currently
-exercised indirectly through `tests/e2e/**`.
+Vitest unit tests under `tests/unit/**` (M7) cover the handler registry, computed fields, and
+reference validation; the broader runtime is still exercised through `tests/e2e/**`.
 
 ## Common Pitfalls
 

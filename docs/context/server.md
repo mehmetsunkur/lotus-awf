@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `df23606`
+- Last code review baseline: `89536b0`
 - Last reviewed date: `2026-06-15`
 - Code areas:
   - `src/server/**`
@@ -30,7 +30,10 @@ reconciliation, and (M6) template export/diff/apply.
 - `src/server/couch.ts` — CouchDB client, `replicateBidirectional`/`replicateOnce`, `createIndex`, `findDocs`.
 - `src/server/config.ts` — local vs server Couch URLs, app db/user.
 - `src/server/seed-data.ts` — seed definitions (incl. `workflow:expense`) + sample documents.
-- `scripts/*.ts` — `seed`, `reset`, `replicate`, `force-conflict`, `force-state-conflict`, `acl-spike` (operational CLIs).
+- `src/server/handlers/effects.ts` (M7) — server-only effect registry + `runEffect` (best-effort,
+  in-memory log).
+- `scripts/*.ts` — `seed`, `reset`, `replicate`, `force-conflict`, `force-state-conflict`,
+  `acl-spike`, and `app` (M7 definitions-as-code `extract`/`apply` CLI).
 
 ## Key Flows
 
@@ -43,7 +46,11 @@ reconciliation, and (M6) template export/diff/apply.
   `m2-kind-docType-updatedAt` (hints bind because `createIndex` pins `ddoc === name`).
 - Transition (M3/M5): `POST /api/documents/:id/transition` → read-access check → shared
   `applyTransition` (roles from `acl:rules`) → write **local** Couch; `403` when unreadable and `422`
-  on an illegal/role-gated transition.
+  on an illegal/role-gated transition. (M7) After the authoritative write, a transition's `action`
+  effect runs best-effort via `runEffect`, surfaced as `effects[]`.
+- Compute (M7): `POST/PUT /api/documents` apply `applyComputedFields` (shared) so computed fields are
+  derived identically to the client. `GET /api/plugins/manifest` and `GET /api/plugins/log` expose
+  the handler manifest and the in-memory effect log (cleared on `/api/reset`).
 - Definition save (M4): `PUT /api/definitions/:id` accepts `form:*`, `view:*`, and `workflow:*`,
   runs shared `validateDesignDefinition`, then writes **local** Couch; invalid definitions return
   `422 definition_validation_failed`.
@@ -65,7 +72,8 @@ reconciliation, and (M6) template export/diff/apply.
 ## Invariants
 
 See `docs/invariants.md`: **Replication & conflict**, **ACL / readers**, **Offline editing**,
-**Index & query**, **Validation parity**, **Definitions-as-data contract** govern this subsystem.
+**Index & query**, **Validation parity**, **Definitions-as-data contract**, **Handler / plugin
+runtime** govern this subsystem.
 
 ## Relevant Decisions
 
@@ -94,3 +102,5 @@ See `docs/invariants.md`: **Replication & conflict**, **ACL / readers**, **Offli
 - Using normal `DELETE` for revocation cleanup; it can replicate as a global delete. Use local
   `_purge` for M5 revocation shape.
 - A change that makes an offline action depend on the server replica.
+- Running a transition effect before the authoritative write, or letting an effect throw into the
+  route (it must be best-effort and never block/revert the transition).
