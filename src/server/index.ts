@@ -143,15 +143,16 @@ async function workflowForDocType(docType: string): Promise<WorkflowDefinition |
 }
 
 async function currentDefinitions(): Promise<DesignDocument[]> {
-  const [appConfig, acl, forms, views, workflows] = await Promise.all([
+  const [appConfig, acl, forms, views, workflows, agents] = await Promise.all([
     getDoc<AppConfig>("local", "app:config"),
     getDoc<AclRules>("local", "acl:rules"),
     findDocs<FormDefinition>("local", { selector: { kind: "form" }, limit: 100 }),
     findDocs<ViewDefinition>("local", { selector: { kind: "view" }, limit: 100 }),
-    findDocs<WorkflowDefinition>("local", { selector: { kind: "workflow" }, limit: 100 })
+    findDocs<WorkflowDefinition>("local", { selector: { kind: "workflow" }, limit: 100 }),
+    findDocs<AgentDefinition>("local", { selector: { kind: "agent" }, limit: 100 })
   ]);
 
-  return normalizeDefinitions([appConfig, acl, ...forms.docs, ...views.docs, ...workflows.docs]);
+  return normalizeDefinitions([appConfig, acl, ...forms.docs, ...views.docs, ...workflows.docs, ...agents.docs]);
 }
 
 function generatedTemplateVersion() {
@@ -161,7 +162,12 @@ function generatedTemplateVersion() {
 function validateTemplateDefinitions(template: TemplateArtifact) {
   const messages = validateTemplateArtifact(template);
   for (const definition of template.definitions ?? []) {
-    if (definition.kind === "form" || definition.kind === "view" || definition.kind === "workflow") {
+    if (
+      definition.kind === "form" ||
+      definition.kind === "view" ||
+      definition.kind === "workflow" ||
+      definition.kind === "agent"
+    ) {
       messages.push(...validateDesignDefinition(definition).map((error) => `${definition._id}.${error.field}: ${error.message}`));
     } else if (definition.kind === "app") {
       if (definition._id !== "app:config") messages.push("app definition id must be app:config");
@@ -736,8 +742,8 @@ app.put(
   "/api/definitions/:id",
   asyncRoute(async (request, response) => {
     const id = routeParam(request.params.id);
-    if (!id.startsWith("form:") && !id.startsWith("view:") && !id.startsWith("workflow:")) {
-      response.status(400).json({ error: "bad_request", reason: "Only form:*, view:*, and workflow:* docs are editable" });
+    if (!id.startsWith("form:") && !id.startsWith("view:") && !id.startsWith("workflow:") && !id.startsWith("agent:")) {
+      response.status(400).json({ error: "bad_request", reason: "Only form:*, view:*, workflow:*, and agent:* docs are editable" });
       return;
     }
     const existing = await getDoc<CouchDocument>("local", id);
