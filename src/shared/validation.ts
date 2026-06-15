@@ -1,5 +1,6 @@
 import type { BusinessDocument, FormDefinition, FormField, SelectOptionsByField, ValidationError } from "./types";
 import { evaluateBoolean } from "./expression";
+import { runPureHandler } from "./handlers/pure";
 
 export function defaultValueForField(field: FormField): unknown {
   if (field.defaultValue !== undefined) return field.defaultValue;
@@ -13,6 +14,30 @@ export function applyFormDefaults(form: FormDefinition, payload: Record<string, 
   for (const field of form.fields) {
     if (next[field.name] === undefined) {
       next[field.name] = defaultValueForField(field);
+    }
+  }
+  return next;
+}
+
+/**
+ * M7: overwrite every `compute` field with its registered pure handler's result.
+ * Run after defaults so handlers see resolved inputs. Pure + deterministic, so
+ * the same call on client and server yields the same payload (validation parity);
+ * an unknown/throwing handler fails closed to `undefined` (then coerced by
+ * `normalizePayload`). The input payload is not mutated.
+ */
+export function applyComputedFields(
+  form: FormDefinition,
+  payload: Record<string, unknown>,
+  doc?: BusinessDocument
+): Record<string, unknown> {
+  const next = applyFormDefaults(form, payload);
+  for (const field of form.fields) {
+    if (field.compute) {
+      next[field.name] = runPureHandler(field.compute, {
+        payload: next,
+        doc: doc as unknown as Record<string, unknown>
+      });
     }
   }
   return next;

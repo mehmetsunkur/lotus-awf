@@ -9,6 +9,8 @@ import type {
   WorkflowTransition
 } from "./types";
 import { evaluateBoolean } from "./expression";
+import { findHandler, handlerHasKind } from "./handlers/manifest";
+import type { HandlerKind } from "./types";
 
 const FIELD_TYPES = new Set(["text", "textarea", "number", "date", "boolean", "select"]);
 const FILTER_OPS = new Set(["eq", "ne", "gt", "gte", "lt", "lte", "in"]);
@@ -39,6 +41,19 @@ function validateExpression(expression: unknown, field: string): ValidationError
   }
 }
 
+/**
+ * M7: a `compute`/`action` reference must name a declared handler of the matching
+ * kind. Fails closed — an unknown name or a kind mismatch is rejected on both
+ * tiers, so a definition can never reference a handler that will silently no-op.
+ */
+function validateHandlerRef(name: unknown, kind: HandlerKind, field: string): ValidationError[] {
+  if (name === undefined || name === null || name === "") return [];
+  if (typeof name !== "string") return [error(field, `${field} must be a handler name`)];
+  if (!findHandler(name)) return [error(field, `Unknown handler: ${name}`)];
+  if (!handlerHasKind(name, kind)) return [error(field, `Handler ${name} is not a ${kind} handler`)];
+  return [];
+}
+
 function validateField(field: FormField, index: number): ValidationError[] {
   const prefix = `fields.${index}`;
   const errors: ValidationError[] = [];
@@ -62,6 +77,7 @@ function validateField(field: FormField, index: number): ValidationError[] {
   for (const [ruleIndex, rule] of (field.validate ?? []).entries()) {
     errors.push(...validateExpression(rule.expression, `${prefix}.validate.${ruleIndex}.expression`));
   }
+  errors.push(...validateHandlerRef(field.compute, "pure", `${prefix}.compute`));
   return errors;
 }
 
@@ -143,6 +159,7 @@ function validateTransition(
   }
   if (!states.has(transition.to)) errors.push(error(`${prefix}.to`, `Transition target does not exist: ${transition.to}`));
   errors.push(...validateExpression(transition.guard, `${prefix}.guard`));
+  errors.push(...validateHandlerRef(transition.action, "effect", `${prefix}.action`));
   return errors;
 }
 
