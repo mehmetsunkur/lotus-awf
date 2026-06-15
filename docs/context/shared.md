@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `928f4be`
-- Last reviewed date: `2026-06-14`
+- Last code review baseline: `52270b3`
+- Last reviewed date: `2026-06-15`
 - Code areas:
   - `src/shared/**`
 - Tests:
@@ -11,7 +11,8 @@
 - Config/runtime areas:
   - `tsconfig.json`
 - Review trigger:
-  - Update this doc when the definition contract, validation rules, or expression runtime change.
+  - Update this doc when the definition contract, validation rules, the expression runtime, or the
+    workflow engine change.
 
 ## Purpose
 
@@ -20,14 +21,20 @@ No DOM, no Node/server-only APIs.
 
 ## Main Files
 
-- `src/shared/types.ts` — `FormDefinition`, `ViewDefinition`, `FormField`, `BusinessDocument`, etc.
+- `src/shared/types.ts` — `FormDefinition`, `ViewDefinition`, `WorkflowDefinition`, `FormField`,
+  `BusinessDocument` (incl. optional `state`/`history`), `TransitionEvent`, etc.
 - `src/shared/validation.ts` — `validatePayload`, `applyFormDefaults`, `normalizePayload`, `isFieldRequired/Visible/ReadOnly`.
 - `src/shared/expression.ts` — `evaluateExpression`, `evaluateBoolean` (portable evaluator).
+- `src/shared/workflow.ts` (M3) — portable workflow engine: `currentState`, `availableTransitions`,
+  `applyTransition`. Pure; reuses `evaluateBoolean` for guards and fails closed on a bad guard.
 
 ## Key Flows
 
-A form/view definition (data) is read by both tiers; the same validation and expression code
-runs in the browser and in the API save path, so behaviour is identical offline and online.
+A form/view/workflow definition (data) is read by both tiers; the same validation, expression, and
+workflow code runs in the browser and in the API, so behaviour is identical offline and online. For
+workflow the browser uses `availableTransitions` (to render actions) and the server uses
+`applyTransition` (to authorize the write) — one module, so the two cannot diverge. `now` is the one
+non-deterministic context value (sampled per side), so guards must not gate on it.
 
 ## Existing Patterns
 

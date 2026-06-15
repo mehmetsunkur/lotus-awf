@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `928f4be`
-- Last reviewed date: `2026-06-14`
+- Last code review baseline: `52270b3`
+- Last reviewed date: `2026-06-15`
 - Code areas:
   - `src/client/**`
 - Tests:
@@ -12,7 +12,8 @@
   - `vite.config.ts`
   - `index.html`
 - Review trigger:
-  - Update this doc when the runtime UI shell, form/view rendering, or save flow change.
+  - Update this doc when the runtime UI shell, form/view rendering, the save/transition flow, or the
+    conflict resolution UI change.
 
 ## Purpose
 
@@ -22,13 +23,19 @@ documents, hosts the JSON definition editor and the conflict resolution panel.
 ## Main Files
 
 - `src/client/main.tsx` — the entire single-file runtime shell (status strip, view picker,
-  document table/form, definition editor, conflict panel).
+  document table/form, definition editor, conflict panel, and the M3 `WorkflowBar` /
+  `WorkflowHistory` and per-revision conflict resolution).
 - `src/client/styles.css`.
 
 ## Key Flows
 
-- Boot → `GET /api/status|definitions|conflicts` → render shell.
+- Boot → `GET /api/status|definitions|conflicts` → render shell (`definitions` carries `workflows`,
+  `user`, `roles`).
 - Edit → shared `validatePayload` runs client-side → `POST/PUT /api/documents` (local replica).
+- Transition (M3) → `WorkflowBar` renders `availableTransitions` (shared engine) → `POST
+  /api/documents/:id/transition` → refresh.
+- Conflict resolve → "Keep This Revision" on any revision → `POST /api/conflicts/:id/resolve` with
+  `chosenRev` so the elected state/history survives.
 - Switch view does NOT auto-refetch documents; a refresh does (see `tests/e2e/support/fixtures.ts`).
 
 ## Existing Patterns
