@@ -295,7 +295,11 @@ app.get(
     };
     if (sort && sort.field === "updatedAt") {
       body.sort = [{ updatedAt: sort.direction }];
-      body.use_index = "m2-kind-docType-updatedAt";
+      // State-filtered worklists bind the m3 index (docType+state prefix);
+      // everything else uses the general kind+docType index. Hints resolve now
+      // that createIndex pins ddoc === name.
+      const filtersByState = view.filters?.some((filter) => filter.field === "state");
+      body.use_index = filtersByState ? "m3-docType-state-updatedAt" : "m2-kind-docType-updatedAt";
     }
     const result = await findDocs<BusinessDocument>("local", body);
     response.json(result.docs);

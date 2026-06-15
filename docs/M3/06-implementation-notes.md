@@ -74,12 +74,11 @@ Reset/seed creates one new Mango index, `m3-docType-state-updatedAt` over
 `scripts/reset.ts`, `ensureIndexes` in `src/server/index.ts`). The field order matches the state
 worklist query shape (filter `docType` + `state`, sort `updatedAt`), e.g. `view:pending-approvals`.
 
-Note: as in M2, the `use_index` hint is passed by index name but `createIndex` lets CouchDB
-auto-generate the design-doc id, so the hint does not resolve and CouchDB selects an index (or scans)
-on its own. This affects every index equally (the M2 indexes too), so it is a pre-existing M2 quirk,
-not introduced by M3; queries return correct results regardless. Binding hints by index name (by
-setting an explicit `ddoc`) is worth a wholesale cleanup in a later milestone — at which point the
-correctly-shaped `m3-docType-state-updatedAt` will serve the worklist directly.
+`createIndex` now pins the design-doc id to the index name (`ddoc === name`), so `use_index` hints
+resolve and bind (verified: `_find` with either hint returns no `index ... was not used` warning). The
+view route binds the m3 index for state-filtered worklists (`view:pending-approvals`) and the m2 index
+otherwise. This also fixes the latent M2 behavior where the auto-generated hashed `ddoc` meant no
+`use_index` hint ever bound.
 
 ## Verification performed
 
@@ -114,7 +113,6 @@ explicit `POST /api/replicate`).
   no automatic state merge, which is correct for a lifecycle.
 - The reconcile pass reports state conflicts but does not auto-resolve them.
 - `onEnter`/`onExit` side effects, timers, and parallel/branching workflows are out of scope.
-- The `use_index` hint does not resolve (pre-existing M2 behavior; see Index strategy).
 - The `definition-editor` invalid-JSON e2e test is occasionally flaky due to the controlled-textarea
   race documented in `tests/e2e/support/fixtures.ts`; it passes in isolation and on re-run, and is
   unrelated to M3.
