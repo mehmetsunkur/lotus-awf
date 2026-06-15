@@ -18,13 +18,19 @@ import type {
   BusinessDocument,
   ConflictDetails,
   CouchDocument,
+  FieldType,
   FormDefinition,
   FormField,
   ReplicationStatus,
   SelectOptionsByField,
   ViewDefinition,
-  WorkflowDefinition
+  ViewFilter,
+  ViewSort,
+  WorkflowDefinition,
+  WorkflowState,
+  WorkflowTransition
 } from "../shared/types";
+import { validateDesignDefinition } from "../shared/definition-validation";
 import {
   applyFormDefaults,
   isFieldReadOnly,
@@ -48,6 +54,7 @@ type Definitions = {
 };
 
 type Draft = Record<string, unknown>;
+type EditableDefinition = FormDefinition | ViewDefinition | WorkflowDefinition;
 
 const api = async <T,>(path: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(path, {
@@ -446,32 +453,72 @@ function FieldEditor({
   );
 }
 
+const FIELD_TYPES: FieldType[] = ["text", "textarea", "number", "date", "boolean", "select"];
+const FILTER_OPS: ViewFilter["op"][] = ["eq", "ne", "gt", "gte", "lt", "lte", "in"];
+
+const uniqueName = (base: string, used: string[]) => {
+  let index = used.length + 1;
+  let next = `${base}${index}`;
+  while (used.includes(next)) {
+    index += 1;
+    next = `${base}${index}`;
+  }
+  return next;
+};
+
 function DefinitionEditor({
   definitions,
   selectedId,
   onSelect,
   onSave
 }: {
-  definitions: Array<FormDefinition | ViewDefinition>;
+  definitions: EditableDefinition[];
   selectedId?: string;
   onSelect: (id: string) => void;
-  onSave: (id: string, doc: FormDefinition | ViewDefinition) => void;
+  onSave: (id: string, doc: EditableDefinition) => void;
 }) {
   const selected = definitions.find((doc) => doc._id === selectedId) ?? definitions[0];
   const [text, setText] = React.useState("");
   const [error, setError] = React.useState("");
+  const parsed = React.useMemo<EditableDefinition | undefined>(() => {
+    try {
+      return text ? (JSON.parse(text) as EditableDefinition) : undefined;
+    } catch {
+      return undefined;
+    }
+  }, [text]);
 
   React.useEffect(() => {
     setText(selected ? JSON.stringify(selected, null, 2) : "");
     setError("");
   }, [selected]);
 
+  const updateDefinition = (next: EditableDefinition) => {
+    setText(JSON.stringify(next, null, 2));
+    setError("");
+  };
+
+  const save = () => {
+    try {
+      const next = JSON.parse(text) as EditableDefinition;
+      if (!selected) return;
+      const errors = validateDesignDefinition(next as CouchDocument);
+      if (errors.length) {
+        setError(errors.map((item) => `${item.field}: ${item.message}`).join("; "));
+        return;
+      }
+      onSave(selected._id, next);
+    } catch (parseError) {
+      setError(parseError instanceof Error ? parseError.message : "Invalid JSON");
+    }
+  };
+
   return (
     <section className="definitionPanel" data-testid="definition-editor">
       <div className="panelHead">
         <div>
-          <p className="kicker">Local definition editor</p>
-          <h2>Forms & Views</h2>
+          <p className="kicker">Local authoring studio</p>
+          <h2>Definitions</h2>
         </div>
         <select data-testid="definition-select" value={selected?._id ?? ""} onChange={(event) => onSelect(event.target.value)}>
           {definitions.map((doc) => (
@@ -481,26 +528,271 @@ function DefinitionEditor({
           ))}
         </select>
       </div>
-      <textarea data-testid="definition-json" className="jsonEditor" value={text} onChange={(event) => setText(event.target.value)} />
+      {parsed?.kind === "form" ? <FormStudio definition={parsed} onChange={updateDefinition} /> : null}
+      {parsed?.kind === "view" ? <ViewStudio definition={parsed} onChange={updateDefinition} /> : null}
+      {parsed?.kind === "workflow" ? <WorkflowStudio definition={parsed} onChange={updateDefinition} /> : null}
+      <details className="jsonEscape" open>
+        <summary>JSON</summary>
+        <textarea
+          data-testid="definition-json"
+          className="jsonEditor"
+          value={text}
+          onChange={(event) => {
+            setText(event.target.value);
+            setError("");
+          }}
+        />
+      </details>
       {error ? <p className="inlineError" data-testid="definition-error">{error}</p> : null}
       <div className="formActions definitionActions">
-        <button
-          className="primary"
-          data-testid="definition-save"
-          onClick={() => {
-            try {
-              const parsed = JSON.parse(text) as FormDefinition | ViewDefinition;
-              if (!selected) return;
-              onSave(selected._id, parsed);
-            } catch (parseError) {
-              setError(parseError instanceof Error ? parseError.message : "Invalid JSON");
-            }
-          }}
-        >
+        <button className="primary" data-testid="definition-save" onClick={save}>
           <Braces size={16} /> Save Definition Locally
         </button>
       </div>
     </section>
+  );
+}
+
+function FormStudio({ definition, onChange }: { definition: FormDefinition; onChange: (next: EditableDefinition) => void }) {
+  const updateField = (index: number, patch: Partial<FormField>) =>
+    onChange({
+      ...definition,
+      fields: definition.fields.map((field, candidate) => (candidate === index ? { ...field, ...patch } : field))
+    });
+  const removeField = (index: number) => {
+    const removed = definition.fields[index];
+    onChange({
+      ...definition,
+      fields: definition.fields.filter((_field, candidate) => candidate !== index),
+      sections: definition.sections?.map((section) => ({
+        ...section,
+        fields: section.fields.filter((field) => field !== removed.name)
+      }))
+    });
+  };
+  const addField = () => {
+    const name = uniqueName("field", definition.fields.map((field) => field.name));
+    const fields = [...definition.fields, { name, type: "text" as FieldType, label: "New field" }];
+    const sections = definition.sections?.length
+      ? [{ ...definition.sections[0], fields: [...definition.sections[0].fields, name] }, ...definition.sections.slice(1)]
+      : [{ title: definition.title, fields: fields.map((field) => field.name) }];
+    onChange({ ...definition, fields, sections });
+  };
+
+  return (
+    <div className="studioPanel" data-testid="studio-form">
+      <label>
+        <span>Title</span>
+        <input data-testid="studio-form-title" value={definition.title} onChange={(event) => onChange({ ...definition, title: event.target.value })} />
+      </label>
+      <div className="studioList">
+        {definition.fields.map((field, index) => (
+          <div className="studioRow" key={`${field.name}-${index}`} data-testid="studio-form-field">
+            <input
+              aria-label="Field name"
+              data-testid={`studio-form-field-name-${index}`}
+              value={field.name}
+              onChange={(event) => updateField(index, { name: event.target.value })}
+            />
+            <input
+              aria-label="Field label"
+              data-testid={`studio-form-field-label-${index}`}
+              value={field.label}
+              onChange={(event) => updateField(index, { label: event.target.value })}
+            />
+            <select
+              aria-label="Field type"
+              data-testid={`studio-form-field-type-${index}`}
+              value={field.type}
+              onChange={(event) => updateField(index, { type: event.target.value as FieldType })}
+            >
+              {FIELD_TYPES.map((type) => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
+            <label className="compactCheck">
+              <input
+                data-testid={`studio-form-field-required-${index}`}
+                type="checkbox"
+                checked={Boolean(field.required)}
+                onChange={(event) => updateField(index, { required: event.target.checked || undefined })}
+              />
+              Required
+            </label>
+            <button type="button" className="danger" data-testid={`studio-form-field-remove-${index}`} onClick={() => removeField(index)}>
+              <Trash2 size={16} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <button type="button" data-testid="studio-form-add-field" onClick={addField}>Add Field</button>
+    </div>
+  );
+}
+
+function ViewStudio({ definition, onChange }: { definition: ViewDefinition; onChange: (next: EditableDefinition) => void }) {
+  const updateColumn = (index: number, patch: Partial<ViewDefinition["columns"][number]>) =>
+    onChange({ ...definition, columns: definition.columns.map((column, candidate) => (candidate === index ? { ...column, ...patch } : column)) });
+  const filters = definition.filters ?? [];
+  const sort = definition.sort?.[0] ?? { field: "updatedAt", direction: "desc" as const };
+  const updateFilter = (index: number, patch: Partial<ViewFilter>) =>
+    onChange({ ...definition, filters: filters.map((filter, candidate) => (candidate === index ? { ...filter, ...patch } : filter)) });
+  const updateSort = (patch: Partial<ViewSort>) => onChange({ ...definition, sort: [{ ...sort, ...patch }] });
+
+  return (
+    <div className="studioPanel" data-testid="studio-view">
+      <label>
+        <span>Title</span>
+        <input data-testid="studio-view-title" value={definition.title} onChange={(event) => onChange({ ...definition, title: event.target.value })} />
+      </label>
+      <div className="studioList">
+        {definition.columns.map((column, index) => (
+          <div className="studioRow" key={`${column.field}-${index}`} data-testid="studio-view-column">
+            <input
+              aria-label="Column field"
+              data-testid={`studio-view-column-field-${index}`}
+              value={column.field}
+              onChange={(event) => updateColumn(index, { field: event.target.value })}
+            />
+            <input
+              aria-label="Column label"
+              data-testid={`studio-view-column-label-${index}`}
+              value={column.label}
+              onChange={(event) => updateColumn(index, { label: event.target.value })}
+            />
+            <button
+              type="button"
+              className="danger"
+              data-testid={`studio-view-column-remove-${index}`}
+              onClick={() => onChange({ ...definition, columns: definition.columns.filter((_column, candidate) => candidate !== index) })}
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        data-testid="studio-view-add-column"
+        onClick={() => onChange({ ...definition, columns: [...definition.columns, { field: "payload.newField", label: "New Column" }] })}
+      >
+        Add Column
+      </button>
+      <div className="studioSubgrid">
+        <label>
+          <span>Sort field</span>
+          <input data-testid="studio-view-sort-field" value={sort.field} onChange={(event) => updateSort({ field: event.target.value })} />
+        </label>
+        <label>
+          <span>Sort direction</span>
+          <select data-testid="studio-view-sort-direction" value={sort.direction} onChange={(event) => updateSort({ direction: event.target.value as ViewSort["direction"] })}>
+            <option value="asc">asc</option>
+            <option value="desc">desc</option>
+          </select>
+        </label>
+      </div>
+      <div className="studioList compact">
+        {filters.map((filter, index) => (
+          <div className="studioRow" key={`${filter.field}-${index}`} data-testid="studio-view-filter">
+            <input data-testid={`studio-view-filter-field-${index}`} value={filter.field} onChange={(event) => updateFilter(index, { field: event.target.value })} />
+            <select data-testid={`studio-view-filter-op-${index}`} value={filter.op} onChange={(event) => updateFilter(index, { op: event.target.value as ViewFilter["op"] })}>
+              {FILTER_OPS.map((op) => (
+                <option key={op} value={op}>{op}</option>
+              ))}
+            </select>
+            <input data-testid={`studio-view-filter-value-${index}`} value={String(filter.value ?? "")} onChange={(event) => updateFilter(index, { value: event.target.value })} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WorkflowStudio({ definition, onChange }: { definition: WorkflowDefinition; onChange: (next: EditableDefinition) => void }) {
+  const updateState = (index: number, patch: Partial<WorkflowState>) =>
+    onChange({ ...definition, states: definition.states.map((state, candidate) => (candidate === index ? { ...state, ...patch } : state)) });
+  const updateTransition = (index: number, patch: Partial<WorkflowTransition>) =>
+    onChange({
+      ...definition,
+      transitions: definition.transitions.map((transition, candidate) => (candidate === index ? { ...transition, ...patch } : transition))
+    });
+  const stateNames = definition.states.map((state) => state.name);
+
+  return (
+    <div className="studioPanel" data-testid="studio-workflow">
+      <label>
+        <span>Title</span>
+        <input data-testid="studio-workflow-title" value={definition.title} onChange={(event) => onChange({ ...definition, title: event.target.value })} />
+      </label>
+      <label>
+        <span>Initial state</span>
+        <select data-testid="studio-workflow-initial" value={definition.initialState} onChange={(event) => onChange({ ...definition, initialState: event.target.value })}>
+          {stateNames.map((state) => (
+            <option key={state} value={state}>{state}</option>
+          ))}
+        </select>
+      </label>
+      <div className="studioList">
+        {definition.states.map((state, index) => (
+          <div className="studioRow" key={`${state.name}-${index}`} data-testid="studio-workflow-state">
+            <input data-testid={`studio-workflow-state-name-${index}`} value={state.name} onChange={(event) => updateState(index, { name: event.target.value })} />
+            <input data-testid={`studio-workflow-state-label-${index}`} value={state.label} onChange={(event) => updateState(index, { label: event.target.value })} />
+            <label className="compactCheck">
+              <input data-testid={`studio-workflow-state-final-${index}`} type="checkbox" checked={Boolean(state.final)} onChange={(event) => updateState(index, { final: event.target.checked || undefined })} />
+              Final
+            </label>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        data-testid="studio-workflow-add-state"
+        onClick={() => onChange({ ...definition, states: [...definition.states, { name: uniqueName("state", stateNames), label: "New state" }] })}
+      >
+        Add State
+      </button>
+      <div className="studioList">
+        {definition.transitions.map((transition, index) => (
+          <div className="studioRow transitionRow" key={`${transition.id}-${index}`} data-testid="studio-workflow-transition">
+            <input data-testid={`studio-workflow-transition-id-${index}`} value={transition.id} onChange={(event) => updateTransition(index, { id: event.target.value })} />
+            <input data-testid={`studio-workflow-transition-label-${index}`} value={transition.label} onChange={(event) => updateTransition(index, { label: event.target.value })} />
+            <select data-testid={`studio-workflow-transition-from-${index}`} value={transition.from} onChange={(event) => updateTransition(index, { from: event.target.value })}>
+              <option value="*">*</option>
+              {stateNames.map((state) => (
+                <option key={state} value={state}>{state}</option>
+              ))}
+            </select>
+            <select data-testid={`studio-workflow-transition-to-${index}`} value={transition.to} onChange={(event) => updateTransition(index, { to: event.target.value })}>
+              {stateNames.map((state) => (
+                <option key={state} value={state}>{state}</option>
+              ))}
+            </select>
+            <input data-testid={`studio-workflow-transition-guard-${index}`} value={transition.guard ?? ""} onChange={(event) => updateTransition(index, { guard: event.target.value || undefined })} />
+            <input data-testid={`studio-workflow-transition-role-${index}`} value={transition.requiredRole ?? ""} onChange={(event) => updateTransition(index, { requiredRole: event.target.value || undefined })} />
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        data-testid="studio-workflow-add-transition"
+        onClick={() =>
+          onChange({
+            ...definition,
+            transitions: [
+              ...definition.transitions,
+              {
+                id: uniqueName("transition", definition.transitions.map((transition) => transition.id)),
+                label: "New transition",
+                from: definition.initialState,
+                to: definition.initialState
+              }
+            ]
+          })
+        }
+      >
+        Add Transition
+      </button>
+    </div>
   );
 }
 
@@ -607,7 +899,7 @@ function App() {
   const selectedForm = definitions?.forms.find((form) => form.docType === selectedView?.docType) ?? definitions?.form;
   const selectedWorkflow = definitions?.workflows.find((workflow) => workflow.docType === selectedForm?.docType);
   const selected = documents.find((doc) => doc._id === selectedId);
-  const editableDefinitions = [...(definitions?.forms ?? []), ...(definitions?.views ?? [])];
+  const editableDefinitions = [...(definitions?.forms ?? []), ...(definitions?.views ?? []), ...(definitions?.workflows ?? [])];
 
   const refresh = React.useCallback(async () => {
     const [nextStatus, nextDefinitions, nextConflicts] = await Promise.all([

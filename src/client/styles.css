@@ -328,6 +328,82 @@ small {
   max-width: 320px;
 }
 
+.studioPanel {
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.studioPanel > label,
+.studioSubgrid label {
+  display: grid;
+  gap: 6px;
+}
+
+.studioPanel > label span,
+.studioSubgrid span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.studioList {
+  display: grid;
+  gap: 8px;
+}
+
+.studioList.compact {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.studioRow {
+  align-items: center;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(120px, 1fr) minmax(140px, 1.2fr) 130px auto auto;
+  padding: 8px;
+}
+
+.studioRow.transitionRow {
+  grid-template-columns: minmax(90px, 1fr) minmax(130px, 1.1fr) 110px 110px minmax(140px, 1fr) minmax(120px, 0.9fr);
+}
+
+.studioSubgrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 160px;
+}
+
+.compactCheck {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 0.84rem;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.compactCheck input {
+  min-height: 18px;
+  width: 18px;
+}
+
+.jsonEscape {
+  border-bottom: 1px solid var(--line);
+}
+
+.jsonEscape summary {
+  cursor: pointer;
+  font-weight: 800;
+  padding: 12px 16px;
+}
+
 .jsonEditor {
   border: 0;
   border-bottom: 1px solid var(--line);
@@ -429,6 +505,12 @@ pre {
   .pill,
   button {
     justify-content: center;
+  }
+
+  .studioRow,
+  .studioRow.transitionRow,
+  .studioSubgrid {
+    grid-template-columns: 1fr;
   }
 }
 
