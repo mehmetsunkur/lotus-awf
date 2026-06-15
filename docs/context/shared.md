@@ -24,6 +24,8 @@ No DOM, no Node/server-only APIs.
 - `src/shared/types.ts` — `FormDefinition`, `ViewDefinition`, `WorkflowDefinition`, `FormField`,
   `BusinessDocument` (incl. optional `state`/`history`), `TransitionEvent`, etc.
 - `src/shared/validation.ts` — `validatePayload`, `applyFormDefaults`, `normalizePayload`, `isFieldRequired/Visible/ReadOnly`.
+- `src/shared/definition-validation.ts` (M4) — shared validators for `form:*`, `view:*`, and
+  `workflow:*` documents before local definition writes.
 - `src/shared/expression.ts` — `evaluateExpression`, `evaluateBoolean` (portable evaluator).
 - `src/shared/workflow.ts` (M3) — portable workflow engine: `currentState`, `availableTransitions`,
   `applyTransition`. Pure; reuses `evaluateBoolean` for guards and fails closed on a bad guard.
@@ -36,9 +38,12 @@ workflow the browser uses `availableTransitions` (to render actions) and the ser
 `applyTransition` (to authorize the write) — one module, so the two cannot diverge. `now` is the one
 non-deterministic context value (sampled per side), so guards must not gate on it.
 
+M4 adds shared definition validation: the browser uses it before saving from the authoring studio or
+JSON editor, and the API uses it before writing `form:*`, `view:*`, or `workflow:*` to local CouchDB.
+
 ## Existing Patterns
 
-- Pure functions over `(form, payload, doc)` — no I/O, no globals.
+- Pure functions over definitions, payloads, and docs — no I/O, no DOM, no Node/server-only APIs.
 - Definition shape changes go in `types.ts` first, then `seed-data.ts` and the API.
 
 ## Invariants
@@ -58,5 +63,6 @@ exercised indirectly through `tests/e2e/**`.
 ## Common Pitfalls
 
 - Adding a rule to the client or a definition only, breaking client/API parity.
+- Adding definition validation only in the client or only in the API.
 - Importing anything Node- or DOM-specific into `src/shared` (breaks portability).
 - Widening the expression evaluator in a way that is unsafe or non-deterministic.

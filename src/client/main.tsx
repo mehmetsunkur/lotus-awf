@@ -554,11 +554,21 @@ function DefinitionEditor({
 }
 
 function FormStudio({ definition, onChange }: { definition: FormDefinition; onChange: (next: EditableDefinition) => void }) {
-  const updateField = (index: number, patch: Partial<FormField>) =>
+  const updateField = (index: number, patch: Partial<FormField>) => {
+    const currentName = definition.fields[index]?.name;
+    const nextName = patch.name;
     onChange({
       ...definition,
-      fields: definition.fields.map((field, candidate) => (candidate === index ? { ...field, ...patch } : field))
+      fields: definition.fields.map((field, candidate) => (candidate === index ? { ...field, ...patch } : field)),
+      sections:
+        currentName && nextName
+          ? definition.sections?.map((section) => ({
+              ...section,
+              fields: section.fields.map((field) => (field === currentName ? nextName : field))
+            }))
+          : definition.sections
     });
+  };
   const removeField = (index: number) => {
     const removed = definition.fields[index];
     onChange({

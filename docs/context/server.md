@@ -19,8 +19,8 @@
 ## Purpose
 
 Express API over **two** CouchDB replicas (local `:5985`, server `:5984`). Owns definitions,
-business documents, bidirectional replication, conflict inspection/resolution, Mango indexes, and
-(M3) workflow transitions + sync reconciliation.
+definition validation, business documents, bidirectional replication, conflict inspection/resolution,
+Mango indexes, and (M3) workflow transitions + sync reconciliation.
 
 ## Main Files
 
@@ -36,12 +36,15 @@ business documents, bidirectional replication, conflict inspection/resolution, M
 - Save: `POST/PUT /api/documents` → shared `validatePayload` → write to **local** Couch.
 - List: `GET /api/views/:id/documents` → `mangoSelector(view.filters)` → `findDocs`; on `updatedAt` sort binds `m3-docType-state-updatedAt` for state-filtered views, else `m2-kind-docType-updatedAt` (hints bind because `createIndex` pins `ddoc === name`).
 - Transition (M3): `POST /api/documents/:id/transition` → shared `applyTransition` (roles from `acl:rules`) → write **local** Couch; `422` on an illegal/role-gated transition.
+- Definition save (M4): `PUT /api/definitions/:id` accepts `form:*`, `view:*`, and `workflow:*`,
+  runs shared `validateDesignDefinition`, then writes **local** Couch; invalid definitions return
+  `422 definition_validation_failed`.
 - Sync: `POST /api/replicate` → `replicateBidirectional` → `reconcileStates` reports concurrent state divergence; conflicts surfaced via `/api/conflicts`. Resolve accepts `chosenRev` to elect the winning revision's state.
 
 ## Existing Patterns
 
 - Endpoints are thin; CouchDB access goes through `couch.ts` helpers.
-- Validation always via `src/shared` (never re-implemented server-side).
+- Payload and definition validation always go via `src/shared` (never re-implemented server-side).
 
 ## Invariants
 
@@ -64,5 +67,6 @@ See `docs/invariants.md`: **Replication & conflict**, **ACL / readers**, **Offli
   `m3-docType-state-updatedAt`) live in `scripts/seed.ts`, `scripts/reset.ts`, AND `ensureIndexes` in
   `src/server/index.ts` — update all three together.
 - Adding a server save path that bypasses shared validation.
+- Letting `PUT /api/definitions/:id` accept a new definition kind without updating shared validation.
 - A query path that ignores `readers` filtering and leaks across users/roles.
 - A change that makes an offline action depend on the server replica.

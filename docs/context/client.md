@@ -18,12 +18,13 @@
 ## Purpose
 
 React metadata-driven runtime UI: renders forms/views from replicated definitions, edits local
-documents, hosts the JSON definition editor and the conflict resolution panel.
+documents, hosts the M4 structured definition studio (with JSON escape hatch) and the conflict
+resolution panel.
 
 ## Main Files
 
 - `src/client/main.tsx` — the entire single-file runtime shell (status strip, view picker,
-  document table/form, definition editor, conflict panel, and the M3 `WorkflowBar` /
+  document table/form, M4 definition studio, conflict panel, and the M3 `WorkflowBar` /
   `WorkflowHistory` and per-revision conflict resolution).
 - `src/client/styles.css`.
 
@@ -34,6 +35,9 @@ documents, hosts the JSON definition editor and the conflict resolution panel.
 - Edit → shared `validatePayload` runs client-side → `POST/PUT /api/documents` (local replica).
 - Transition (M3) → `WorkflowBar` renders `availableTransitions` (shared engine) → `POST
   /api/documents/:id/transition` → refresh.
+- Authoring (M4) → structured form/view/workflow controls update the JSON definition in memory →
+  shared `validateDesignDefinition` runs client-side → `PUT /api/definitions/:id` (local replica) →
+  refresh.
 - Conflict resolve → "Keep This Revision" on any revision → `POST /api/conflicts/:id/resolve` with
   `chosenRev` so the elected state/history survives.
 - Switch view does NOT auto-refetch documents; a refresh does (see `tests/e2e/support/fixtures.ts`).
@@ -41,6 +45,7 @@ documents, hosts the JSON definition editor and the conflict resolution panel.
 ## Existing Patterns
 
 - Validation/visibility/defaults come from `src/shared` (same code as the API).
+- Definition validation comes from `src/shared/definition-validation.ts` (same code as the API).
 - Stable selectors: elements carry `data-testid` for e2e (see `tests/e2e/`).
 
 ## Invariants
