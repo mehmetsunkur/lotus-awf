@@ -12,6 +12,7 @@ import type {
   ViewFilter,
   WorkflowDefinition
 } from "../shared/types";
+import { validateDesignDefinition } from "../shared/definition-validation";
 import { normalizePayload, validatePayload } from "../shared/validation";
 import { applyTransition, currentState } from "../shared/workflow";
 import {
@@ -403,12 +404,17 @@ app.put(
   "/api/definitions/:id",
   asyncRoute(async (request, response) => {
     const id = routeParam(request.params.id);
-    if (!id.startsWith("form:") && !id.startsWith("view:")) {
-      response.status(400).json({ error: "bad_request", reason: "Only form:* and view:* docs are editable in M2" });
+    if (!id.startsWith("form:") && !id.startsWith("view:") && !id.startsWith("workflow:")) {
+      response.status(400).json({ error: "bad_request", reason: "Only form:*, view:*, and workflow:* docs are editable" });
       return;
     }
     const existing = await getDoc<CouchDocument>("local", id);
-    const next = { ...request.body, _id: id, _rev: existing._rev };
+    const next = { ...request.body, _id: id, _rev: existing._rev } as CouchDocument;
+    const errors = validateDesignDefinition(next);
+    if (errors.length) {
+      response.status(422).json({ error: "definition_validation_failed", errors });
+      return;
+    }
     const result = await putDoc("local", next);
     response.json({ ...next, _rev: result.rev });
   })
