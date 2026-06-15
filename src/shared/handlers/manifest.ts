@@ -22,6 +22,11 @@ export const HANDLER_MANIFEST: HandlerManifestEntry[] = [
     name: "audit-transition",
     kind: "effect",
     description: "Append a server-side audit-log entry recording a workflow transition."
+  },
+  {
+    name: "record-activity",
+    kind: "agent",
+    description: "Record a durable agent run describing the schedule tick or document change that fired it."
   }
 ];
 

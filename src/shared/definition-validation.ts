@@ -10,7 +10,7 @@ import type {
 } from "./types";
 import { evaluateBoolean } from "./expression";
 import { findHandler, handlerHasKind } from "./handlers/manifest";
-import type { HandlerKind } from "./types";
+import type { AgentDefinition, HandlerKind } from "./types";
 
 const FIELD_TYPES = new Set(["text", "textarea", "number", "date", "boolean", "select"]);
 const FILTER_OPS = new Set(["eq", "ne", "gt", "gte", "lt", "lte", "in"]);
@@ -196,10 +196,38 @@ export function validateWorkflowDefinition(definition: WorkflowDefinition): Vali
   return errors;
 }
 
+export function validateAgentDefinition(definition: AgentDefinition): ValidationError[] {
+  const errors: ValidationError[] = [];
+  if (!definition._id?.startsWith("agent:")) errors.push(error("_id", "Agent id must start with agent:"));
+  if (definition.kind !== "agent") errors.push(error("kind", "Agent kind must be agent"));
+  if (!nonEmpty(definition.appId)) errors.push(error("appId", "App id is required"));
+  if (!nonEmpty(definition.title)) errors.push(error("title", "Title is required"));
+
+  errors.push(...validateHandlerRef(definition.handler, "agent", "handler"));
+  if (!nonEmpty(definition.handler)) errors.push(error("handler", "Agent handler is required"));
+
+  const trigger = definition.trigger;
+  if (!isObject(trigger)) {
+    errors.push(error("trigger", "Agent trigger is required"));
+  } else if (trigger.type === "schedule") {
+    if (typeof trigger.everyMs !== "number" || !Number.isFinite(trigger.everyMs) || trigger.everyMs < 0) {
+      errors.push(error("trigger.everyMs", "Schedule everyMs must be a non-negative number"));
+    }
+  } else if (trigger.type === "on-change") {
+    if (trigger.docType !== undefined && !nonEmpty(trigger.docType)) {
+      errors.push(error("trigger.docType", "on-change docType must be a non-empty string when set"));
+    }
+  } else {
+    errors.push(error("trigger.type", `Unknown trigger type: ${String((trigger as { type?: unknown }).type)}`));
+  }
+  return errors;
+}
+
 export function validateDesignDefinition(definition: CouchDocument): ValidationError[] {
   if (!isObject(definition)) return [error("definition", "Definition must be an object")];
   if (definition.kind === "form") return validateFormDefinition(definition as FormDefinition);
   if (definition.kind === "view") return validateViewDefinition(definition as ViewDefinition);
   if (definition.kind === "workflow") return validateWorkflowDefinition(definition as WorkflowDefinition);
-  return [error("kind", "Only form, view, and workflow definitions are editable")];
+  if (definition.kind === "agent") return validateAgentDefinition(definition as AgentDefinition);
+  return [error("kind", "Only form, view, workflow, and agent definitions are editable")];
 }

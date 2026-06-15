@@ -23,7 +23,7 @@ export type ExpressionRule = {
  * server, offline); `effect` handlers do server-only I/O. The manifest is the
  * portable source of truth that validation checks a reference against.
  */
-export type HandlerKind = "pure" | "effect";
+export type HandlerKind = "pure" | "effect" | "agent";
 
 export type HandlerManifestEntry = {
   name: string;
@@ -176,6 +176,56 @@ export type BusinessDocument = {
   history?: TransitionEvent[];
 };
 
+/**
+ * Agent runtime (M8). Agents are replicated `agent:*` definitions that run a
+ * registered `agent`-kind handler on a trigger. Execution is server-authoritative
+ * and tick-driven (see docs/M8); the matching/scheduling logic is pure (in
+ * `src/shared/agents.ts`) so it is portable and unit-testable.
+ */
+export type AgentTrigger =
+  | { type: "schedule"; everyMs: number }
+  | { type: "on-change"; docType?: string };
+
+export type AgentDefinition = {
+  _id: `agent:${string}`;
+  _rev?: string;
+  kind: "agent";
+  appId: string;
+  title: string;
+  /** Name of a registered `agent`-kind handler (validated against the manifest). */
+  handler: string;
+  trigger: AgentTrigger;
+  /** When false the agent is defined but never fires. Absent means enabled. */
+  enabled?: boolean;
+};
+
+/** Durable record of one agent execution (`agentrun:*`). Runtime data, never templated. */
+export type AgentRun = {
+  _id: `agentrun:${string}`;
+  _rev?: string;
+  kind: "agentrun";
+  appId: string;
+  agentId: string;
+  trigger: AgentTrigger["type"];
+  /** Triggering document id + rev for on-change runs; absent for scheduled runs. */
+  sourceId?: string;
+  sourceRev?: string;
+  startedAt: string;
+  ok: boolean;
+  detail: string;
+  readers: string[];
+};
+
+/** Singleton checkpoint (`agent:state`): change-feed cursor + per-agent last-run stamps. Runtime data. */
+export type AgentState = {
+  _id: "agent:state";
+  _rev?: string;
+  kind: "agentstate";
+  appId: string;
+  lastSeq: string;
+  lastRunAt: Record<string, string>;
+};
+
 export type AclRules = {
   _id: "acl:rules";
   _rev?: string;
@@ -185,7 +235,13 @@ export type AclRules = {
   users: Array<{ user: string; roles: string[] }>;
 };
 
-export type DesignDocument = AppConfig | FormDefinition | ViewDefinition | WorkflowDefinition | AclRules;
+export type DesignDocument =
+  | AppConfig
+  | FormDefinition
+  | ViewDefinition
+  | WorkflowDefinition
+  | AgentDefinition
+  | AclRules;
 
 export type TemplateArtifact = {
   kind: "template";
