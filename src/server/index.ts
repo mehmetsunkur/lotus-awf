@@ -29,8 +29,10 @@ import {
   stripDefinitionRev,
   validateTemplateArtifact
 } from "../shared/template";
-import { normalizePayload, validatePayload } from "../shared/validation";
+import { applyComputedFields, normalizePayload, validatePayload } from "../shared/validation";
 import { applyTransition, currentState } from "../shared/workflow";
+import { HANDLER_MANIFEST } from "../shared/handlers/manifest";
+import { clearEffectLog, readEffectLog, runEffect } from "./handlers/effects";
 import {
   allDocs,
   allRuntimeDocs,
@@ -350,6 +352,7 @@ app.post(
   "/api/reset",
   asyncRoute(async (_request, response) => {
     await Promise.all([seedTarget("local", true), seedTarget("server", true)]);
+    clearEffectLog();
     response.json({ ok: true });
   })
 );
@@ -489,7 +492,7 @@ app.post(
     const docType = request.body.docType ?? "expense";
     const form = await formForDocType(docType);
     const optionsByField = await selectOptionsForForm(form);
-    const payload = normalizePayload(form, request.body.payload ?? {});
+    const payload = applyComputedFields(form, normalizePayload(form, request.body.payload ?? {}));
     const errors = validatePayload(form, payload, undefined, optionsByField);
     if (errors.length) {
       response.status(422).json({ error: "validation_failed", errors });
@@ -513,7 +516,7 @@ app.put(
       return;
     }
     const form = await formForDocType(existing.docType);
-    const payload = normalizePayload(form, request.body.payload ?? existing.payload);
+    const payload = applyComputedFields(form, normalizePayload(form, request.body.payload ?? existing.payload), existing);
     const errors = validatePayload(form, payload, existing, await selectOptionsForForm(form));
     if (errors.length) {
       response.status(422).json({ error: "validation_failed", errors });
@@ -562,7 +565,32 @@ app.post(
     }
     const updated: BusinessDocument = { ...result.document, updatedAt: timestamp(), updatedBy: config.appUser };
     const put = await putDoc("local", updated);
-    response.json({ ...updated, _rev: put.rev });
+    // M7: the state change is now committed and authoritative. The transition's
+    // effect handler (if any) runs best-effort AFTER the write — server-only,
+    // never throwing, never reverting — so a failing effect cannot block or
+    // corrupt the lifecycle. Its outcome is surfaced, not enforced.
+    const transition = def.transitions.find((candidate) => candidate.id === request.body.transition)!;
+    const effect = runEffect(transition.action, {
+      document: { ...updated, _rev: put.rev },
+      transition,
+      user: config.appUser,
+      now: timestamp()
+    });
+    response.json({ ...updated, _rev: put.rev, effects: effect ? [effect] : [] });
+  })
+);
+
+app.get(
+  "/api/plugins/manifest",
+  asyncRoute(async (_request, response) => {
+    response.json(HANDLER_MANIFEST);
+  })
+);
+
+app.get(
+  "/api/plugins/log",
+  asyncRoute(async (_request, response) => {
+    response.json(readEffectLog());
   })
 );
 
