@@ -28,7 +28,9 @@ body {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
@@ -146,11 +148,28 @@ button:disabled {
 .listPanel,
 .editorPanel,
 .conflictPanel,
+.definitionPanel,
 .emptyState {
   background: rgb(255 250 240 / 88%);
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: var(--shadow);
+}
+
+.band {
+  margin-bottom: 16px;
+}
+
+.segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.segmented button.active {
+  background: var(--brand-strong);
+  border-color: var(--brand-strong);
+  color: white;
 }
 
 .panelHead {
@@ -216,7 +235,9 @@ label span {
   font-weight: 700;
 }
 
-input {
+input,
+select,
+textarea {
   background: white;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -225,9 +246,64 @@ input {
   width: 100%;
 }
 
-input:focus {
+textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+select {
+  appearance: none;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
   border-color: var(--brand);
   outline: 2px solid rgb(15 118 110 / 18%);
+}
+
+fieldset {
+  border: 1px solid rgb(207 200 183 / 80%);
+  border-radius: 6px;
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 14px;
+}
+
+legend {
+  color: var(--brand-strong);
+  font-weight: 700;
+  padding: 0 6px;
+}
+
+small {
+  color: var(--muted);
+}
+
+.checkboxLine {
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) 42px;
+}
+
+.checkboxLine input {
+  justify-self: end;
+  min-height: 22px;
+  width: 22px;
+}
+
+.errorBox,
+.inlineError {
+  background: rgb(189 75 42 / 10%);
+  border: 1px solid rgb(189 75 42 / 35%);
+  border-radius: 6px;
+  color: var(--warn);
+  padding: 0.7rem;
+}
+
+.errorBox p,
+.inlineError {
+  margin: 0;
 }
 
 .formActions {
@@ -238,6 +314,31 @@ input:focus {
 
 .conflictPanel {
   margin-top: 16px;
+}
+
+.definitionPanel {
+  margin-top: 16px;
+}
+
+.definitionPanel .panelHead {
+  gap: 14px;
+}
+
+.definitionPanel .panelHead select {
+  max-width: 320px;
+}
+
+.jsonEditor {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  min-height: 360px;
+  padding: 16px;
+}
+
+.definitionActions {
+  padding: 16px;
 }
 
 .conflictGrid {
@@ -329,4 +430,66 @@ pre {
   button {
     justify-content: center;
   }
+}
+
+/* M3 workflow */
+.workflowBar {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: space-between;
+  margin: 0 0 14px;
+  padding: 0.55rem 0.7rem;
+}
+
+.workflowActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.statePill {
+  background: rgb(43 92 158 / 10%);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.6rem;
+  text-transform: capitalize;
+}
+
+.statePill[data-state="approved"] {
+  background: rgb(31 122 77 / 12%);
+  color: var(--good);
+}
+
+.statePill[data-state="rejected"] {
+  background: rgb(189 75 42 / 12%);
+  color: var(--warn);
+}
+
+.conflictTag {
+  color: var(--warn);
+  font-size: 0.8rem;
+}
+
+.workflowHistory {
+  border-top: 1px solid var(--line);
+  margin-top: 14px;
+  padding-top: 10px;
+}
+
+.workflowHistory h3 {
+  font-size: 0.9rem;
+  margin: 0 0 6px;
+}
+
+.workflowHistory ol {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin: 0;
+  padding-left: 1.1rem;
 }

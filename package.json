@@ -10,7 +10,12 @@
     "reset": "tsx scripts/reset.ts",
     "replicate": "tsx scripts/replicate.ts",
     "force-conflict": "tsx scripts/force-conflict.ts",
-    "acl-spike": "tsx scripts/acl-spike.ts"
+    "force-state-conflict": "tsx scripts/force-state-conflict.ts",
+    "acl-spike": "tsx scripts/acl-spike.ts",
+    "test:serve": "E2E=1 concurrently -n api,web -c cyan,green \"tsx src/server/index.ts\" \"vite --host 0.0.0.0 --port 3000\"",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",
@@ -18,14 +23,15 @@
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "ulid": "^2.3.0",
-    "vite": "^7.0.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "vite": "^7.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.2",

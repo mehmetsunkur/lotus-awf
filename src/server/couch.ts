@@ -1,4 +1,4 @@
-import type { BusinessDocument } from "../shared/types";
+import type { BusinessDocument, CouchDocument } from "../shared/types";
 import { config } from "./config";
 
 export type CouchTarget = "local" | "server";
@@ -138,6 +138,13 @@ export async function bulkDocs(target: CouchTarget, docs: object[]) {
   });
 }
 
+export async function createIndex(target: CouchTarget, name: string, fields: string[]) {
+  return couchRequest(target, `/${config.appDb}/_index`, {
+    method: "POST",
+    body: JSON.stringify({ index: { fields }, name, type: "json" })
+  });
+}
+
 export async function allDocs<T>(target: CouchTarget, options: Record<string, unknown> = {}) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(options)) {
@@ -147,6 +154,13 @@ export async function allDocs<T>(target: CouchTarget, options: Record<string, un
     target,
     `/${config.appDb}/_all_docs?${params.toString()}`
   );
+}
+
+export async function findDocs<T>(target: CouchTarget, body: Record<string, unknown>) {
+  return couchRequest<{ docs: T[] }>(target, `/${config.appDb}/_find`, {
+    method: "POST",
+    body: JSON.stringify(body)
+  });
 }
 
 export async function docsByKind<T>(target: CouchTarget, kind: string): Promise<T[]> {
@@ -159,13 +173,31 @@ export async function docsByKind<T>(target: CouchTarget, kind: string): Promise<
     .filter((doc): doc is T & { kind?: string } => Boolean(doc && doc.kind === kind)) as T[];
 }
 
+export async function allRuntimeDocs(target: CouchTarget) {
+  const result = await allDocs<CouchDocument>(target, {
+    include_docs: true,
+    conflicts: true
+  });
+  return result.rows
+    .map((row) => row.doc)
+    .filter((doc): doc is CouchDocument => Boolean(doc && !("_deleted" in doc)));
+}
+
 export async function getDesignDoc(target: CouchTarget, id: string) {
   return getDoc(target, id);
 }
 
 export async function getBusinessDocs(target: CouchTarget, docType = "expense") {
-  const docs = await docsByKind<BusinessDocument>(target, "document");
-  return docs.filter((doc) => doc.docType === docType && !("_deleted" in doc));
+  const result = await findDocs<BusinessDocument>(target, {
+    selector: {
+      kind: "document",
+      docType
+    },
+    sort: [{ updatedAt: "desc" }],
+    use_index: "m2-kind-docType-updatedAt",
+    limit: 200
+  });
+  return result.docs.filter((doc) => !("_deleted" in doc));
 }
 
 export async function replicateOnce(direction: "push" | "pull") {

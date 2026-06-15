@@ -3,3 +3,11 @@ dist/
 .env
 .DS_Store
 npm-debug.log*
+
+# Playwright e2e artifacts
+test-results/
+playwright-report/
+blob-report/
+
+# bv (beads viewer) local config and caches
+.bv/

@@ -1,0 +1,53 @@
+template_source: sunkur-ai/sunkur-ai-workflow-templates
+template_name: 04-agent-workflow-system
+template_repo_version: 0.4.0
+template_version: 0.6.0
+template_commit: 72ec959
+applied_date: 2026-06-14
+update_policy: report_only
+managed_files:
+  - path: AGENTS.md
+    ownership: hybrid
+  - path: CLAUDE.md
+    ownership: hybrid
+  - path: docs/agent-workflow.md
+    ownership: hybrid
+  - path: docs/context/README.md
+    ownership: hybrid
+  - path: docs/context/_template.md
+    ownership: hybrid
+  - path: docs/decisions/README.md
+    ownership: template
+  - path: docs/decisions/_template.md
+    ownership: hybrid
+  - path: docs/doc-sync.md
+    ownership: template
+  - path: docs/invariants.md
+    ownership: project
+  - path: docs/taxonomy.md
+    ownership: project
+  - path: docs/template-sync.md
+    ownership: template
+  - path: docs/template-sync.yml
+    ownership: template
+  - path: docs/testing-guide.md
+    ownership: hybrid
+  - path: docs/task-preflight-template.md
+    ownership: hybrid
+  - path: .claude/settings.json
+    ownership: template
+  - path: .claude/commands/doc-sync-check.md
+    ownership: template
+  - path: .claude/hooks/doc-sync.mjs
+    ownership: template
+  - path: .claude/lib/doc-sync.mjs
+    ownership: template
+  - path: .claude/scripts/doc-sync-scan.mjs
+    ownership: template
+  - path: .claude/commands/preflight.md
+    ownership: template
+  - path: .claude/hooks/invariants.mjs
+    ownership: template
+  - path: .claude/lib/invariants.mjs
+    ownership: template
+ignored_template_updates: []
