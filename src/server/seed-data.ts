@@ -1,6 +1,7 @@
 import { ulid } from "ulid";
 import type {
   AclRules,
+  AgentDefinition,
   AppConfig,
   BusinessDocument,
   FormDefinition,
@@ -54,7 +55,7 @@ export function createVendorDoc(
 }
 
 export function seedDocuments(): Array<
-  AppConfig | FormDefinition | ViewDefinition | WorkflowDefinition | AclRules | BusinessDocument
+  AppConfig | FormDefinition | ViewDefinition | WorkflowDefinition | AgentDefinition | AclRules | BusinessDocument
 > {
   return [
     {
@@ -246,6 +247,22 @@ export function seedDocuments(): Array<
         { id: "approve", label: "Approve", from: "submitted", to: "approved", requiredRole: "role:finance" },
         { id: "reject", label: "Reject", from: "submitted", to: "rejected", requiredRole: "role:finance" }
       ]
+    },
+    {
+      _id: "agent:daily-digest",
+      kind: "agent",
+      appId: "expense",
+      title: "Daily digest",
+      handler: "record-activity",
+      trigger: { type: "schedule", everyMs: 60000 }
+    },
+    {
+      _id: "agent:on-expense-change",
+      kind: "agent",
+      appId: "expense",
+      title: "On expense change",
+      handler: "record-activity",
+      trigger: { type: "on-change", docType: "expense" }
     },
     {
       _id: "acl:rules",
