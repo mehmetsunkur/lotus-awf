@@ -12,6 +12,7 @@
     "force-conflict": "tsx scripts/force-conflict.ts",
     "force-state-conflict": "tsx scripts/force-state-conflict.ts",
     "acl-spike": "tsx scripts/acl-spike.ts",
+    "app": "tsx scripts/app.ts",
     "test:serve": "E2E=1 concurrently -n api,web -c cyan,green \"tsx src/server/index.ts\" \"vite --host 0.0.0.0 --port 3000\"",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
