@@ -106,7 +106,8 @@ curl -sf -X POST http://localhost:3001/api/demo/definition-conflict
 
 Live API checks also verified:
 
-- `GET /api/definitions` returns `form:expense`, `form:vendor`, and three views;
+- `GET /api/definitions` returns `form:expense`, `form:vendor`, and the M2 views (`view:my-expenses`,
+  `view:all-expenses`, `view:vendors`; M3 later adds `view:pending-approvals`);
 - `GET /api/views/view%3Amy-expenses/documents` returns expense docs;
 - `GET /api/views/view%3Avendors/documents` returns vendor docs;
 - `GET /api/forms/expense/options` returns vendor select options;
