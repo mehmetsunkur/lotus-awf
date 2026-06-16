@@ -524,6 +524,7 @@ function DefinitionEditor({
   selectedId,
   onSelect,
   onSave,
+  onCreateType,
   optionsByField,
   user,
   roles
@@ -532,10 +533,13 @@ function DefinitionEditor({
   selectedId?: string;
   onSelect: (id: string) => void;
   onSave: (id: string, doc: EditableDefinition) => void;
+  onCreateType: (docType: string, title: string) => void;
   optionsByField: SelectOptionsByField;
   user: string;
   roles: string[];
 }) {
+  const [newType, setNewType] = React.useState("");
+  const [newTitle, setNewTitle] = React.useState("");
   const selected = definitions.find((doc) => doc._id === selectedId) ?? definitions[0];
   const [text, setText] = React.useState("");
   const [error, setError] = React.useState("");
@@ -587,6 +591,34 @@ function DefinitionEditor({
           ))}
         </select>
       </div>
+      <form
+        className="newTypeForm"
+        data-testid="new-type-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!newType.trim()) return;
+          onCreateType(newType.trim(), newTitle);
+          setNewType("");
+          setNewTitle("");
+        }}
+      >
+        <span className="kicker">New document type</span>
+        <input
+          aria-label="New document type"
+          data-testid="new-type-doctype"
+          placeholder="e.g. invoice"
+          value={newType}
+          onChange={(event) => setNewType(event.target.value)}
+        />
+        <input
+          aria-label="New document type title"
+          data-testid="new-type-title"
+          placeholder="Title (optional)"
+          value={newTitle}
+          onChange={(event) => setNewTitle(event.target.value)}
+        />
+        <button type="submit" data-testid="new-type-create" disabled={!newType.trim()}>Create type</button>
+      </form>
       {parsed?.kind === "form" ? (
         <div className="studioWithPreview">
           <FormStudio definition={parsed} onChange={updateDefinition} />
@@ -1230,6 +1262,15 @@ function App() {
               body: JSON.stringify(doc)
             })
           )
+        }
+        onCreateType={(docType, title) =>
+          run("Create document type", async () => {
+            await api("/api/document-types", { method: "POST", body: JSON.stringify({ docType, title }) });
+            // The subsequent refresh reloads definitions; point the studio + view
+            // picker at the new type so it is immediately in front of the user.
+            setSelectedDefinitionId(`form:${docType}`);
+            setSelectedViewId(`view:${docType}`);
+          })
         }
       />
       <ConflictPanel

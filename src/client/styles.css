@@ -394,6 +394,22 @@ small {
   width: 18px;
 }
 
+/* M12 new document type */
+.newTypeForm {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.newTypeForm input {
+  flex: 1 1 140px;
+  min-width: 120px;
+}
+
 /* M11 citizen layout studio */
 .studioSections {
   display: grid;
