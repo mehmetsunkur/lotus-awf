@@ -34,15 +34,18 @@ test.describe("full-text search", () => {
     await app.openView("view:all-expenses");
 
     // Two docs sharing a term, one repeating it: the repeat must rank first.
+    // `save()` returns on click, so wait for each save to settle before the next.
     await app.newDocument();
     await app.fillField("description", "zeta meeting");
     await app.fillField("amount", "10");
     await app.save();
+    await expect(app.message()).toHaveText("Save local document complete.");
 
     await app.newDocument();
     await app.fillField("description", "zeta zeta summit");
     await app.fillField("amount", "20");
     await app.save();
+    await expect(app.message()).toHaveText("Save local document complete.");
 
     await search(app, "zeta");
     await expect(app.documentRows()).toHaveCount(2);
