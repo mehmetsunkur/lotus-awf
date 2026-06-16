@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `23eb61c`
+- Last code review baseline: `a7271b3`
 - Last reviewed date: `2026-06-16`
 - Code areas:
   - `src/shared/**`
@@ -43,6 +43,10 @@ No DOM, no Node/server-only APIs.
   inference), `shouldAudit` (business docs only; skips the audit/agent runtime kinds; docTypes
   allowlist), `eventIsExpired` (retention horizon). The server's CDC recorder orchestrates I/O around
   these.
+- `src/shared/form-layout.ts` (M11) — pure form-layout ops (`ensureSections`, `moveFieldWithinSection`,
+  `moveFieldToSection`, `add/rename/move/removeSection`, `addFieldToSection`, `removeField`,
+  `renameField`, `isLayoutNormalized`). The citizen studio routes every layout mutation through these;
+  each preserves the normalized form (sections non-empty, every field in exactly one section).
 - `src/shared/handlers/manifest.ts` (M7) — declared handler manifest (`name`, `kind`); the portable
   source of truth for validating `compute`/`action` references.
 - `src/shared/handlers/pure.ts` (M7) — pure handler registry + `runPureHandler` (fails closed).
@@ -79,6 +83,10 @@ is identical offline and on the server; the server applies it only to the alread
 M10 adds the pure audit/retention engine and the `audit:policy` design-doc kind (validated by the
 shared validator). The decisions are deterministic; the server's CDC recorder writes `auditevent:*`
 runtime docs and prunes them by policy around these functions.
+
+M11 adds the pure form-layout engine. The citizen layout studio routes every section/field mutation
+through it, so the reorder/regroup rules are deterministic and unit-tested, and the form stays
+normalized (every field in exactly one section) — the runtime renders by section.
 
 ## Existing Patterns
 

@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `23eb61c`
+- Last code review baseline: `a7271b3`
 - Last reviewed date: `2026-06-16`
 - Code areas:
   - `src/client/**`
@@ -40,6 +40,10 @@ resolution panel.
 - Authoring (M4) → structured form/view/workflow controls update the JSON definition in memory →
   shared `validateDesignDefinition` runs client-side → `PUT /api/definitions/:id` (local replica) →
   refresh.
+- Layout studio (M11) → `FormStudio` groups fields by section with move buttons, a move-to-section
+  select, and native HTML5 drag, all routed through `src/shared/form-layout.ts` (keeps the form
+  normalized). A live preview reuses `DocumentForm` in read-only `preview` mode (`FieldEditor`'s
+  `testIdPrefix` → `preview-field-*`, no collision with the live `field-*`). Saves via the M4 path.
 - Conflict resolve → "Keep This Revision" on any revision → `POST /api/conflicts/:id/resolve` with
   `chosenRev` so the elected state/history survives.
 - Switch view does NOT auto-refetch documents; a refresh does (see `tests/e2e/support/fixtures.ts`).
@@ -58,7 +62,8 @@ resolution panel.
 
 ## Invariants
 
-See `docs/invariants.md`: **Validation parity** and **Offline editing** govern this subsystem.
+See `docs/invariants.md`: **Validation parity**, **Offline editing**, and **Form layout authoring**
+govern this subsystem.
 
 ## Relevant Decisions
 

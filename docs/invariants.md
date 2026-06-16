@@ -61,6 +61,11 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 - Full-text search must be a pure, deterministic, portable matcher (identical client/server/local-replica) applied only to the already ACL-scoped set, so it can narrow visibility but never widen it; searchable fields are data (`FormField.searchable`, text-ish default on) and search must not add a Mango index or a server-replica round-trip.
   - Paths: `src/shared/search.ts`, `src/server/index.ts`
 
+## Form layout authoring
+
+- Studio layout edits must go through the pure `src/shared/form-layout.ts` engine and keep the form normalized — `sections` non-empty and every field in exactly one section (the runtime renders by section, so an unsectioned field is invisible); removing a section reassigns its fields and the last section cannot be removed; saves go through shared `validateDesignDefinition` so edits stay back-compatible, and the studio preview reuses the runtime renderer without colliding testids.
+  - Paths: `src/shared/form-layout.ts`, `src/client/main.tsx`
+
 ## Audit & retention
 
 - Audit is server-authoritative and CDC-driven (drains `_changes` from a checkpoint, never on a device): events are durable and at-least-once with `docId@rev` dedupe, recorded only for business-document changes (the recorder must skip its own runtime kinds — no feedback loop), each `auditevent` copies the source document's `readers` and `GET /api/audit` filters by principal so visibility only narrows; retention prunes via a replicating tombstone `DELETE` (never M5 `_purge`); `audit:policy` is design data while `auditevent`/`audit:state` are runtime data, never templated.
