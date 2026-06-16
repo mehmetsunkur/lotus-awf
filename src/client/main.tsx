@@ -10,6 +10,7 @@ import {
   RefreshCcw,
   RotateCcw,
   Save,
+  Search,
   Trash2,
   Wifi,
   WifiOff
@@ -909,6 +910,11 @@ function App() {
   const [selectedConflict, setSelectedConflict] = React.useState<ConflictDetails>();
   const [message, setMessage] = React.useState("Runtime booting.");
   const [busy, setBusy] = React.useState(false);
+  // M9 search: `searchInput` drives the controlled box; `searchQueryRef` holds
+  // the committed query that `refresh` reads, so commit/clear never refetch with
+  // a stale closure. Like view switching, a refetch happens on submit, not keystroke.
+  const [searchInput, setSearchInput] = React.useState("");
+  const searchQueryRef = React.useRef("");
 
   const selectedView = definitions?.views.find((view) => view._id === selectedViewId) ?? definitions?.views[0];
   const selectedForm = definitions?.forms.find((form) => form.docType === selectedView?.docType) ?? definitions?.form;
@@ -923,7 +929,11 @@ function App() {
       api<CouchDocument[]>("/api/conflicts")
     ]);
     const view = nextDefinitions.views.find((item) => item._id === selectedViewId) ?? nextDefinitions.views[0];
-    const nextDocuments = view ? await api<BusinessDocument[]>(`/api/views/${encodeURIComponent(view._id)}/documents`) : [];
+    const query = searchQueryRef.current.trim();
+    const documentsUrl = view
+      ? `/api/views/${encodeURIComponent(view._id)}/documents${query ? `?q=${encodeURIComponent(query)}` : ""}`
+      : "";
+    const nextDocuments = view ? await api<BusinessDocument[]>(documentsUrl) : [];
     const form = nextDefinitions.forms.find((item) => item.docType === view?.docType) ?? nextDefinitions.forms[0];
     const nextOptions = form ? await api<SelectOptionsByField>(`/api/forms/${encodeURIComponent(form.docType)}/options`) : {};
 
@@ -994,6 +1004,41 @@ function App() {
           setSelectedViewId(id);
         }}
       />
+      <form
+        className="band"
+        data-testid="view-search"
+        onSubmit={(event) => {
+          event.preventDefault();
+          searchQueryRef.current = searchInput;
+          run(searchInput.trim() ? "Search" : "Refresh", refresh);
+        }}
+      >
+        <input
+          type="search"
+          value={searchInput}
+          placeholder="Search this view..."
+          aria-label="Search documents"
+          data-testid="view-search-input"
+          onChange={(event) => setSearchInput(event.target.value)}
+        />
+        <button type="submit" data-testid="view-search-submit" disabled={busy}>
+          <Search size={16} /> Search
+        </button>
+        {searchInput && (
+          <button
+            type="button"
+            data-testid="view-search-clear"
+            disabled={busy}
+            onClick={() => {
+              setSearchInput("");
+              searchQueryRef.current = "";
+              run("Refresh", refresh);
+            }}
+          >
+            Clear
+          </button>
+        )}
+      </form>
       <div className="workspace">
         <DocumentTable view={selectedView} documents={documents} selectedId={selectedId} onSelect={(doc) => setSelectedId(doc._id)} />
         <DocumentForm
