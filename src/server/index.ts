@@ -7,6 +7,10 @@ import type {
   AgentRun,
   AgentState,
   AppConfig,
+  AuditAction,
+  AuditEvent,
+  AuditPolicy,
+  AuditState,
   BusinessDocument,
   ConflictDetails,
   CouchDocument,
@@ -22,6 +26,7 @@ import {
   accessSelector,
   canEditDocument,
   canReadDocument,
+  principalsFor,
   readersForNewDocument,
   type PrincipalScope
 } from "../shared/access";
@@ -36,6 +41,7 @@ import { applyComputedFields, normalizePayload, validatePayload } from "../share
 import { applyTransition, currentState } from "../shared/workflow";
 import { agentIsDue, agentIsEnabled, agentMatchesChange, agentRunKey } from "../shared/agents";
 import { searchDocuments } from "../shared/search";
+import { auditAction, eventIsExpired, shouldAudit } from "../shared/audit";
 import { HANDLER_MANIFEST } from "../shared/handlers/manifest";
 import { clearEffectLog, readEffectLog, runEffect } from "./handlers/effects";
 import { runAgentHandler } from "./handlers/agents";
@@ -143,17 +149,29 @@ async function workflowForDocType(docType: string): Promise<WorkflowDefinition |
   }
 }
 
+async function loadAuditPolicy(): Promise<AuditPolicy | undefined> {
+  try {
+    return await getDoc<AuditPolicy>("local", "audit:policy");
+  } catch (error) {
+    if (error instanceof CouchError && error.status === 404) return undefined;
+    throw error;
+  }
+}
+
 async function currentDefinitions(): Promise<DesignDocument[]> {
-  const [appConfig, acl, forms, views, workflows, agents] = await Promise.all([
+  const [appConfig, acl, auditPolicy, forms, views, workflows, agents] = await Promise.all([
     getDoc<AppConfig>("local", "app:config"),
     getDoc<AclRules>("local", "acl:rules"),
+    loadAuditPolicy(),
     findDocs<FormDefinition>("local", { selector: { kind: "form" }, limit: 100 }),
     findDocs<ViewDefinition>("local", { selector: { kind: "view" }, limit: 100 }),
     findDocs<WorkflowDefinition>("local", { selector: { kind: "workflow" }, limit: 100 }),
     findDocs<AgentDefinition>("local", { selector: { kind: "agent" }, limit: 100 })
   ]);
 
-  return normalizeDefinitions([appConfig, acl, ...forms.docs, ...views.docs, ...workflows.docs, ...agents.docs]);
+  const designDocs: DesignDocument[] = [appConfig, acl];
+  if (auditPolicy) designDocs.push(auditPolicy);
+  return normalizeDefinitions([...designDocs, ...forms.docs, ...views.docs, ...workflows.docs, ...agents.docs]);
 }
 
 function generatedTemplateVersion() {
@@ -167,7 +185,8 @@ function validateTemplateDefinitions(template: TemplateArtifact) {
       definition.kind === "form" ||
       definition.kind === "view" ||
       definition.kind === "workflow" ||
-      definition.kind === "agent"
+      definition.kind === "agent" ||
+      definition.kind === "auditpolicy"
     ) {
       messages.push(...validateDesignDefinition(definition).map((error) => `${definition._id}.${error.field}: ${error.message}`));
     } else if (definition.kind === "app") {
@@ -404,6 +423,100 @@ function runAgents(now = timestamp()): Promise<{ ran: number; runs: AgentRun[] }
   const next = agentTickChain.catch(() => undefined).then(() => runAgentsOnce(now));
   agentTickChain = next;
   return next;
+}
+
+// --- Audit & retention (M10) --------------------------------------------------
+// Server-authoritative, CDC-driven, mirroring the agent runtime: the tick drains
+// `_changes` since its own `audit:state` checkpoint, records a durable semantic
+// event per business-document create/update, and prunes events past the policy's
+// retention horizon. Deletes are recorded at the API delete path (the feed has no
+// body for a deleted doc). `auditevent`/`audit:state` writes reappear in the feed
+// but `shouldAudit` skips non-`document` kinds, so the recorder never audits
+// itself. Audit visibility mirrors the source document's `readers`.
+
+async function loadAuditState(appId: string): Promise<AuditState> {
+  try {
+    return await getDoc<AuditState>("local", "audit:state");
+  } catch {
+    return { _id: "audit:state", kind: "auditstate", appId, lastSeq: "0" };
+  }
+}
+
+function buildAuditEvent(
+  appId: string,
+  doc: BusinessDocument,
+  action: AuditAction,
+  now: string,
+  actor = doc.updatedBy
+): AuditEvent {
+  return {
+    _id: `auditevent:${ulid()}`,
+    kind: "auditevent",
+    appId,
+    docId: doc._id,
+    docType: doc.docType,
+    rev: doc._rev ?? "",
+    action,
+    actor,
+    at: now,
+    readers: doc.readers
+  };
+}
+
+async function runAuditOnce(now = timestamp()): Promise<{ recorded: number; pruned: number }> {
+  const appConfig = await getDoc<AppConfig>("local", "app:config");
+  const policy = await loadAuditPolicy();
+  const state = await loadAuditState(appConfig.appId);
+
+  // One read serves both dedupe (docId@rev) and retention. {kind:"auditevent"}
+  // binds the kind-leading m2 index — no new index.
+  const existing = await findDocs<AuditEvent>("local", { selector: { kind: "auditevent" }, limit: 2000 });
+  const seen = new Set(existing.docs.map((event) => `${event.docId}@${event.rev}`));
+
+  const changes = await changesSince("local", state.lastSeq);
+  const events: AuditEvent[] = [];
+  for (const change of changes.results) {
+    const doc = change.doc as BusinessDocument | undefined;
+    if (change.deleted || !doc || !shouldAudit(doc, policy)) continue;
+    const key = `${doc._id}@${doc._rev ?? ""}`;
+    if (seen.has(key)) continue; // at-least-once: a replayed change is recorded once
+    seen.add(key);
+    events.push(buildAuditEvent(appConfig.appId, doc, auditAction(doc._rev, false), now));
+  }
+
+  // Write events first, then advance the checkpoint — a crash in between only
+  // re-drains the same (deduped) change, never loses one.
+  for (const event of events) await putDoc("local", event);
+  state.lastSeq = String(changes.last_seq);
+  await putDoc("local", state);
+
+  // Retention: tombstone-DELETE expired events (replicates the prune to devices),
+  // distinct from M5 `_purge` revocation. New events use `now`, never expired.
+  const expired = existing.docs.filter((event) => eventIsExpired(event, now, policy));
+  for (const event of expired) await deleteDoc("local", event._id, event._rev ?? "");
+  return { recorded: events.length, pruned: expired.length };
+}
+
+// Serialize audit ticks for the same reason as agent ticks: audit:state is read
+// at the start and written at the end, so overlapping ticks could double-record
+// or 409 the checkpoint write.
+let auditTickChain: Promise<unknown> = Promise.resolve();
+function runAudit(now = timestamp()): Promise<{ recorded: number; pruned: number }> {
+  const next = auditTickChain.catch(() => undefined).then(() => runAuditOnce(now));
+  auditTickChain = next;
+  return next;
+}
+
+/** Best-effort delete audit at the API delete path; never blocks the delete. */
+async function recordDeleteAudit(doc: BusinessDocument, actor: string, now = timestamp()): Promise<void> {
+  try {
+    const policy = await loadAuditPolicy();
+    if (!shouldAudit(doc, policy)) return;
+    const appConfig = await getDoc<AppConfig>("local", "app:config");
+    await putDoc("local", buildAuditEvent(appConfig.appId, doc, "deleted", now, actor));
+  } catch (error) {
+    console.error("delete audit failed", error);
+  }
 }
 
 async function selectOptionsForForm(form: FormDefinition): Promise<SelectOptionsByField> {
@@ -667,6 +780,9 @@ app.delete(
       response.status(403).json({ error: "forbidden", reason: "Document is not editable by current user" });
       return;
     }
+    // Record the delete before removing the doc — the envelope (readers/actor) is
+    // gone afterward, and the CDC drain can't see a deleted body. Best-effort.
+    await recordDeleteAudit(existing, scope.user);
     await deleteDoc("local", existing._id, existing._rev ?? "");
     response.status(204).end();
   })
@@ -740,6 +856,31 @@ app.get(
   asyncRoute(async (_request, response) => {
     const result = await findDocs<AgentRun>("local", { selector: { kind: "agentrun" }, limit: 200 });
     response.json(result.docs.sort((left, right) => right.startedAt.localeCompare(left.startedAt)));
+  })
+);
+
+app.post(
+  "/api/audit/run",
+  asyncRoute(async (_request, response) => {
+    const result = await runAudit();
+    response.json({ ok: true, ...result });
+  })
+);
+
+app.get(
+  "/api/audit",
+  asyncRoute(async (request, response) => {
+    const principals = principalsFor(await currentScope());
+    const docId = typeof request.query.docId === "string" ? request.query.docId : undefined;
+    const docType = typeof request.query.docType === "string" ? request.query.docType : undefined;
+    const result = await findDocs<AuditEvent>("local", { selector: { kind: "auditevent" }, limit: 500 });
+    // ACL: audit visibility mirrors the source document's readers (A5).
+    const events = result.docs
+      .filter((event) => event.readers.some((reader) => principals.includes(reader)))
+      .filter((event) => (docId ? event.docId === docId : true))
+      .filter((event) => (docType ? event.docType === docType : true))
+      .sort((left, right) => right.at.localeCompare(left.at));
+    response.json(events);
   })
 );
 
@@ -996,6 +1137,9 @@ const agentIntervalMs = Number(process.env.AGENTS_INTERVAL_MS ?? 0);
 if (agentIntervalMs > 0) {
   setInterval(() => {
     runAgents().catch((error) => console.error("agent tick failed", error));
+    // An always-on node audits on the same cadence (M10); both are otherwise
+    // driven by their explicit POST endpoints and stay off in tests.
+    runAudit().catch((error) => console.error("audit tick failed", error));
   }, agentIntervalMs);
-  console.log(`Agent tick loop enabled every ${agentIntervalMs}ms`);
+  console.log(`Agent + audit tick loop enabled every ${agentIntervalMs}ms`);
 }

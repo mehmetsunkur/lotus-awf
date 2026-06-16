@@ -3,6 +3,7 @@ import type {
   AclRules,
   AgentDefinition,
   AppConfig,
+  AuditPolicy,
   BusinessDocument,
   FormDefinition,
   ViewDefinition,
@@ -55,7 +56,7 @@ export function createVendorDoc(
 }
 
 export function seedDocuments(): Array<
-  AppConfig | FormDefinition | ViewDefinition | WorkflowDefinition | AgentDefinition | AclRules | BusinessDocument
+  AppConfig | FormDefinition | ViewDefinition | WorkflowDefinition | AgentDefinition | AclRules | AuditPolicy | BusinessDocument
 > {
   return [
     {
@@ -274,6 +275,14 @@ export function seedDocuments(): Array<
         { user: "user:alice", roles: ["role:finance"] },
         { user: "user:bob", roles: ["role:sales"] }
       ]
+    },
+    {
+      _id: "audit:policy",
+      kind: "auditpolicy",
+      appId: "expense",
+      // Audit every business docType; keep a year of history. Design data:
+      // replicated and carried in templates like acl:rules.
+      retentionDays: 365
     },
     // No `state`: exercises back-compat — treated as the workflow's initialState (draft).
     createExpenseDoc({
