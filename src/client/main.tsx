@@ -34,6 +34,18 @@ import type {
 } from "../shared/types";
 import { validateDesignDefinition } from "../shared/definition-validation";
 import {
+  addFieldToSection,
+  addSection,
+  ensureSections,
+  moveFieldToSection,
+  moveFieldWithinSection,
+  moveSection,
+  removeField as removeLayoutField,
+  removeSection,
+  renameField as renameLayoutField,
+  renameSection
+} from "../shared/form-layout";
+import {
   applyComputedFields,
   applyFormDefaults,
   isFieldReadOnly,
@@ -326,7 +338,8 @@ function DocumentForm({
   workflow,
   user,
   roles,
-  auditEvents,
+  auditEvents = [],
+  preview = false,
   onSave,
   onDelete,
   onNew,
@@ -338,11 +351,14 @@ function DocumentForm({
   workflow?: WorkflowDefinition;
   user: string;
   roles: string[];
-  auditEvents: AuditEvent[];
-  onSave: (payload: Record<string, unknown>) => void;
-  onDelete: (doc: BusinessDocument) => void;
-  onNew: () => void;
-  onTransition: (doc: BusinessDocument, transitionId: string) => void;
+  auditEvents?: AuditEvent[];
+  // M11: render the form read-only as a live studio preview (no save/delete/new,
+  // no workflow/audit chrome) using the SAME renderer the runtime uses (WYSIWYG).
+  preview?: boolean;
+  onSave?: (payload: Record<string, unknown>) => void;
+  onDelete?: (doc: BusinessDocument) => void;
+  onNew?: () => void;
+  onTransition?: (doc: BusinessDocument, transitionId: string) => void;
 }) {
   const [draft, setDraft] = React.useState<Draft>(() => applyFormDefaults(form, selected?.payload ?? {}));
   // M7: derive computed fields from the live draft via the SAME shared pure
@@ -361,29 +377,29 @@ function DocumentForm({
     : [{ title: form.title, fields: form.fields.map((field) => field.name) }];
 
   return (
-    <section className="editorPanel" data-testid="document-form">
+    <section className="editorPanel" data-testid={preview ? "document-form-preview" : "document-form"}>
       <div className="panelHead">
         <div>
-          <p className="kicker" data-testid="form-record-id">{selected ? selected._id : `New ${form.docType}`}</p>
+          <p className="kicker" data-testid={preview ? "preview-record-id" : "form-record-id"}>{preview ? "Preview" : selected ? selected._id : `New ${form.docType}`}</p>
           <h2>{form.title}</h2>
         </div>
-        <button onClick={onNew} data-testid="form-new">New</button>
+        {preview ? null : <button onClick={onNew} data-testid="form-new">New</button>}
       </div>
-      {selected && workflow ? (
+      {!preview && selected && workflow ? (
         <WorkflowBar
           doc={selected}
           workflow={workflow}
           user={user}
           roles={roles}
-          onTransition={(transitionId) => onTransition(selected, transitionId)}
+          onTransition={(transitionId) => onTransition?.(selected, transitionId)}
         />
       ) : null}
       <form
         className="fieldGrid"
-        data-testid="form"
+        data-testid={preview ? "form-preview" : "form"}
         onSubmit={(event) => {
           event.preventDefault();
-          if (!errors.length) onSave(normalized);
+          if (!preview && !errors.length) onSave?.(normalized);
         }}
       >
         {sections.map((section) => (
@@ -399,32 +415,35 @@ function DocumentForm({
                   doc={selected}
                   draft={normalized}
                   optionsByField={optionsByField}
+                  testIdPrefix={preview ? "preview-field" : "field"}
                   onChange={(value) => setDraft((current) => ({ ...current, [field.name]: value }))}
                 />
               );
             })}
           </fieldset>
         ))}
-        {errors.length ? (
+        {!preview && errors.length ? (
           <div className="errorBox" data-testid="form-errors">
             {errors.map((error) => (
               <p key={`${error.field}-${error.message}`} data-testid={`form-error-${error.field}`}>{error.message}</p>
             ))}
           </div>
         ) : null}
-        <div className="formActions">
-          {selected ? (
-            <button className="danger" type="button" onClick={() => onDelete(selected)} data-testid="form-delete">
-              <Trash2 size={16} /> Delete
+        {preview ? null : (
+          <div className="formActions">
+            {selected ? (
+              <button className="danger" type="button" onClick={() => onDelete?.(selected)} data-testid="form-delete">
+                <Trash2 size={16} /> Delete
+              </button>
+            ) : null}
+            <button className="primary" type="submit" disabled={Boolean(errors.length)} data-testid="form-save">
+              <Save size={16} /> Save Local
             </button>
-          ) : null}
-          <button className="primary" type="submit" disabled={Boolean(errors.length)} data-testid="form-save">
-            <Save size={16} /> Save Local
-          </button>
-        </div>
+          </div>
+        )}
       </form>
-      {selected && workflow ? <WorkflowHistory doc={selected} /> : null}
-      {selected ? <AuditTrail events={auditEvents} /> : null}
+      {!preview && selected && workflow ? <WorkflowHistory doc={selected} /> : null}
+      {!preview && selected ? <AuditTrail events={auditEvents} /> : null}
     </section>
   );
 }
@@ -434,19 +453,24 @@ function FieldEditor({
   doc,
   draft,
   optionsByField,
-  onChange
+  onChange,
+  testIdPrefix = "field"
 }: {
   field: FormField;
   doc?: BusinessDocument;
   draft: Draft;
   optionsByField: SelectOptionsByField;
   onChange: (value: unknown) => void;
+  // M11: the studio preview reuses this renderer; a distinct prefix keeps its
+  // field testids from colliding with the live runtime form's `field-*` ids.
+  testIdPrefix?: string;
 }) {
   const value = draft[field.name];
   // A computed field is intrinsically read-only — its value comes from a handler.
   const readOnly = Boolean(field.compute) || isFieldReadOnly(field, doc, draft);
   const required = isFieldRequired(field, doc, draft);
   const options = field.options ?? optionsByField[field.name] ?? [];
+  const testId = `${testIdPrefix}-${field.name}`;
 
   return (
     <label className={field.type === "boolean" ? "checkboxLine" : ""}>
@@ -455,11 +479,11 @@ function FieldEditor({
         {required ? " *" : ""}
       </span>
       {field.type === "textarea" ? (
-        <textarea data-testid={`field-${field.name}`} value={String(value ?? "")} disabled={readOnly} onChange={(event) => onChange(event.target.value)} />
+        <textarea data-testid={testId} value={String(value ?? "")} disabled={readOnly} onChange={(event) => onChange(event.target.value)} />
       ) : field.type === "boolean" ? (
-        <input data-testid={`field-${field.name}`} type="checkbox" checked={Boolean(value)} disabled={readOnly} onChange={(event) => onChange(event.target.checked)} />
+        <input data-testid={testId} type="checkbox" checked={Boolean(value)} disabled={readOnly} onChange={(event) => onChange(event.target.checked)} />
       ) : field.type === "select" ? (
-        <select data-testid={`field-${field.name}`} value={String(value ?? "")} disabled={readOnly} required={required} onChange={(event) => onChange(event.target.value)}>
+        <select data-testid={testId} value={String(value ?? "")} disabled={readOnly} required={required} onChange={(event) => onChange(event.target.value)}>
           <option value="">Select...</option>
           {options.map((option) => (
             <option key={option.value} value={option.value}>
@@ -469,7 +493,7 @@ function FieldEditor({
         </select>
       ) : (
         <input
-          data-testid={`field-${field.name}`}
+          data-testid={testId}
           required={required}
           disabled={readOnly}
           type={field.type}
@@ -499,12 +523,18 @@ function DefinitionEditor({
   definitions,
   selectedId,
   onSelect,
-  onSave
+  onSave,
+  optionsByField,
+  user,
+  roles
 }: {
   definitions: EditableDefinition[];
   selectedId?: string;
   onSelect: (id: string) => void;
   onSave: (id: string, doc: EditableDefinition) => void;
+  optionsByField: SelectOptionsByField;
+  user: string;
+  roles: string[];
 }) {
   const selected = definitions.find((doc) => doc._id === selectedId) ?? definitions[0];
   const [text, setText] = React.useState("");
@@ -557,7 +587,15 @@ function DefinitionEditor({
           ))}
         </select>
       </div>
-      {parsed?.kind === "form" ? <FormStudio definition={parsed} onChange={updateDefinition} /> : null}
+      {parsed?.kind === "form" ? (
+        <div className="studioWithPreview">
+          <FormStudio definition={parsed} onChange={updateDefinition} />
+          <div className="studioPreview" data-testid="studio-preview">
+            <p className="kicker">Live preview</p>
+            <DocumentForm form={parsed} optionsByField={optionsByField} user={user} roles={roles} preview />
+          </div>
+        </div>
+      ) : null}
       {parsed?.kind === "view" ? <ViewStudio definition={parsed} onChange={updateDefinition} /> : null}
       {parsed?.kind === "workflow" ? <WorkflowStudio definition={parsed} onChange={updateDefinition} /> : null}
       <details className="jsonEscape" open>
@@ -582,89 +620,147 @@ function DefinitionEditor({
   );
 }
 
+// M11: section-grouped layout editor. Every mutation routes through the pure
+// `src/shared/form-layout.ts` ops, which keep the layout normalized (sections
+// non-empty, every field in exactly one section). Reordering uses accessible
+// move buttons (the testable contract); native HTML5 drag is a progressive
+// enhancement over the same ops. Field-input testids stay global-index based so
+// the M4 authoring spec keeps working; section/move controls are name-based.
 function FormStudio({ definition, onChange }: { definition: FormDefinition; onChange: (next: EditableDefinition) => void }) {
-  const updateField = (index: number, patch: Partial<FormField>) => {
-    const currentName = definition.fields[index]?.name;
-    const nextName = patch.name;
-    onChange({
-      ...definition,
-      fields: definition.fields.map((field, candidate) => (candidate === index ? { ...field, ...patch } : field)),
-      sections:
-        currentName && nextName
-          ? definition.sections?.map((section) => ({
-              ...section,
-              fields: section.fields.map((field) => (field === currentName ? nextName : field))
-            }))
-          : definition.sections
-    });
-  };
-  const removeField = (index: number) => {
-    const removed = definition.fields[index];
-    onChange({
-      ...definition,
-      fields: definition.fields.filter((_field, candidate) => candidate !== index),
-      sections: definition.sections?.map((section) => ({
-        ...section,
-        fields: section.fields.filter((field) => field !== removed.name)
-      }))
-    });
-  };
-  const addField = () => {
-    const name = uniqueName("field", definition.fields.map((field) => field.name));
-    const fields = [...definition.fields, { name, type: "text" as FieldType, label: "New field" }];
-    const sections = definition.sections?.length
-      ? [{ ...definition.sections[0], fields: [...definition.sections[0].fields, name] }, ...definition.sections.slice(1)]
-      : [{ title: definition.title, fields: fields.map((field) => field.name) }];
-    onChange({ ...definition, fields, sections });
+  const form = ensureSections(definition);
+  const sections = form.sections ?? [];
+  const fieldsByName = Object.fromEntries(form.fields.map((field) => [field.name, field] as const));
+  const globalIndexOf = (name: string) => form.fields.findIndex((field) => field.name === name);
+  const [dragField, setDragField] = React.useState<string>();
+
+  const setFieldProps = (name: string, patch: Partial<FormField>) =>
+    onChange({ ...form, fields: form.fields.map((field) => (field.name === name ? { ...field, ...patch } : field)) });
+
+  const dropOnSection = (sectionIndex: number) => {
+    if (!dragField) return;
+    onChange(moveFieldToSection(form, dragField, sectionIndex));
+    setDragField(undefined);
   };
 
   return (
     <div className="studioPanel" data-testid="studio-form">
       <label>
         <span>Title</span>
-        <input data-testid="studio-form-title" value={definition.title} onChange={(event) => onChange({ ...definition, title: event.target.value })} />
+        <input data-testid="studio-form-title" value={form.title} onChange={(event) => onChange({ ...form, title: event.target.value })} />
       </label>
-      <div className="studioList">
-        {definition.fields.map((field, index) => (
-          <div className="studioRow" key={`${field.name}-${index}`} data-testid="studio-form-field">
-            <input
-              aria-label="Field name"
-              data-testid={`studio-form-field-name-${index}`}
-              value={field.name}
-              onChange={(event) => updateField(index, { name: event.target.value })}
-            />
-            <input
-              aria-label="Field label"
-              data-testid={`studio-form-field-label-${index}`}
-              value={field.label}
-              onChange={(event) => updateField(index, { label: event.target.value })}
-            />
-            <select
-              aria-label="Field type"
-              data-testid={`studio-form-field-type-${index}`}
-              value={field.type}
-              onChange={(event) => updateField(index, { type: event.target.value as FieldType })}
-            >
-              {FIELD_TYPES.map((type) => (
-                <option key={type} value={type}>{type}</option>
-              ))}
-            </select>
-            <label className="compactCheck">
+      <div className="studioSections" data-testid="studio-form-sections">
+        {sections.map((section, sectionIndex) => (
+          <fieldset
+            key={`section-${sectionIndex}`}
+            className="studioSection"
+            data-testid={`studio-section-${sectionIndex}`}
+            onDragOver={(event) => {
+              if (dragField) event.preventDefault();
+            }}
+            onDrop={() => dropOnSection(sectionIndex)}
+          >
+            <div className="studioSectionHead">
               <input
-                data-testid={`studio-form-field-required-${index}`}
-                type="checkbox"
-                checked={Boolean(field.required)}
-                onChange={(event) => updateField(index, { required: event.target.checked || undefined })}
+                aria-label="Section title"
+                data-testid={`studio-section-title-${sectionIndex}`}
+                value={section.title}
+                onChange={(event) => onChange(renameSection(form, sectionIndex, event.target.value))}
               />
-              Required
-            </label>
-            <button type="button" className="danger" data-testid={`studio-form-field-remove-${index}`} onClick={() => removeField(index)}>
-              <Trash2 size={16} />
+              <button type="button" aria-label="Move section up" data-testid={`studio-section-up-${sectionIndex}`} disabled={sectionIndex === 0} onClick={() => onChange(moveSection(form, sectionIndex, sectionIndex - 1))}>↑</button>
+              <button type="button" aria-label="Move section down" data-testid={`studio-section-down-${sectionIndex}`} disabled={sectionIndex === sections.length - 1} onClick={() => onChange(moveSection(form, sectionIndex, sectionIndex + 1))}>↓</button>
+              <button type="button" className="danger" data-testid={`studio-section-remove-${sectionIndex}`} disabled={sections.length <= 1} onClick={() => onChange(removeSection(form, sectionIndex))}>Remove</button>
+            </div>
+            <div className="studioList">
+              {section.fields.map((name, fieldIndex) => {
+                const field = fieldsByName[name];
+                if (!field) return null;
+                const globalIndex = globalIndexOf(name);
+                return (
+                  <div
+                    className="studioRow"
+                    key={name}
+                    data-testid="studio-form-field"
+                    data-field={name}
+                    draggable
+                    onDragStart={() => setDragField(name)}
+                    onDragEnd={() => setDragField(undefined)}
+                  >
+                    <span className="dragHandle" aria-hidden="true">⠿</span>
+                    <input
+                      aria-label="Field name"
+                      data-testid={`studio-form-field-name-${globalIndex}`}
+                      value={field.name}
+                      onChange={(event) => onChange(renameLayoutField(form, globalIndex, event.target.value))}
+                    />
+                    <input
+                      aria-label="Field label"
+                      data-testid={`studio-form-field-label-${globalIndex}`}
+                      value={field.label}
+                      onChange={(event) => setFieldProps(name, { label: event.target.value })}
+                    />
+                    <select
+                      aria-label="Field type"
+                      data-testid={`studio-form-field-type-${globalIndex}`}
+                      value={field.type}
+                      onChange={(event) => setFieldProps(name, { type: event.target.value as FieldType })}
+                    >
+                      {FIELD_TYPES.map((type) => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
+                    </select>
+                    <label className="compactCheck">
+                      <input
+                        data-testid={`studio-form-field-required-${globalIndex}`}
+                        type="checkbox"
+                        checked={Boolean(field.required)}
+                        onChange={(event) => setFieldProps(name, { required: event.target.checked || undefined })}
+                      />
+                      Required
+                    </label>
+                    <button type="button" aria-label="Move field up" data-testid={`studio-form-field-up-${name}`} disabled={fieldIndex === 0} onClick={() => onChange(moveFieldWithinSection(form, sectionIndex, fieldIndex, fieldIndex - 1))}>↑</button>
+                    <button type="button" aria-label="Move field down" data-testid={`studio-form-field-down-${name}`} disabled={fieldIndex === section.fields.length - 1} onClick={() => onChange(moveFieldWithinSection(form, sectionIndex, fieldIndex, fieldIndex + 1))}>↓</button>
+                    <select
+                      aria-label="Move field to section"
+                      data-testid={`studio-form-field-section-${name}`}
+                      value={sectionIndex}
+                      onChange={(event) => onChange(moveFieldToSection(form, name, Number(event.target.value)))}
+                    >
+                      {sections.map((candidate, index) => (
+                        <option key={index} value={index}>{candidate.title || `Section ${index + 1}`}</option>
+                      ))}
+                    </select>
+                    <button type="button" className="danger" data-testid={`studio-form-field-remove-${globalIndex}`} onClick={() => onChange(removeLayoutField(form, name))}>
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                );
+              })}
+              {section.fields.length ? null : (
+                <p className="emptySection" data-testid={`studio-section-empty-${sectionIndex}`}>Drag a field here or add one.</p>
+              )}
+            </div>
+            <button
+              type="button"
+              data-testid={`studio-section-add-field-${sectionIndex}`}
+              onClick={() => onChange(addFieldToSection(form, { name: uniqueName("field", form.fields.map((field) => field.name)), type: "text", label: "New field" }, sectionIndex))}
+            >
+              Add Field
             </button>
-          </div>
+          </fieldset>
         ))}
       </div>
-      <button type="button" data-testid="studio-form-add-field" onClick={addField}>Add Field</button>
+      <div className="studioActionsRow">
+        <button
+          type="button"
+          data-testid="studio-form-add-field"
+          onClick={() => onChange(addFieldToSection(form, { name: uniqueName("field", form.fields.map((field) => field.name)), type: "text", label: "New field" }, sections.length - 1))}
+        >
+          Add Field
+        </button>
+        <button type="button" data-testid="studio-form-add-section" onClick={() => onChange(addSection(form, uniqueName("Section ", sections.map((section) => section.title))))}>
+          Add Section
+        </button>
+      </div>
     </div>
   );
 }
@@ -1124,6 +1220,9 @@ function App() {
         definitions={editableDefinitions}
         selectedId={selectedDefinitionId}
         onSelect={setSelectedDefinitionId}
+        optionsByField={optionsByField}
+        user={definitions.user}
+        roles={definitions.roles}
         onSave={(id, doc) =>
           run("Save local definition", () =>
             api(`/api/definitions/${encodeURIComponent(id)}`, {

@@ -394,6 +394,83 @@ small {
   width: 18px;
 }
 
+/* M11 citizen layout studio */
+.studioSections {
+  display: grid;
+  gap: 12px;
+}
+
+.studioSection {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+}
+
+.studioSectionHead {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.studioSectionHead input {
+  flex: 1;
+}
+
+.studioSection .studioRow {
+  display: flex;
+  flex-wrap: wrap;
+  grid-template-columns: none;
+}
+
+.studioSection .studioRow input[aria-label="Field name"],
+.studioSection .studioRow input[aria-label="Field label"] {
+  flex: 1 1 120px;
+  min-width: 100px;
+}
+
+.dragHandle {
+  color: var(--muted);
+  cursor: grab;
+  user-select: none;
+}
+
+.emptySection {
+  color: var(--muted);
+  font-size: 0.84rem;
+  padding: 6px;
+}
+
+.studioActionsRow {
+  display: flex;
+  gap: 8px;
+}
+
+.studioWithPreview {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+}
+
+.studioPreview {
+  border-left: 1px solid var(--line);
+  padding-left: 16px;
+}
+
+@media (max-width: 900px) {
+  .studioWithPreview {
+    grid-template-columns: 1fr;
+  }
+  .studioPreview {
+    border-left: none;
+    border-top: 1px solid var(--line);
+    padding-left: 0;
+    padding-top: 16px;
+  }
+}
+
 .jsonEscape {
   border-bottom: 1px solid var(--line);
 }
