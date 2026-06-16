@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `72b069a`
+- Last code review baseline: `23eb61c`
 - Last reviewed date: `2026-06-16`
 - Code areas:
   - `src/server/**`
@@ -56,6 +56,12 @@ reconciliation, and (M6) template export/diff/apply.
 - Compute (M7): `POST/PUT /api/documents` apply `applyComputedFields` (shared) so computed fields are
   derived identically to the client. `GET /api/plugins/manifest` and `GET /api/plugins/log` expose
   the handler manifest and the in-memory effect log (cleared on `/api/reset`).
+- Audit (M10): `POST /api/audit/run` ticks `runAudit()` — drains `changesSince(audit:state)`, writes
+  durable `auditevent:*` for business create/update (deduped by `docId@rev`), advances the checkpoint,
+  then prunes events past `audit:policy.retentionDays` via tombstone `DELETE` (replicates the prune;
+  not M5 `_purge`). Deletes are recorded best-effort in the `DELETE /api/documents/:id` path. `GET
+  /api/audit` is principal-scoped (events copy the source `readers`). `audit:policy` is a templated
+  design doc; `auditevent`/`audit:state` are runtime data. No new Mango index.
 - Agents (M8): `POST /api/agents/run` ticks `runAgents()` — runs due scheduled agents and drains
   `changesSince(checkpoint)` for on-change agents, writing durable `agentrun:*` records and advancing
   the `agent:state` checkpoint (at-least-once, dedupe by agentId+rev, fail-closed). `GET /api/agents`
@@ -65,10 +71,11 @@ reconciliation, and (M6) template export/diff/apply.
 - Definition save (M4/M8): `PUT /api/definitions/:id` accepts `form:*`, `view:*`, `workflow:*`, and
   `agent:*` (M8), runs shared `validateDesignDefinition`, then writes **local** Couch; invalid
   definitions return `422 definition_validation_failed`.
-- Template promotion (M6/M8): `POST /api/templates/export|diff|apply` packages only design docs
-  (`app:config`, `acl:rules`, `form:*`, `view:*`, `workflow:*`, `agent:*`), strips stale `_rev`,
-  compares by definition id, and applies add/update changes to **local** Couch without touching
-  business docs. Runtime `agentrun:*` / `agent:state` docs are NOT packaged.
+- Template promotion (M6/M8/M10): `POST /api/templates/export|diff|apply` packages only design docs
+  (`app:config`, `acl:rules`, `audit:policy`, `form:*`, `view:*`, `workflow:*`, `agent:*`), strips
+  stale `_rev`, compares by definition id, and applies add/update changes to **local** Couch without
+  touching business docs. Runtime `agentrun:*` / `agent:state` / `auditevent:*` / `audit:state` docs
+  are NOT packaged.
 - Sync: `POST /api/replicate` → scoped `replicateBidirectional` → local `_purge` of server-revoked
   docs → `reconcileStates` reports concurrent state divergence; conflicts surfaced via
   `/api/conflicts`. Resolve accepts `chosenRev` to elect the winning revision's state.
@@ -85,7 +92,7 @@ reconciliation, and (M6) template export/diff/apply.
 
 See `docs/invariants.md`: **Replication & conflict**, **ACL / readers**, **Offline editing**,
 **Index & query**, **Validation parity**, **Definitions-as-data contract**, **Handler / plugin
-runtime**, **Agent runtime**, **Search** govern this subsystem.
+runtime**, **Agent runtime**, **Search**, **Audit & retention** govern this subsystem.
 
 ## Relevant Decisions
 

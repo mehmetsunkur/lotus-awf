@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `72b069a`
+- Last code review baseline: `23eb61c`
 - Last reviewed date: `2026-06-16`
 - Code areas:
   - `src/shared/**`
@@ -39,6 +39,10 @@ No DOM, no Node/server-only APIs.
 - `src/shared/search.ts` (M9) — pure full-text matcher: `fold`, `tokenize`, `searchableFields`,
   `scoreDocument`, `searchDocuments` (accent-folded, AND-of-terms, prefix, field-weighted ranking).
   Identical client/server/local-replica; the server applies it to the ACL-scoped set.
+- `src/shared/audit.ts` (M10) — pure audit/retention decisions: `auditAction` (create/update/delete
+  inference), `shouldAudit` (business docs only; skips the audit/agent runtime kinds; docTypes
+  allowlist), `eventIsExpired` (retention horizon). The server's CDC recorder orchestrates I/O around
+  these.
 - `src/shared/handlers/manifest.ts` (M7) — declared handler manifest (`name`, `kind`); the portable
   source of truth for validating `compute`/`action` references.
 - `src/shared/handlers/pure.ts` (M7) — pure handler registry + `runPureHandler` (fails closed).
@@ -71,6 +75,10 @@ validated against the manifest (kind `agent`) by the same shared definition vali
 M9 adds the pure search matcher and an optional `FormField.searchable` flag (text-ish fields default
 on, validated by the shared definition validator). The matcher is deterministic and portable, so search
 is identical offline and on the server; the server applies it only to the already ACL-scoped set.
+
+M10 adds the pure audit/retention engine and the `audit:policy` design-doc kind (validated by the
+shared validator). The decisions are deterministic; the server's CDC recorder writes `auditevent:*`
+runtime docs and prunes them by policy around these functions.
 
 ## Existing Patterns
 

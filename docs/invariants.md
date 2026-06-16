@@ -61,6 +61,11 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 - Full-text search must be a pure, deterministic, portable matcher (identical client/server/local-replica) applied only to the already ACL-scoped set, so it can narrow visibility but never widen it; searchable fields are data (`FormField.searchable`, text-ish default on) and search must not add a Mango index or a server-replica round-trip.
   - Paths: `src/shared/search.ts`, `src/server/index.ts`
 
+## Audit & retention
+
+- Audit is server-authoritative and CDC-driven (drains `_changes` from a checkpoint, never on a device): events are durable and at-least-once with `docId@rev` dedupe, recorded only for business-document changes (the recorder must skip its own runtime kinds — no feedback loop), each `auditevent` copies the source document's `readers` and `GET /api/audit` filters by principal so visibility only narrows; retention prunes via a replicating tombstone `DELETE` (never M5 `_purge`); `audit:policy` is design data while `auditevent`/`audit:state` are runtime data, never templated.
+  - Paths: `src/shared/audit.ts`, `src/server/index.ts`
+
 ## Replication & conflict
 
 - Changes must preserve bidirectional replication and correct `_rev`/`_conflicts` handling — never drop or silently lose a revision on resolve, and never let a payload-shape change break how conflicting revisions are compared.

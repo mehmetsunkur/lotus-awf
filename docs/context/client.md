@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `72b069a`
+- Last code review baseline: `23eb61c`
 - Last reviewed date: `2026-06-16`
 - Code areas:
   - `src/client/**`
@@ -46,6 +46,9 @@ resolution panel.
 - Search (M9) → the per-view search box (`data-testid="view-search"`) commits a query to
   `GET /api/views/:id/documents?q=` and refetches. A ref holds the committed query so submit/clear never
   refetch with a stale closure; like view switching, a refetch happens on submit, not per keystroke.
+- Audit (M10) → a read-only audit-trail panel (`data-testid="audit-trail"`) renders the selected
+  document's events, fetched from `GET /api/audit?docId=` (local server) on selection. Events are
+  recorded server-authoritatively and ACL-scoped server-side; the panel only displays them.
 
 ## Existing Patterns
 
