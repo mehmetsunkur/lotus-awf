@@ -16,6 +16,7 @@ import {
   WifiOff
 } from "lucide-react";
 import type {
+  AuditEvent,
   BusinessDocument,
   ConflictDetails,
   CouchDocument,
@@ -299,6 +300,25 @@ function WorkflowHistory({ doc }: { doc: BusinessDocument }) {
   );
 }
 
+// M10: read-only audit trail for the selected document. Events are recorded
+// server-authoritatively (CDC) and replicate read-only; this panel just renders
+// what GET /api/audit returns for the document, already ACL-scoped server-side.
+function AuditTrail({ events }: { events: AuditEvent[] }) {
+  if (!events.length) return null;
+  return (
+    <div className="auditTrail" data-testid="audit-trail">
+      <h3>Audit trail</h3>
+      <ol>
+        {events.map((event) => (
+          <li key={event._id} data-testid="audit-event">
+            <strong>{event.action}</strong> · {event.actor} · {event.at}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function DocumentForm({
   form,
   selected,
@@ -306,6 +326,7 @@ function DocumentForm({
   workflow,
   user,
   roles,
+  auditEvents,
   onSave,
   onDelete,
   onNew,
@@ -317,6 +338,7 @@ function DocumentForm({
   workflow?: WorkflowDefinition;
   user: string;
   roles: string[];
+  auditEvents: AuditEvent[];
   onSave: (payload: Record<string, unknown>) => void;
   onDelete: (doc: BusinessDocument) => void;
   onNew: () => void;
@@ -402,6 +424,7 @@ function DocumentForm({
         </div>
       </form>
       {selected && workflow ? <WorkflowHistory doc={selected} /> : null}
+      {selected ? <AuditTrail events={auditEvents} /> : null}
     </section>
   );
 }
@@ -915,6 +938,8 @@ function App() {
   // a stale closure. Like view switching, a refetch happens on submit, not keystroke.
   const [searchInput, setSearchInput] = React.useState("");
   const searchQueryRef = React.useRef("");
+  // M10: audit trail for the selected document (read-only, server-recorded).
+  const [auditEvents, setAuditEvents] = React.useState<AuditEvent[]>([]);
 
   const selectedView = definitions?.views.find((view) => view._id === selectedViewId) ?? definitions?.views[0];
   const selectedForm = definitions?.forms.find((form) => form.docType === selectedView?.docType) ?? definitions?.form;
@@ -963,6 +988,25 @@ function App() {
   React.useEffect(() => {
     run("Initial refresh", refresh);
   }, []);
+
+  // Load the selected document's audit trail (read-only; recorded server-side).
+  React.useEffect(() => {
+    if (!selectedId) {
+      setAuditEvents([]);
+      return;
+    }
+    let cancelled = false;
+    api<AuditEvent[]>(`/api/audit?docId=${encodeURIComponent(selectedId)}`)
+      .then((events) => {
+        if (!cancelled) setAuditEvents(events);
+      })
+      .catch(() => {
+        if (!cancelled) setAuditEvents([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, documents]);
 
   const shellActions = {
     status,
@@ -1048,6 +1092,7 @@ function App() {
           workflow={selectedWorkflow}
           user={definitions.user}
           roles={definitions.roles}
+          auditEvents={auditEvents}
           onNew={() => setSelectedId(undefined)}
           onTransition={(doc, transitionId) =>
             run("Transition", () =>
