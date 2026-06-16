@@ -242,13 +242,60 @@ export type AclRules = {
   users: Array<{ user: string; roles: string[] }>;
 };
 
+/**
+ * Audit & retention (M10). Audit is server-authoritative and CDC-driven (the
+ * server drains `_changes` and records a semantic change trail), mirroring the
+ * M8 agent runtime. The policy is design data (replicated, templated like
+ * `acl:rules`); the events and checkpoint are runtime data (never templated).
+ * The pure decisions — should this change be audited? is this event expired? —
+ * live in `src/shared/audit.ts`, exactly like the agent matching engine.
+ */
+export type AuditAction = "created" | "updated" | "deleted";
+
+/** Policy (`audit:policy`): retention horizon + optional docType allowlist. Design data, templated. */
+export type AuditPolicy = {
+  _id: "audit:policy";
+  _rev?: string;
+  kind: "auditpolicy";
+  appId: string;
+  /** Events older than this many days are pruned on a tick. */
+  retentionDays: number;
+  /** When set, only these business docTypes are audited; absent means all. */
+  docTypes?: string[];
+};
+
+/** Durable record of one document change (`auditevent:*`). Runtime data, never templated. */
+export type AuditEvent = {
+  _id: `auditevent:${string}`;
+  _rev?: string;
+  kind: "auditevent";
+  appId: string;
+  docId: string;
+  docType: string;
+  rev: string;
+  action: AuditAction;
+  actor: string;
+  at: string;
+  readers: string[];
+};
+
+/** Singleton checkpoint (`audit:state`): the `_changes` cursor for the audit drain. Runtime data. */
+export type AuditState = {
+  _id: "audit:state";
+  _rev?: string;
+  kind: "auditstate";
+  appId: string;
+  lastSeq: string;
+};
+
 export type DesignDocument =
   | AppConfig
   | FormDefinition
   | ViewDefinition
   | WorkflowDefinition
   | AgentDefinition
-  | AclRules;
+  | AclRules
+  | AuditPolicy;
 
 export type TemplateArtifact = {
   kind: "template";

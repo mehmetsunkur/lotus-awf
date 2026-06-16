@@ -10,7 +10,7 @@ import type {
 } from "./types";
 import { evaluateBoolean } from "./expression";
 import { findHandler, handlerHasKind } from "./handlers/manifest";
-import type { AgentDefinition, HandlerKind } from "./types";
+import type { AgentDefinition, AuditPolicy, HandlerKind } from "./types";
 
 const FIELD_TYPES = new Set(["text", "textarea", "number", "date", "boolean", "select"]);
 const FILTER_OPS = new Set(["eq", "ne", "gt", "gte", "lt", "lte", "in"]);
@@ -226,11 +226,28 @@ export function validateAgentDefinition(definition: AgentDefinition): Validation
   return errors;
 }
 
+export function validateAuditPolicy(definition: AuditPolicy): ValidationError[] {
+  const errors: ValidationError[] = [];
+  if (definition._id !== "audit:policy") errors.push(error("_id", "Audit policy id must be audit:policy"));
+  if (definition.kind !== "auditpolicy") errors.push(error("kind", "Audit policy kind must be auditpolicy"));
+  if (!nonEmpty(definition.appId)) errors.push(error("appId", "App id is required"));
+  if (typeof definition.retentionDays !== "number" || !Number.isFinite(definition.retentionDays) || definition.retentionDays < 0) {
+    errors.push(error("retentionDays", "retentionDays must be a non-negative number"));
+  }
+  if (definition.docTypes !== undefined) {
+    if (!Array.isArray(definition.docTypes) || !definition.docTypes.every((type) => nonEmpty(type))) {
+      errors.push(error("docTypes", "docTypes must be an array of non-empty strings"));
+    }
+  }
+  return errors;
+}
+
 export function validateDesignDefinition(definition: CouchDocument): ValidationError[] {
   if (!isObject(definition)) return [error("definition", "Definition must be an object")];
   if (definition.kind === "form") return validateFormDefinition(definition as FormDefinition);
   if (definition.kind === "view") return validateViewDefinition(definition as ViewDefinition);
   if (definition.kind === "workflow") return validateWorkflowDefinition(definition as WorkflowDefinition);
   if (definition.kind === "agent") return validateAgentDefinition(definition as AgentDefinition);
-  return [error("kind", "Only form, view, workflow, and agent definitions are editable")];
+  if (definition.kind === "auditpolicy") return validateAuditPolicy(definition as AuditPolicy);
+  return [error("kind", "Only form, view, workflow, agent, and audit-policy definitions are editable")];
 }
