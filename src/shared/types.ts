@@ -61,6 +61,13 @@ export type FormField = {
    * field is read-only in the runtime and recomputed on both client and server.
    */
   compute?: string;
+  /**
+   * M9: opt this field into full-text search. Optional and back-compatible —
+   * when absent, text-ish fields (`text`/`textarea`/`select`) are searchable by
+   * default and other types are not. Set `true` to index a non-text field or
+   * `false` to exclude a text field. See `src/shared/search.ts`.
+   */
+  searchable?: boolean;
 };
 
 export type FormSection = {

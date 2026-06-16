@@ -78,6 +78,9 @@ function validateField(field: FormField, index: number): ValidationError[] {
     errors.push(...validateExpression(rule.expression, `${prefix}.validate.${ruleIndex}.expression`));
   }
   errors.push(...validateHandlerRef(field.compute, "pure", `${prefix}.compute`));
+  if (field.searchable !== undefined && typeof field.searchable !== "boolean") {
+    errors.push(error(`${prefix}.searchable`, "Field searchable must be a boolean"));
+  }
   return errors;
 }
 
