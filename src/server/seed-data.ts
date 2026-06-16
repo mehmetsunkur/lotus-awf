@@ -90,7 +90,7 @@ export function seedDocuments(): Array<
           compute: "expense-total-with-tax",
           helpText: "Computed from amount via the expense-total-with-tax handler (amount + 20% tax)."
         },
-        { name: "description", type: "text", label: "Description", required: true },
+        { name: "description", type: "text", label: "Description", required: true, searchable: true },
         {
           name: "category",
           type: "select",
@@ -108,6 +108,7 @@ export function seedDocuments(): Array<
           type: "select",
           label: "Vendor",
           helpText: "Loaded from local vendor documents.",
+          searchable: false,
           source: { docType: "vendor", labelField: "payload.name" }
         },
         { name: "spentAt", type: "date", label: "Spent date" },

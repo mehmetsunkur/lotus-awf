@@ -35,6 +35,7 @@ import {
 import { applyComputedFields, normalizePayload, validatePayload } from "../shared/validation";
 import { applyTransition, currentState } from "../shared/workflow";
 import { agentIsDue, agentIsEnabled, agentMatchesChange, agentRunKey } from "../shared/agents";
+import { searchDocuments } from "../shared/search";
 import { HANDLER_MANIFEST } from "../shared/handlers/manifest";
 import { clearEffectLog, readEffectLog, runEffect } from "./handlers/effects";
 import { runAgentHandler } from "./handlers/agents";
@@ -589,7 +590,16 @@ app.get(
       body.use_index = filtersByState ? "m3-docType-state-updatedAt" : "m2-kind-docType-updatedAt";
     }
     const result = await findDocs<BusinessDocument>("local", body);
-    response.json(result.docs.filter((doc) => canReadDocument(doc, scope)));
+    const readable = result.docs.filter((doc) => canReadDocument(doc, scope));
+    // M9: free-text search narrows the ACL-scoped set with the shared matcher,
+    // so it never widens visibility. Form (local) supplies the searchable fields.
+    const query = typeof request.query.q === "string" ? request.query.q : "";
+    if (query.trim()) {
+      const form = await formForDocType(view.docType);
+      response.json(searchDocuments(readable, form, query));
+      return;
+    }
+    response.json(readable);
   })
 );
 
