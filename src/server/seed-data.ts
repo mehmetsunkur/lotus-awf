@@ -13,17 +13,19 @@ import { config } from "./config";
 
 const now = () => new Date().toISOString();
 
-export function createExpenseDoc(
+/** Generic business-document constructor (M12) — stamps the given docType/_id. */
+export function createDocument(
+  docType: string,
   payload: Record<string, unknown>,
   user = config.appUser,
-  readers = ["user:alice", "role:finance"]
+  readers = [user]
 ): BusinessDocument {
   const timestamp = now();
   return {
-    _id: `doc:expense:${ulid()}`,
+    _id: `doc:${docType}:${ulid()}`,
     kind: "document",
     appId: "expense",
-    docType: "expense",
+    docType,
     createdAt: timestamp,
     updatedAt: timestamp,
     createdBy: user,
@@ -34,25 +36,20 @@ export function createExpenseDoc(
   };
 }
 
+export function createExpenseDoc(
+  payload: Record<string, unknown>,
+  user = config.appUser,
+  readers = ["user:alice", "role:finance"]
+): BusinessDocument {
+  return createDocument("expense", payload, user, readers);
+}
+
 export function createVendorDoc(
   payload: Record<string, unknown>,
   user = config.appUser,
   readers = ["user:alice", "role:finance"]
 ): BusinessDocument {
-  const timestamp = now();
-  return {
-    _id: `doc:vendor:${ulid()}`,
-    kind: "document",
-    appId: "expense",
-    docType: "vendor",
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    createdBy: user,
-    updatedBy: user,
-    readers,
-    authors: [user],
-    payload
-  };
+  return createDocument("vendor", payload, user, readers);
 }
 
 export function seedDocuments(): Array<

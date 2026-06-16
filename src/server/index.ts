@@ -42,6 +42,7 @@ import { applyTransition, currentState } from "../shared/workflow";
 import { agentIsDue, agentIsEnabled, agentMatchesChange, agentRunKey } from "../shared/agents";
 import { searchDocuments } from "../shared/search";
 import { auditAction, eventIsExpired, shouldAudit } from "../shared/audit";
+import { scaffoldDocumentType, validateDocType } from "../shared/scaffold";
 import { HANDLER_MANIFEST } from "../shared/handlers/manifest";
 import { clearEffectLog, readEffectLog, runEffect } from "./handlers/effects";
 import { runAgentHandler } from "./handlers/agents";
@@ -67,7 +68,7 @@ import {
   replicateBidirectional
 } from "./couch";
 import { config } from "./config";
-import { createExpenseDoc, createVendorDoc, seedDocuments } from "./seed-data";
+import { createDocument, createExpenseDoc, seedDocuments } from "./seed-data";
 
 const app = express();
 
@@ -213,6 +214,17 @@ async function applyDefinition(definition: DesignDocument) {
 
   const next = { ...stripDefinitionRev(definition), _rev: currentRev } as DesignDocument;
   return putDoc("local", next);
+}
+
+/** Whether a design document with this id already exists locally. */
+async function definitionExists(id: string): Promise<boolean> {
+  try {
+    await getDoc("local", id);
+    return true;
+  } catch (error) {
+    if (error instanceof CouchError && error.status === 404) return false;
+    throw error;
+  }
 }
 
 /** Roles held by a user according to acl:rules; [] if the doc or user is absent. */
@@ -738,7 +750,9 @@ app.post(
     }
     const scope = await currentScope();
     const readers = readersForNewDocument(scope, docType);
-    const doc = docType === "vendor" ? createVendorDoc(payload, config.appUser, readers) : createExpenseDoc(payload, config.appUser, readers);
+    // M12: stamp the document generically so any scaffolded docType is correct
+    // (was hardcoded to expense/vendor); readers come from the access policy.
+    const doc = createDocument(docType, payload, config.appUser, readers);
     const result = await putDoc("local", doc);
     response.status(201).json({ ...doc, _rev: result.rev });
   })
@@ -917,6 +931,39 @@ app.put(
     }
     const result = await putDoc("local", next);
     response.json({ ...next, _rev: result.rev });
+  })
+);
+
+// M12: scaffold a brand-new document type — a form + a list view — so a citizen
+// can create an app from scratch. The pair is built by the shared scaffold,
+// validated by the shared validators, and written local-first (upsert), exactly
+// like any other definition.
+app.post(
+  "/api/document-types",
+  asyncRoute(async (request, response) => {
+    const docType = (typeof request.body.docType === "string" ? request.body.docType : "").trim();
+    const title = typeof request.body.title === "string" ? request.body.title : "";
+
+    const slugErrors = validateDocType(docType);
+    if (slugErrors.length) {
+      response.status(422).json({ error: "document_type_validation_failed", errors: slugErrors });
+      return;
+    }
+    if ((await definitionExists(`form:${docType}`)) || (await definitionExists(`view:${docType}`))) {
+      response.status(409).json({ error: "conflict", reason: `Document type "${docType}" already exists` });
+      return;
+    }
+
+    const appConfig = await getDoc<AppConfig>("local", "app:config");
+    const { form, view } = scaffoldDocumentType(appConfig.appId, docType, title);
+    const errors = [...validateDesignDefinition(form), ...validateDesignDefinition(view)];
+    if (errors.length) {
+      response.status(422).json({ error: "definition_validation_failed", errors });
+      return;
+    }
+    await applyDefinition(form);
+    await applyDefinition(view);
+    response.status(201).json({ form, view });
   })
 );
 
