@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `d2af620`
-- Last reviewed date: `2026-06-15`
+- Last code review baseline: `72b069a`
+- Last reviewed date: `2026-06-16`
 - Code areas:
   - `src/server/**`
   - `scripts/**`
@@ -46,6 +46,9 @@ reconciliation, and (M6) template export/diff/apply.
 - List: `GET /api/views/:id/documents` → `mangoSelector(view.filters)` + access selector →
   `findDocs`; on `updatedAt` sort binds `m3-docType-state-updatedAt` for state-filtered views, else
   `m2-kind-docType-updatedAt` (hints bind because `createIndex` pins `ddoc === name`).
+- Search (M9): the same endpoint with `?q=` applies the shared `searchDocuments` matcher **after** the
+  `canReadDocument` ACL filter (loading the view's form from local Couch), so search narrows the
+  ACL-scoped set and never widens it. No new Mango index; the matcher runs in-memory over the candidates.
 - Transition (M3/M5): `POST /api/documents/:id/transition` → read-access check → shared
   `applyTransition` (roles from `acl:rules`) → write **local** Couch; `403` when unreadable and `422`
   on an illegal/role-gated transition. (M7) After the authoritative write, a transition's `action`
@@ -82,7 +85,7 @@ reconciliation, and (M6) template export/diff/apply.
 
 See `docs/invariants.md`: **Replication & conflict**, **ACL / readers**, **Offline editing**,
 **Index & query**, **Validation parity**, **Definitions-as-data contract**, **Handler / plugin
-runtime**, **Agent runtime** govern this subsystem.
+runtime**, **Agent runtime**, **Search** govern this subsystem.
 
 ## Relevant Decisions
 

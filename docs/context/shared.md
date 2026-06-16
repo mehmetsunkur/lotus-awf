@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `0dba944`
-- Last reviewed date: `2026-06-15`
+- Last code review baseline: `72b069a`
+- Last reviewed date: `2026-06-16`
 - Code areas:
   - `src/shared/**`
 - Tests:
@@ -36,6 +36,9 @@ No DOM, no Node/server-only APIs.
   `applyTransition`. Pure; reuses `evaluateBoolean` for guards and fails closed on a bad guard.
 - `src/shared/agents.ts` (M8) — pure agent matching/scheduling: `agentIsDue`, `agentMatchesChange`,
   `agentRunKey`. The server orchestrates I/O around these; they hold the decisions.
+- `src/shared/search.ts` (M9) — pure full-text matcher: `fold`, `tokenize`, `searchableFields`,
+  `scoreDocument`, `searchDocuments` (accent-folded, AND-of-terms, prefix, field-weighted ranking).
+  Identical client/server/local-replica; the server applies it to the ACL-scoped set.
 - `src/shared/handlers/manifest.ts` (M7) — declared handler manifest (`name`, `kind`); the portable
   source of truth for validating `compute`/`action` references.
 - `src/shared/handlers/pure.ts` (M7) — pure handler registry + `runPureHandler` (fails closed).
@@ -64,6 +67,10 @@ code in the browser and on the API save path.
 
 M8 adds the agent contract (`agent:*`) and pure matching engine; the agent `handler` reference is
 validated against the manifest (kind `agent`) by the same shared definition validator.
+
+M9 adds the pure search matcher and an optional `FormField.searchable` flag (text-ish fields default
+on, validated by the shared definition validator). The matcher is deterministic and portable, so search
+is identical offline and on the server; the server applies it only to the already ACL-scoped set.
 
 ## Existing Patterns
 

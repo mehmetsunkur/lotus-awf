@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `89536b0`
-- Last reviewed date: `2026-06-15`
+- Last code review baseline: `72b069a`
+- Last reviewed date: `2026-06-16`
 - Code areas:
   - `src/client/**`
 - Tests:
@@ -43,6 +43,9 @@ resolution panel.
 - Conflict resolve → "Keep This Revision" on any revision → `POST /api/conflicts/:id/resolve` with
   `chosenRev` so the elected state/history survives.
 - Switch view does NOT auto-refetch documents; a refresh does (see `tests/e2e/support/fixtures.ts`).
+- Search (M9) → the per-view search box (`data-testid="view-search"`) commits a query to
+  `GET /api/views/:id/documents?q=` and refetches. A ref holds the committed query so submit/clear never
+  refetch with a stale closure; like view switching, a refetch happens on submit, not per keystroke.
 
 ## Existing Patterns
 

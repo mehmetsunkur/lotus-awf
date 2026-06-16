@@ -56,6 +56,11 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 - Agent execution is server-authoritative and tick-driven (never on a device): runs must be durable and at-least-once with (agentId+rev) dedupe, the `agent:state` checkpoint advances only after `agentrun:*` records are written, a failing handler records a failed run without crashing the tick, and `agentrun`/`agent:state` are runtime docs — never templated, never returned as business documents.
   - Paths: `src/shared/agents.ts`, `src/server/handlers/agents.ts`, `src/server/index.ts`, `src/server/couch.ts`
 
+## Search
+
+- Full-text search must be a pure, deterministic, portable matcher (identical client/server/local-replica) applied only to the already ACL-scoped set, so it can narrow visibility but never widen it; searchable fields are data (`FormField.searchable`, text-ish default on) and search must not add a Mango index or a server-replica round-trip.
+  - Paths: `src/shared/search.ts`, `src/server/index.ts`
+
 ## Replication & conflict
 
 - Changes must preserve bidirectional replication and correct `_rev`/`_conflicts` handling — never drop or silently lose a revision on resolve, and never let a payload-shape change break how conflicting revisions are compared.
