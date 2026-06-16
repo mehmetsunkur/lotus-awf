@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `a7271b3`
+- Last code review baseline: `bbdadaf`
 - Last reviewed date: `2026-06-16`
 - Code areas:
   - `src/client/**`
@@ -44,6 +44,9 @@ resolution panel.
   select, and native HTML5 drag, all routed through `src/shared/form-layout.ts` (keeps the form
   normalized). A live preview reuses `DocumentForm` in read-only `preview` mode (`FieldEditor`'s
   `testIdPrefix` → `preview-field-*`, no collision with the live `field-*`). Saves via the M4 path.
+- New document type (M12) → the studio's "New document type" form (`new-type-form`) `POST`s
+  `/api/document-types`; on success the studio + view picker point at the new type, and the refresh
+  surfaces its view tab. Errors (409/422) surface in the status message.
 - Conflict resolve → "Keep This Revision" on any revision → `POST /api/conflicts/:id/resolve` with
   `chosenRev` so the elected state/history survives.
 - Switch view does NOT auto-refetch documents; a refresh does (see `tests/e2e/support/fixtures.ts`).

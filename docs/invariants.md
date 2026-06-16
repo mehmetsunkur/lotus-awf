@@ -61,6 +61,11 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 - Full-text search must be a pure, deterministic, portable matcher (identical client/server/local-replica) applied only to the already ACL-scoped set, so it can narrow visibility but never widen it; searchable fields are data (`FormField.searchable`, text-ish default on) and search must not add a Mango index or a server-replica round-trip.
   - Paths: `src/shared/search.ts`, `src/server/index.ts`
 
+## Document-type creation
+
+- Creating a document type must scaffold a form AND a list view (a type is unreachable in the runtime without both) via the pure `src/shared/scaffold.ts`; the docType is a unique lowercase slug (reject reserved design-doc kinds and existing types), both definitions are validated by shared `validateDesignDefinition` before a local-first write, and documents are stamped by the generic `createDocument(docType, …)` so every type's `docType`/`_id` is correct — no new Mango index (the scaffolded view binds the kind+docType index).
+  - Paths: `src/shared/scaffold.ts`, `src/server/index.ts`, `src/server/seed-data.ts`
+
 ## Form layout authoring
 
 - Studio layout edits must go through the pure `src/shared/form-layout.ts` engine and keep the form normalized — `sections` non-empty and every field in exactly one section (the runtime renders by section, so an unsectioned field is invisible); removing a section reassigns its fields and the last section cannot be removed; saves go through shared `validateDesignDefinition` so edits stay back-compatible, and the studio preview reuses the runtime renderer without colliding testids.

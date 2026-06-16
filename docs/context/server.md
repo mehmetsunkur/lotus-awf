@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `23eb61c`
+- Last code review baseline: `bbdadaf`
 - Last reviewed date: `2026-06-16`
 - Code areas:
   - `src/server/**`
@@ -39,7 +39,13 @@ reconciliation, and (M6) template export/diff/apply.
 
 ## Key Flows
 
-- Save: `POST/PUT /api/documents` → shared `validatePayload` → write to **local** Couch.
+- Save: `POST/PUT /api/documents` → shared `validatePayload` → write to **local** Couch. (M12) The
+  POST path stamps the document via the generic `createDocument(docType, …)`, so any scaffolded type is
+  stamped correctly (was hardcoded expense/vendor).
+- Create type (M12): `POST /api/document-types {docType, title}` → shared `validateDocType` (422),
+  reject if `form:`/`view:<docType>` exists (409) → `scaffoldDocumentType` → validate both →
+  `applyDefinition` upsert each. The scaffolded form + view promote via the template artifact; no new
+  Mango index (the list view binds `m2-kind-docType-updatedAt`).
 - Access (M5): current `{ user, roles }` comes from `config.appUser` + `acl:rules`; business reads
   match document `readers`, payload writes/deletes require `authors`, and sourced select options use
   the same readable-document scope.
@@ -92,7 +98,8 @@ reconciliation, and (M6) template export/diff/apply.
 
 See `docs/invariants.md`: **Replication & conflict**, **ACL / readers**, **Offline editing**,
 **Index & query**, **Validation parity**, **Definitions-as-data contract**, **Handler / plugin
-runtime**, **Agent runtime**, **Search**, **Audit & retention** govern this subsystem.
+runtime**, **Agent runtime**, **Search**, **Audit & retention**, **Document-type creation** govern
+this subsystem.
 
 ## Relevant Decisions
 

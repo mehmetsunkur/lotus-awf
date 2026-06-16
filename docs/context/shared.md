@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `a7271b3`
+- Last code review baseline: `bbdadaf`
 - Last reviewed date: `2026-06-16`
 - Code areas:
   - `src/shared/**`
@@ -47,6 +47,9 @@ No DOM, no Node/server-only APIs.
   `moveFieldToSection`, `add/rename/move/removeSection`, `addFieldToSection`, `removeField`,
   `renameField`, `isLayoutNormalized`). The citizen studio routes every layout mutation through these;
   each preserves the normalized form (sections non-empty, every field in exactly one section).
+- `src/shared/scaffold.ts` (M12) — pure document-type scaffold: `slugifyDocType`, `validateDocType`
+  (slug + reserved-kind guard), `scaffoldDocumentType(appId, docType, title)` → `{ form, view }` (both
+  pass the shared validators). The server validates and writes the pair around it.
 - `src/shared/handlers/manifest.ts` (M7) — declared handler manifest (`name`, `kind`); the portable
   source of truth for validating `compute`/`action` references.
 - `src/shared/handlers/pure.ts` (M7) — pure handler registry + `runPureHandler` (fails closed).
@@ -87,6 +90,10 @@ runtime docs and prunes them by policy around these functions.
 M11 adds the pure form-layout engine. The citizen layout studio routes every section/field mutation
 through it, so the reorder/regroup rules are deterministic and unit-tested, and the form stays
 normalized (every field in exactly one section) — the runtime renders by section.
+
+M12 adds the pure document-type scaffold. Creating a type builds a form + list view from it (both
+validated by the shared validator) so a brand-new type is reachable in the runtime; the server writes
+the pair local-first.
 
 ## Existing Patterns
 
