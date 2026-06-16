@@ -25,6 +25,7 @@ test.describe("template promotion", () => {
       "agent:daily-digest",
       "agent:on-expense-change",
       "app:config",
+      "audit:policy",
       "form:expense",
       "form:vendor",
       "view:all-expenses",
