@@ -139,6 +139,59 @@ button:disabled {
   padding: 0.65rem 0.8rem;
 }
 
+.appWorkspace {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+
+.appSidebar {
+  align-self: start;
+  background: rgb(255 250 240 / 88%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 16px;
+  padding: 14px;
+  position: sticky;
+  top: 16px;
+}
+
+.sidebarSection {
+  display: grid;
+  gap: 8px;
+}
+
+.sidebarNav {
+  display: grid;
+  gap: 6px;
+}
+
+.sidebarNav button,
+.sidebarDesigner {
+  justify-content: flex-start;
+  text-align: left;
+  width: 100%;
+}
+
+.sidebarNav button.active {
+  background: var(--brand-strong);
+  border-color: var(--brand-strong);
+  color: white;
+}
+
+.sidebarDesigner {
+  background: rgb(15 118 110 / 10%);
+  border-color: rgb(15 118 110 / 35%);
+  color: var(--brand-strong);
+}
+
+.workspaceMain {
+  min-width: 0;
+}
+
 .workspace {
   display: grid;
   gap: 16px;
@@ -272,6 +325,22 @@ tr.selected {
   background: rgb(15 118 110 / 10%);
 }
 
+.iconLink {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--brand-strong);
+  display: inline-flex;
+  justify-content: center;
+  min-height: 34px;
+  width: 34px;
+}
+
+.iconLink:hover {
+  border-color: var(--brand);
+  background: rgb(15 118 110 / 10%);
+}
+
 .fieldGrid {
   display: grid;
   gap: 14px;
@@ -367,10 +436,6 @@ small {
 }
 
 .conflictPanel {
-  margin-top: 16px;
-}
-
-.definitionPanel {
   margin-top: 16px;
 }
 
@@ -530,6 +595,13 @@ small {
 }
 
 @media (max-width: 900px) {
+  .appWorkspace,
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+  .appSidebar {
+    position: static;
+  }
   .studioWithPreview {
     grid-template-columns: 1fr;
   }

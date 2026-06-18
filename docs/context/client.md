@@ -23,8 +23,8 @@ definition studio (with JSON escape hatch) and the conflict resolution panel.
 
 ## Main Files
 
-- `src/client/main.tsx` — the entire single-file runtime shell (status strip, view picker,
-  document table/form, M4 definition studio, conflict panel, and the M3 `WorkflowBar` /
+- `src/client/main.tsx` — the single-file platform/runtime shell (status strip, runtime/designer
+  workspaces, document table/form, M4 definition studio, conflict panel, and the M3 `WorkflowBar` /
   `WorkflowHistory` and per-revision conflict resolution).
 - `src/client/styles.css`.
 
@@ -32,9 +32,10 @@ definition studio (with JSON escape hatch) and the conflict resolution panel.
 
 - Boot (M14) → `GET /api/platform/state` → route/render `/setup.nsf`, `/catalog.nsf`, or
   `/expense.nsf`.
-- In-app routing (M15) → the Expense runtime parses `/expense.nsf/views/*`,
-  `/expense.nsf/documents/*`, and `/expense.nsf/design/*`; view/document/definition selections push
-  matching URLs and browser back/forward updates the selected runtime state.
+- In-app routing (M15/M16) → the Expense runtime parses `/expense.nsf/views/*`,
+  `/expense.nsf/documents/*`, and `/expense.nsf/designer/*`; legacy `/expense.nsf/design/*`
+  normalizes to Designer routes. View/document/definition selections push matching URLs and browser
+  back/forward updates selected state.
 - App runtime boot → `GET /api/status|definitions|conflicts` → render shell (`definitions` carries
   `workflows`, `user`, `roles`).
 - First-run setup (M14) → `POST /api/platform/setup` stores org/domain/admin, then catalog renders
@@ -46,9 +47,9 @@ definition studio (with JSON escape hatch) and the conflict resolution panel.
   computed fields render read-only and recompute as inputs change.
 - Transition (M3) → `WorkflowBar` renders `availableTransitions` (shared engine) → `POST
   /api/documents/:id/transition` → refresh.
-- Authoring (M4) → structured form/view/workflow controls update the JSON definition in memory →
-  shared `validateDesignDefinition` runs client-side → `PUT /api/definitions/:id` (local replica) →
-  refresh.
+- Authoring (M4/M16) → Designer workspace left pane lists forms/views/workflows; structured controls
+  update the JSON definition in memory → shared `validateDesignDefinition` runs client-side →
+  `PUT /api/definitions/:id` (local replica) → refresh.
 - Layout studio (M11) → `FormStudio` groups fields by section with move buttons, a move-to-section
   select, and native HTML5 drag, all routed through `src/shared/form-layout.ts` (keeps the form
   normalized). A live preview reuses `DocumentForm` in read-only `preview` mode (`FieldEditor`'s

@@ -2,7 +2,7 @@ import { test, expect } from "./support/fixtures";
 
 test.describe("create a document type", () => {
   test("scaffolds a new type, surfaces its view, and creates a document of it", async ({ app, page }) => {
-    await app.goto();
+    await app.gotoDesigner();
 
     await page.getByTestId("new-type-doctype").fill("invoice");
     await page.getByTestId("new-type-title").fill("Invoice");
@@ -10,6 +10,7 @@ test.describe("create a document type", () => {
     await expect(app.message()).toHaveText("Create document type complete.");
 
     // The scaffolded list view appears in the runtime picker.
+    await app.goto();
     await expect(page.getByTestId("view-tab-view:invoice")).toBeVisible();
 
     await app.openView("view:invoice");

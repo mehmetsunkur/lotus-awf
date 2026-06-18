@@ -4,9 +4,12 @@ import {
   AlertTriangle,
   Braces,
   Database,
+  ExternalLink,
   FilePenLine,
+  FilePlus2,
   GitCompare,
   List,
+  PencilRuler,
   RefreshCcw,
   RotateCcw,
   Save,
@@ -76,7 +79,8 @@ type ExpenseRoute =
   | { kind: "home" }
   | { kind: "view"; viewId: string }
   | { kind: "document"; docId: string }
-  | { kind: "design"; definitionId: string };
+  | { kind: "designerHome" }
+  | { kind: "designer"; definitionId: string };
 
 type RouteState = {
   app: AppRoute;
@@ -107,9 +111,10 @@ const expenseRouteForPath = (path: string): ExpenseRoute => {
   const parts = path.slice(prefix.length + 1).split("/").filter(Boolean).map(decodeURIComponent);
   if (parts[0] === "views" && parts[1]) return { kind: "view", viewId: viewIdFromSlug(parts[1]) };
   if (parts[0] === "documents" && parts[1]) return { kind: "document", docId: parts[1] };
-  if (parts[0] === "design" && parts[1] === "forms" && parts[2]) return { kind: "design", definitionId: formIdFromDocType(parts[2]) };
-  if (parts[0] === "design" && parts[1] === "views" && parts[2]) return { kind: "design", definitionId: viewIdFromSlug(parts[2]) };
-  if (parts[0] === "design" && parts[1] === "workflows" && parts[2]) return { kind: "design", definitionId: workflowIdFromDocType(parts[2]) };
+  if (parts[0] === "designer" && !parts[1]) return { kind: "designerHome" };
+  if ((parts[0] === "designer" || parts[0] === "design") && parts[1] === "forms" && parts[2]) return { kind: "designer", definitionId: formIdFromDocType(parts[2]) };
+  if ((parts[0] === "designer" || parts[0] === "design") && parts[1] === "views" && parts[2]) return { kind: "designer", definitionId: viewIdFromSlug(parts[2]) };
+  if ((parts[0] === "designer" || parts[0] === "design") && parts[1] === "workflows" && parts[2]) return { kind: "designer", definitionId: workflowIdFromDocType(parts[2]) };
   return { kind: "home" };
 };
 
@@ -121,10 +126,11 @@ const routeStateForPath = (path: string): RouteState => ({
 const pathForExpenseRoute = (route: ExpenseRoute) => {
   if (route.kind === "view") return `/expense.nsf/views/${encodeURIComponent(viewSlugFromId(route.viewId))}`;
   if (route.kind === "document") return `/expense.nsf/documents/${encodeURIComponent(route.docId)}`;
-  if (route.kind === "design") {
-    if (route.definitionId.startsWith("form:")) return `/expense.nsf/design/forms/${encodeURIComponent(docTypeFromDefinitionId(route.definitionId))}`;
-    if (route.definitionId.startsWith("view:")) return `/expense.nsf/design/views/${encodeURIComponent(viewSlugFromId(route.definitionId))}`;
-    if (route.definitionId.startsWith("workflow:")) return `/expense.nsf/design/workflows/${encodeURIComponent(docTypeFromDefinitionId(route.definitionId))}`;
+  if (route.kind === "designerHome") return "/expense.nsf/designer";
+  if (route.kind === "designer") {
+    if (route.definitionId.startsWith("form:")) return `/expense.nsf/designer/forms/${encodeURIComponent(docTypeFromDefinitionId(route.definitionId))}`;
+    if (route.definitionId.startsWith("view:")) return `/expense.nsf/designer/views/${encodeURIComponent(viewSlugFromId(route.definitionId))}`;
+    if (route.definitionId.startsWith("workflow:")) return `/expense.nsf/designer/workflows/${encodeURIComponent(docTypeFromDefinitionId(route.definitionId))}`;
   }
   return `/expense.nsf/views/${encodeURIComponent(viewSlugFromId(DEFAULT_EXPENSE_VIEW_ID))}`;
 };
@@ -135,7 +141,8 @@ const pathForRouteState = (route: RouteState) =>
 const expenseRouteKey = (route: ExpenseRoute) => {
   if (route.kind === "view") return `view:${route.viewId}`;
   if (route.kind === "document") return `document:${route.docId}`;
-  if (route.kind === "design") return `design:${route.definitionId}`;
+  if (route.kind === "designer") return `designer:${route.definitionId}`;
+  if (route.kind === "designerHome") return "designer";
   return "home";
 };
 
@@ -266,16 +273,120 @@ function ViewPicker({
   );
 }
 
+function RuntimeSidebar({
+  views,
+  forms,
+  selectedViewId,
+  activeDocType,
+  onSelectView,
+  onNewDocument,
+  onOpenDesigner
+}: {
+  views: ViewDefinition[];
+  forms: FormDefinition[];
+  selectedViewId?: string;
+  activeDocType?: string;
+  onSelectView: (id: string) => void;
+  onNewDocument: (docType: string) => void;
+  onOpenDesigner: () => void;
+}) {
+  return (
+    <aside className="appSidebar" data-testid="runtime-sidebar">
+      <div className="sidebarSection">
+        <p className="kicker">Views</p>
+        <nav className="sidebarNav" data-testid="view-picker">
+          {views.map((view) => (
+            <button
+              key={view._id}
+              className={view._id === selectedViewId ? "active" : ""}
+              onClick={() => onSelectView(view._id)}
+              data-testid={`view-tab-${view._id}`}
+              data-active={view._id === selectedViewId ? "true" : "false"}
+            >
+              <List size={16} /> {view.title}
+            </button>
+          ))}
+        </nav>
+      </div>
+      <div className="sidebarSection">
+        <p className="kicker">Create</p>
+        <nav className="sidebarNav">
+          {forms.map((form) => (
+            <button
+              key={form._id}
+              className={!selectedViewId && activeDocType === form.docType ? "active" : ""}
+              onClick={() => onNewDocument(form.docType)}
+              data-testid={`new-doc-${form.docType}`}
+            >
+              <FilePlus2 size={16} /> New {form.title}
+            </button>
+          ))}
+        </nav>
+      </div>
+      <div className="sidebarSection">
+        <button className="sidebarDesigner" onClick={onOpenDesigner} data-testid="open-designer">
+          <PencilRuler size={16} /> Open in Designer <ExternalLink size={14} />
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function DesignerSidebar({
+  forms,
+  views,
+  workflows,
+  selectedDefinitionId,
+  onSelect
+}: {
+  forms: FormDefinition[];
+  views: ViewDefinition[];
+  workflows: WorkflowDefinition[];
+  selectedDefinitionId?: string;
+  onSelect: (id: string) => void;
+}) {
+  const groups = [
+    { label: "Forms", items: forms.map((item) => ({ id: item._id, title: item.title })) },
+    { label: "Views", items: views.map((item) => ({ id: item._id, title: item.title })) },
+    { label: "Workflows", items: workflows.map((item) => ({ id: item._id, title: item.docType })) }
+  ];
+
+  return (
+    <aside className="appSidebar designerSidebar" data-testid="designer-sidebar">
+      {groups.map((group) => (
+        <div className="sidebarSection" key={group.label}>
+          <p className="kicker">{group.label}</p>
+          <nav className="sidebarNav">
+            {group.items.map((item) => (
+              <button
+                key={item.id}
+                className={item.id === selectedDefinitionId ? "active" : ""}
+                onClick={() => onSelect(item.id)}
+                data-testid={`designer-nav-${item.id}`}
+                data-active={item.id === selectedDefinitionId ? "true" : "false"}
+              >
+                <FilePenLine size={16} /> {item.title}
+              </button>
+            ))}
+          </nav>
+        </div>
+      ))}
+    </aside>
+  );
+}
+
 function DocumentTable({
   view,
   documents,
   selectedId,
-  onSelect
+  onSelect,
+  documentHref
 }: {
   view: ViewDefinition;
   documents: BusinessDocument[];
   selectedId?: string;
   onSelect: (doc: BusinessDocument) => void;
+  documentHref: (doc: BusinessDocument) => string;
 }) {
   return (
     <section className="listPanel" data-testid="document-table">
@@ -294,10 +405,13 @@ function DocumentTable({
                 <th key={column.field}>{column.label}</th>
               ))}
               <th>State</th>
+              <th>Open</th>
             </tr>
           </thead>
           <tbody>
-            {documents.map((doc) => (
+            {documents.map((doc) => {
+              const href = documentHref(doc);
+              return (
               <tr
                 key={doc._id}
                 className={doc._id === selectedId ? "selected" : ""}
@@ -313,8 +427,22 @@ function DocumentTable({
                   {doc._conflicts?.length ? <span className="conflictTag"> ⚠ conflict</span> : null}
                   {!doc.state && !doc._conflicts?.length ? "—" : null}
                 </td>
+                <td>
+                  <a
+                    className="iconLink"
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(event) => event.stopPropagation()}
+                    data-testid="doc-open-new-tab"
+                    aria-label={`Open ${doc._id} in a new tab`}
+                  >
+                    <ExternalLink size={16} />
+                  </a>
+                </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -1288,6 +1416,7 @@ function App() {
   const [selectedViewId, setSelectedViewId] = React.useState(DEFAULT_EXPENSE_VIEW_ID);
   const [selectedDefinitionId, setSelectedDefinitionId] = React.useState("form:expense");
   const [selectedId, setSelectedId] = React.useState<string>();
+  const [newDocType, setNewDocType] = React.useState<string>();
   const [selectedConflict, setSelectedConflict] = React.useState<ConflictDetails>();
   const [message, setMessage] = React.useState("Runtime booting.");
   const [busy, setBusy] = React.useState(false);
@@ -1302,10 +1431,14 @@ function App() {
   const lastOpenedExpenseRouteRef = React.useRef("");
 
   const selectedView = definitions?.views.find((view) => view._id === selectedViewId) ?? definitions?.views[0];
-  const selectedForm = definitions?.forms.find((form) => form.docType === selectedView?.docType) ?? definitions?.form;
-  const selectedWorkflow = definitions?.workflows.find((workflow) => workflow.docType === selectedForm?.docType);
   const selected = documents.find((doc) => doc._id === selectedId);
-  const editableDefinitions = [...(definitions?.forms ?? []), ...(definitions?.views ?? []), ...(definitions?.workflows ?? [])];
+  const activeDocType = newDocType ?? selected?.docType ?? selectedView?.docType;
+  const selectedForm = definitions?.forms.find((form) => form.docType === activeDocType) ?? definitions?.form;
+  const selectedWorkflow = definitions?.workflows.find((workflow) => workflow.docType === selectedForm?.docType);
+  const editableDefinitions = React.useMemo(
+    () => [...(definitions?.forms ?? []), ...(definitions?.views ?? []), ...(definitions?.workflows ?? [])],
+    [definitions]
+  );
 
   React.useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -1399,6 +1532,9 @@ function App() {
       navigateApp("catalog", true);
       return;
     }
+    if (route.expense.kind === "designer" && window.location.pathname.startsWith("/expense.nsf/design/")) {
+      navigateExpense(route.expense, true);
+    }
     if (route.expense.kind === "home") {
       navigateExpense({ kind: "view", viewId: selectedViewId || DEFAULT_EXPENSE_VIEW_ID }, true);
       return;
@@ -1411,6 +1547,7 @@ function App() {
     if (route.expense.kind === "view") {
       setSelectedId(undefined);
       selectedIdRef.current = undefined;
+      setNewDocType(undefined);
       setSelectedViewId(route.expense.viewId);
     }
     run("Open Expense", () => refresh(targetViewId), { refreshAfter: false });
@@ -1421,27 +1558,37 @@ function App() {
     const expenseRoute = route.expense;
     if (expenseRoute.kind === "view") {
       if (definitions.views.some((view) => view._id === expenseRoute.viewId)) {
-        setSelectedId(undefined);
-        setSelectedViewId(expenseRoute.viewId);
+        if (selectedViewId !== expenseRoute.viewId) {
+          setSelectedId(undefined);
+          setNewDocType(undefined);
+          setSelectedViewId(expenseRoute.viewId);
+        }
       } else {
         navigateExpense({ kind: "view", viewId: DEFAULT_EXPENSE_VIEW_ID }, true);
       }
       return;
     }
-    if (expenseRoute.kind === "design") {
+    if (expenseRoute.kind === "designerHome") {
+      const firstDefinition = editableDefinitions[0];
+      if (firstDefinition) navigateExpense({ kind: "designer", definitionId: firstDefinition._id }, true);
+      return;
+    }
+    if (expenseRoute.kind === "designer") {
       if (editableDefinitions.some((definition) => definition._id === expenseRoute.definitionId)) {
         setSelectedDefinitionId(expenseRoute.definitionId);
       } else {
-        navigateExpense({ kind: "view", viewId: DEFAULT_EXPENSE_VIEW_ID }, true);
+        const firstDefinition = editableDefinitions[0];
+        navigateExpense(firstDefinition ? { kind: "designer", definitionId: firstDefinition._id } : { kind: "view", viewId: DEFAULT_EXPENSE_VIEW_ID }, true);
       }
     }
-  }, [definitions, editableDefinitions, navigateExpense, route.app, route.expense]);
+  }, [definitions, editableDefinitions, navigateExpense, route.app, route.expense, selectedViewId]);
 
   React.useEffect(() => {
     const expenseRoute = route.expense;
     if (route.app !== "expense" || expenseRoute.kind !== "document") return;
     if (documents.some((doc) => doc._id === expenseRoute.docId)) {
       setSelectedId(expenseRoute.docId);
+      setNewDocType(undefined);
     } else if (documents.length) {
       navigateExpense({ kind: "view", viewId: selectedView?._id ?? DEFAULT_EXPENSE_VIEW_ID }, true);
     }
@@ -1549,123 +1696,160 @@ function App() {
     );
   }
 
+  const selectView = (id: string) => {
+    setSelectedId(undefined);
+    setNewDocType(undefined);
+    setSelectedViewId(id);
+    navigateExpense({ kind: "view", viewId: id });
+  };
+  const startNewDocument = (docType: string) => {
+    setSelectedId(undefined);
+    setNewDocType(docType);
+  };
+  const selectDefinition = (id: string) => {
+    setSelectedDefinitionId(id);
+    navigateExpense({ kind: "designer", definitionId: id });
+  };
+  const saveDefinition = (id: string, doc: EditableDefinition) =>
+    run("Save local definition", () =>
+      api(`/api/definitions/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        body: JSON.stringify(doc)
+      })
+    );
+  const createType = (docType: string, title: string) =>
+    run("Create document type", async () => {
+      await api("/api/document-types", { method: "POST", body: JSON.stringify({ docType, title }) });
+      // The subsequent refresh reloads definitions; point the designer at the
+      // new type so it is immediately editable.
+      setSelectedDefinitionId(`form:${docType}`);
+      setSelectedViewId(`view:${docType}`);
+      navigateExpense({ kind: "designer", definitionId: `form:${docType}` });
+    });
+  const saveDocument = (payload: Record<string, unknown>) =>
+    run("Save local document", async () => {
+      if (selected) {
+        await api(`/api/documents/${encodeURIComponent(selected._id)}`, {
+          method: "PUT",
+          body: JSON.stringify({ payload })
+        });
+      } else {
+        await api("/api/documents", {
+          method: "POST",
+          body: JSON.stringify({ docType: selectedForm.docType, payload })
+        });
+        setNewDocType(undefined);
+      }
+    });
+  const isDesignerRoute = route.expense.kind === "designer" || route.expense.kind === "designerHome";
+
   return (
     <main className="shell">
       <StatusStrip {...shellActions} />
       <p className="message" data-testid="message">{message}</p>
-      <ViewPicker
-        views={definitions.views}
-        selectedViewId={selectedView._id}
-        onSelect={(id) => {
-          setSelectedId(undefined);
-          setSelectedViewId(id);
-          navigateExpense({ kind: "view", viewId: id });
-        }}
-      />
-      <form
-        className="band"
-        data-testid="view-search"
-        onSubmit={(event) => {
-          event.preventDefault();
-          searchQueryRef.current = searchInput;
-          run(searchInput.trim() ? "Search" : "Refresh", refresh, { refreshAfter: false });
-        }}
-      >
-        <input
-          type="search"
-          value={searchInput}
-          placeholder="Search this view..."
-          aria-label="Search documents"
-          data-testid="view-search-input"
-          onChange={(event) => setSearchInput(event.target.value)}
-        />
-        <button type="submit" data-testid="view-search-submit" disabled={busy}>
-          <Search size={16} /> Search
-        </button>
-        {searchInput && (
-          <button
-            type="button"
-            data-testid="view-search-clear"
-            disabled={busy}
-            onClick={() => {
-              setSearchInput("");
-              searchQueryRef.current = "";
-              run("Refresh", refresh, { refreshAfter: false });
-            }}
-          >
-            Clear
-          </button>
-        )}
-      </form>
-      <div className="workspace">
-        <DocumentTable view={selectedView} documents={documents} selectedId={selectedId} onSelect={(doc) => navigateExpense({ kind: "document", docId: doc._id })} />
-        <DocumentForm
-          form={selectedForm}
-          selected={selected}
-          optionsByField={optionsByField}
-          workflow={selectedWorkflow}
-          user={definitions.user}
-          roles={definitions.roles}
-          auditEvents={auditEvents}
-          onNew={() => {
-            setSelectedId(undefined);
-            navigateExpense({ kind: "view", viewId: selectedView._id });
-          }}
-          onTransition={(doc, transitionId) =>
-            run("Transition", () =>
-              api(`/api/documents/${encodeURIComponent(doc._id)}/transition`, {
-                method: "POST",
-                body: JSON.stringify({ transition: transitionId })
-              })
-            )
-          }
-          onDelete={(doc) =>
-            run("Delete local document", () => api(`/api/documents/${encodeURIComponent(doc._id)}`, { method: "DELETE" }))
-          }
-          onSave={(payload) =>
-            run("Save local document", () =>
-              selected
-                ? api(`/api/documents/${encodeURIComponent(selected._id)}`, {
-                    method: "PUT",
-                    body: JSON.stringify({ payload })
-                  })
-                : api("/api/documents", {
-                    method: "POST",
-                    body: JSON.stringify({ docType: selectedForm.docType, payload })
-                  })
-            )
-          }
-        />
-      </div>
-      <DefinitionEditor
-        definitions={editableDefinitions}
-        selectedId={selectedDefinitionId}
-        onSelect={(id) => {
-          setSelectedDefinitionId(id);
-          navigateExpense({ kind: "design", definitionId: id });
-        }}
-        optionsByField={optionsByField}
-        user={definitions.user}
-        roles={definitions.roles}
-        onSave={(id, doc) =>
-          run("Save local definition", () =>
-            api(`/api/definitions/${encodeURIComponent(id)}`, {
-              method: "PUT",
-              body: JSON.stringify(doc)
-            })
-          )
-        }
-        onCreateType={(docType, title) =>
-          run("Create document type", async () => {
-            await api("/api/document-types", { method: "POST", body: JSON.stringify({ docType, title }) });
-            // The subsequent refresh reloads definitions; point the studio + view
-            // picker at the new type so it is immediately in front of the user.
-            setSelectedDefinitionId(`form:${docType}`);
-            setSelectedViewId(`view:${docType}`);
-            navigateExpense({ kind: "design", definitionId: `form:${docType}` });
-          })
-        }
-      />
+      {isDesignerRoute ? (
+        <div className="appWorkspace designerWorkspace" data-testid="designer-workspace">
+          <DesignerSidebar
+            forms={definitions.forms}
+            views={definitions.views}
+            workflows={definitions.workflows}
+            selectedDefinitionId={selectedDefinitionId}
+            onSelect={selectDefinition}
+          />
+          <div className="workspaceMain">
+            <DefinitionEditor
+              definitions={editableDefinitions}
+              selectedId={selectedDefinitionId}
+              onSelect={selectDefinition}
+              optionsByField={optionsByField}
+              user={definitions.user}
+              roles={definitions.roles}
+              onSave={saveDefinition}
+              onCreateType={createType}
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="appWorkspace runtimeWorkspace" data-testid="runtime-workspace">
+          <RuntimeSidebar
+            views={definitions.views}
+            forms={definitions.forms}
+            selectedViewId={newDocType ? undefined : selectedView._id}
+            activeDocType={newDocType}
+            onSelectView={selectView}
+            onNewDocument={startNewDocument}
+            onOpenDesigner={() => window.open(pathForExpenseRoute({ kind: "designerHome" }), "_blank", "noopener,noreferrer")}
+          />
+          <div className="workspaceMain">
+            <form
+              className="band"
+              data-testid="view-search"
+              onSubmit={(event) => {
+                event.preventDefault();
+                searchQueryRef.current = searchInput;
+                run(searchInput.trim() ? "Search" : "Refresh", refresh, { refreshAfter: false });
+              }}
+            >
+              <input
+                type="search"
+                value={searchInput}
+                placeholder="Search this view..."
+                aria-label="Search documents"
+                data-testid="view-search-input"
+                onChange={(event) => setSearchInput(event.target.value)}
+              />
+              <button type="submit" data-testid="view-search-submit" disabled={busy}>
+                <Search size={16} /> Search
+              </button>
+              {searchInput && (
+                <button
+                  type="button"
+                  data-testid="view-search-clear"
+                  disabled={busy}
+                  onClick={() => {
+                    setSearchInput("");
+                    searchQueryRef.current = "";
+                    run("Refresh", refresh, { refreshAfter: false });
+                  }}
+                >
+                  Clear
+                </button>
+              )}
+            </form>
+            <div className="workspace">
+              <DocumentTable
+                view={selectedView}
+                documents={documents}
+                selectedId={selectedId}
+                onSelect={(doc) => navigateExpense({ kind: "document", docId: doc._id })}
+                documentHref={(doc) => pathForExpenseRoute({ kind: "document", docId: doc._id })}
+              />
+              <DocumentForm
+                form={selectedForm}
+                selected={selected}
+                optionsByField={optionsByField}
+                workflow={selectedWorkflow}
+                user={definitions.user}
+                roles={definitions.roles}
+                auditEvents={auditEvents}
+                onNew={() => startNewDocument(selectedForm.docType)}
+                onTransition={(doc, transitionId) =>
+                  run("Transition", () =>
+                    api(`/api/documents/${encodeURIComponent(doc._id)}/transition`, {
+                      method: "POST",
+                      body: JSON.stringify({ transition: transitionId })
+                    })
+                  )
+                }
+                onDelete={(doc) =>
+                  run("Delete local document", () => api(`/api/documents/${encodeURIComponent(doc._id)}`, { method: "DELETE" }))
+                }
+                onSave={saveDocument}
+              />
+            </div>
+          </div>
+        </div>
+      )}
       <ConflictPanel
         conflicts={conflicts}
         selectedConflict={selectedConflict}

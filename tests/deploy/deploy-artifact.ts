@@ -134,6 +134,7 @@ async function runAssertions() {
     "/catalog.nsf",
     "/expense.nsf",
     "/expense.nsf/views/vendors",
+    "/expense.nsf/designer/forms/expense",
     "/expense.nsf/design/forms/expense"
   ]) {
     const routed = await fetch(`${baseUrl}${route}`);

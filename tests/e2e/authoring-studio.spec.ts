@@ -2,7 +2,7 @@ import { test, expect } from "./support/fixtures";
 
 test.describe("authoring studio", () => {
   test("adds a form field through structured controls and the runtime renders it", async ({ app, page }) => {
-    await app.goto();
+    await app.gotoDesigner();
 
     await page.getByTestId("definition-select").selectOption("form:expense");
     await page.getByTestId("studio-form-add-field").click();
@@ -13,11 +13,12 @@ test.describe("authoring studio", () => {
     await page.getByTestId("definition-save").click();
     await expect(app.message()).toHaveText("Save local definition complete.");
 
+    await app.goto();
     await expect(page.getByTestId("field-projectCode")).toBeVisible();
   });
 
   test("adds a view column through structured controls and the table updates", async ({ app, page }) => {
-    await app.goto();
+    await app.gotoDesigner();
 
     await page.getByTestId("definition-select").selectOption("view:all-expenses");
     await page.getByTestId("studio-view-add-column").click();
@@ -28,25 +29,27 @@ test.describe("authoring studio", () => {
     await page.getByTestId("definition-save").click();
     await expect(app.message()).toHaveText("Save local definition complete.");
 
+    await app.goto();
     await app.openView("view:all-expenses");
     await expect(page.getByTestId("document-table").locator("th", { hasText: "Project" })).toBeVisible();
   });
 
   test("edits a workflow transition label through structured controls", async ({ app, page }) => {
-    await app.goto();
+    await app.gotoDesigner();
 
     await page.getByTestId("definition-select").selectOption("workflow:expense");
     await page.getByTestId("studio-workflow-transition-label-0").fill("Send for approval");
     await page.getByTestId("definition-save").click();
     await expect(app.message()).toHaveText("Save local definition complete.");
 
+    await app.goto();
     await app.openView("view:all-expenses");
     await app.documentRows().filter({ hasText: "Stationery" }).click();
     await expect(page.getByTestId("workflow-action-submit")).toContainText("Send for approval");
   });
 
   test("rejects invalid definitions before local writes and at the API", async ({ app, page }) => {
-    await app.goto();
+    await app.gotoDesigner();
 
     await page.getByTestId("definition-select").selectOption("form:expense");
     await page.getByTestId("studio-form-field-name-0").fill("");

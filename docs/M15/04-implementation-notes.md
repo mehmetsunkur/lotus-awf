@@ -10,6 +10,8 @@
 - Popstate updates route state so browser back/forward participates in routing.
 - Opening an Expense deep route refreshes the matching route key once; platform-only boot/setup/catalog
   refreshes do not prefetch the default Expense view before a deep route settles.
+- M16 keeps `/expense.nsf/design/...` as a compatibility input but normalizes it to
+  `/expense.nsf/designer/...`.
 - Deploy test probes `/expense.nsf/views/vendors` and `/expense.nsf/design/forms/expense`.
 
 ## Known limitations

@@ -12,6 +12,12 @@ export class RuntimeApp {
     await this.waitForReady();
   }
 
+  async gotoDesigner(path = "/expense.nsf/designer"): Promise<void> {
+    await this.page.goto(path);
+    await expect(this.page.getByTestId("designer-workspace")).toBeVisible();
+    await expect(this.message()).toHaveText(/Open Expense complete\./);
+  }
+
   /**
    * Wait until the seeded runtime shell is shown AND the initial refresh has
    * fully settled. The boot sequence issues several refreshes that re-set the

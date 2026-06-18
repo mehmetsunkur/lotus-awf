@@ -14,6 +14,9 @@
 - `/expense.nsf/design/views/:viewSlug`
 - `/expense.nsf/design/workflows/:docType`
 
+M16 supersedes the `/design/...` route spelling with `/designer/...`; these M15 routes remain
+compatibility inputs and normalize to the Designer workspace.
+
 ## Mapping
 
 - `view:my-expenses` -> `my-expenses`
