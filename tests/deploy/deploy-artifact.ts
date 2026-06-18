@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 
 const compose = ["compose", "-p", "lotus-m13-deploy-test", "-f", "deploy/compose.yml"];
-const baseUrl = process.env.DEPLOY_BASE_URL ?? "http://localhost:3101";
+let baseUrl = process.env.DEPLOY_BASE_URL ?? "http://localhost:3101";
+const dockerRunner = selectDockerRunner();
 
 type HttpOptions = {
   method?: string;
@@ -10,8 +11,34 @@ type HttpOptions = {
   ok?: number | number[];
 };
 
+function commandWorks(command: string, args: string[]) {
+  try {
+    execFileSync(command, args, { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function selectDockerRunner(): { command: string; args: string[] } {
+  if (process.env.DOCKER_USE_SUDO === "1") {
+    return { command: "sudo", args: ["-n", "docker"] };
+  }
+  if (commandWorks("docker", ["version"])) {
+    return { command: "docker", args: [] };
+  }
+  if (commandWorks("sudo", ["-n", "docker", "version"])) {
+    return { command: "sudo", args: ["-n", "docker"] };
+  }
+  throw new Error("Docker is not accessible. Grant Docker socket access or configure passwordless sudo for docker.");
+}
+
 function docker(args: string[]) {
-  execFileSync("docker", [...compose, ...args], { stdio: "inherit" });
+  execFileSync(dockerRunner.command, [...dockerRunner.args, ...compose, ...args], { stdio: "inherit" });
+}
+
+function dockerOut(args: string[]) {
+  return execFileSync(dockerRunner.command, [...dockerRunner.args, ...compose, ...args], { encoding: "utf8" }).trim();
 }
 
 async function sleep(ms: number) {
@@ -45,6 +72,30 @@ async function waitFor(path: string, description: string, timeoutMs = 120_000) {
   }
   throw new Error(`Timed out waiting for ${description}: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
 }
+
+async function isReachable(url: string) {
+  try {
+    const response = await fetch(`${url}/api/health`);
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveBaseUrl() {
+  if (process.env.DEPLOY_BASE_URL || (await isReachable(baseUrl))) return;
+  const containerId = dockerOut(["ps", "-q", "app"]);
+  const ip = execFileSync(dockerRunner.command, [
+    ...dockerRunner.args,
+    "inspect",
+    "-f",
+    "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
+    containerId
+  ], { encoding: "utf8" }).trim();
+  if (!ip) throw new Error("Could not resolve app container IP after host port probe failed");
+  baseUrl = `http://${ip}:3001`;
+}
+
 
 async function retry<T>(description: string, action: () => Promise<T>, timeoutMs = 120_000): Promise<T> {
   const deadline = Date.now() + timeoutMs;
@@ -143,6 +194,7 @@ async function main() {
   docker(["down", "-v", "--remove-orphans"]);
   try {
     docker(["up", "-d", "--build"]);
+    await resolveBaseUrl();
     await runAssertions();
   } finally {
     docker(["down", "-v", "--remove-orphans"]);

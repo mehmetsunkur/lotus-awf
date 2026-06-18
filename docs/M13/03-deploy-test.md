@@ -29,5 +29,10 @@ be driven from outside the source process.
 
 ## Requirements
 
-The command requires access to the local Docker API. If the current user cannot access
-`/var/run/docker.sock`, the test cannot run in that environment.
+The command requires access to the local Docker API. It uses plain `docker` when available, otherwise
+falls back to `sudo -n docker`. Set `DOCKER_USE_SUDO=1 npm run test:deploy` to force sudo. If sudo
+requires an interactive password, the test cannot run unattended.
+
+The gate first probes the published host port (`http://localhost:3101`). If that is unavailable in the
+current Docker environment, it falls back to the app container IP while keeping the same packaged
+compose topology.
