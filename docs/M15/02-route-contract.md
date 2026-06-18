@@ -10,12 +10,12 @@
 
 - `/expense.nsf/views/:viewSlug`
 - `/expense.nsf/documents/:docId`
-- `/expense.nsf/design/forms/:docType`
-- `/expense.nsf/design/views/:viewSlug`
-- `/expense.nsf/design/workflows/:docType`
+- `/expense.nsf/design/forms/:docType` (superseded by M16)
+- `/expense.nsf/design/views/:viewSlug` (superseded by M16)
+- `/expense.nsf/design/workflows/:docType` (superseded by M16)
 
-M16 supersedes the `/design/...` route spelling with `/designer/...`; these M15 routes remain
-compatibility inputs and normalize to the Designer workspace.
+M16 removes `/design/...` compatibility from the active route model. Designer routes use
+`/expense.nsf/designer/...`.
 
 ## Mapping
 

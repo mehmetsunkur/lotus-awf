@@ -8,11 +8,12 @@ M16 is accepted when:
 - Selecting a view updates the URL and right pane.
 - Selecting a create action opens a new document form for that `docType`.
 - Document rows expose a new-tab document link.
+- `/expense.nsf/documents/:docId` opens a focused document workspace without the view list/search.
 - `Open in Designer` opens `/expense.nsf/designer` in a new browser tab.
 - `/expense.nsf/designer/views/all-expenses` opens Designer with that view selected.
 - Designer left pane lists forms, views, and workflows.
 - Selecting a Designer item updates the URL and editor selection.
-- `/expense.nsf/design/forms/expense` normalizes to `/expense.nsf/designer/forms/expense`.
+- `/expense.nsf/design/forms/expense` falls back to `/expense.nsf/views/my-expenses`.
 - Existing runtime save, workflow, conflict, and definition-save flows keep working.
 
 ## Verification

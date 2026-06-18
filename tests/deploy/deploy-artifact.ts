@@ -134,8 +134,7 @@ async function runAssertions() {
     "/catalog.nsf",
     "/expense.nsf",
     "/expense.nsf/views/vendors",
-    "/expense.nsf/designer/forms/expense",
-    "/expense.nsf/design/forms/expense"
+    "/expense.nsf/designer/forms/expense"
   ]) {
     const routed = await fetch(`${baseUrl}${route}`);
     assert.equal(routed.status, 200, `${route} should be served by the app container`);
@@ -202,6 +201,10 @@ async function runAssertions() {
     body: { payload: { ...created.payload, amount: 199, description: "Deployment verification updated", category: "travel" } }
   });
   assert.equal(updated.payload.amount, 199, "expense update should persist");
+
+  const direct = await request<{ _id: string; docType: string }>(`/api/documents/${encodeURIComponent(created._id)}`);
+  assert.equal(direct._id, created._id, "direct document read should load by id");
+  assert.equal(direct.docType, "expense", "direct document read should preserve docType");
 
   const submitted = await request<{ state: string }>(`/api/documents/${encodeURIComponent(created._id)}/transition`, {
     body: { transition: "submit" }

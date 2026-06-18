@@ -42,6 +42,8 @@ reconciliation, (M6) template export/diff/apply, and (M13) production static-cli
 
 ## Key Flows
 
+- Direct read: `GET /api/documents/:id` → `getReadableDocument` against **local** Couch with current
+  principal scope; direct document routes do not depend on a view result set.
 - Save: `POST/PUT /api/documents` → shared `validatePayload` → write to **local** Couch. (M12) The
   POST path stamps the document via the generic `createDocument(docType, …)`, so any scaffolded type is
   stamped correctly (was hardcoded expense/vendor).

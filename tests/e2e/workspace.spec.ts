@@ -34,6 +34,20 @@ test.describe("app workspace shell", () => {
     await expect(openLink).toHaveAttribute("href", new RegExp(`/expense\\.nsf/documents/${encodeURIComponent(docId ?? "")}$`));
   });
 
+  test("direct document routes open a focused document workspace independent of the current view", async ({ page }) => {
+    const vendors = (await page.request.get("/api/documents?docType=vendor").then((response) => response.json())) as Array<{ _id: string }>;
+    const vendorId = vendors[0]._id;
+
+    await page.goto(`/expense.nsf/documents/${encodeURIComponent(vendorId)}`);
+
+    await expect(page.getByTestId("runtime-sidebar")).toBeVisible();
+    await expect(page.getByTestId("document-workspace")).toBeVisible();
+    await expect(page.getByTestId("document-form").getByRole("heading", { name: "Vendor" })).toBeVisible();
+    await expect(page.getByTestId("document-table")).toBeHidden();
+    await expect(page.getByTestId("view-search")).toBeHidden();
+    await expect(page.getByTestId("view-tab-view:my-expenses")).toHaveAttribute("data-active", "false");
+  });
+
   test("designer left pane edits forms and views on designer routes", async ({ app, page }) => {
     await app.gotoDesigner("/expense.nsf/designer/views/all-expenses");
 
@@ -48,11 +62,11 @@ test.describe("app workspace shell", () => {
     await expect(page.getByTestId("definition-json")).toHaveValue(/form:expense/);
   });
 
-  test("legacy design routes normalize into designer routes", async ({ app, page }) => {
-    await app.gotoDesigner("/expense.nsf/design/forms/expense");
+  test("old design routes fall back to the default runtime view", async ({ page }) => {
+    await page.goto("/expense.nsf/design/forms/expense");
 
-    await expect(page).toHaveURL(/\/expense\.nsf\/designer\/forms\/expense$/);
-    await expect(page.getByTestId("designer-workspace")).toBeVisible();
-    await expect(page.getByTestId("designer-nav-form:expense")).toHaveAttribute("data-active", "true");
+    await expect(page).toHaveURL(/\/expense\.nsf\/views\/my-expenses$/);
+    await expect(page.getByTestId("runtime-workspace")).toBeVisible();
+    await expect(page.getByTestId("designer-workspace")).toBeHidden();
   });
 });

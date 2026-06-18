@@ -17,13 +17,10 @@
 
 `/expense.nsf/designer` normalizes to the first editable definition.
 
-## Compatibility Routes
+## Unknown Routes
 
-The old M15 design routes remain accepted and normalize with `history.replaceState`:
-
-- `/expense.nsf/design/forms/:docType` -> `/expense.nsf/designer/forms/:docType`
-- `/expense.nsf/design/views/:viewSlug` -> `/expense.nsf/designer/views/:viewSlug`
-- `/expense.nsf/design/workflows/:docType` -> `/expense.nsf/designer/workflows/:docType`
+Unknown in-app routes, including old `/expense.nsf/design/...` paths, normalize to
+`/expense.nsf/views/my-expenses`.
 
 ## Mapping
 
@@ -31,3 +28,6 @@ The old M15 design routes remain accepted and normalize with `history.replaceSta
 - `form:expense` -> `expense`
 - `workflow:expense` -> `expense`
 - document ids are `encodeURIComponent` encoded.
+
+Direct document routes load the document by id from the local replica. They do not depend on the
+document being present in the active view result set.

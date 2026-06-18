@@ -1049,6 +1049,13 @@ app.get(
 );
 
 app.get(
+  "/api/documents/:id",
+  asyncRoute(async (request, response) => {
+    response.json(await getReadableDocument(routeParam(request.params.id), await currentScope()));
+  })
+);
+
+app.get(
   "/api/forms/:docType/options",
   asyncRoute(async (request, response) => {
     const form = await formForDocType(routeParam(request.params.docType));

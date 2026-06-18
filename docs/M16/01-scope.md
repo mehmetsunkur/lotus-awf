@@ -8,7 +8,7 @@
 - Add an `Open in Designer` action that opens the Designer workspace in a new browser tab.
 - Add a two-pane Designer shell for forms, views, and workflows.
 - Move the existing structured definition editor into Designer.
-- Keep old design links compatible.
+- Direct document routes open documents independently of the active/default view.
 
 ## Out Of Scope
 
@@ -16,3 +16,4 @@
 - A new multi-app route registry.
 - A separate visual designer implementation beyond the existing form/view/workflow editor.
 - Changing form, view, workflow, or document storage contracts.
+- Compatibility support for old `/expense.nsf/design/...` routes.

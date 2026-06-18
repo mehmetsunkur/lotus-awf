@@ -33,9 +33,8 @@ definition studio (with JSON escape hatch) and the conflict resolution panel.
 - Boot (M14) → `GET /api/platform/state` → route/render `/setup.nsf`, `/catalog.nsf`, or
   `/expense.nsf`.
 - In-app routing (M15/M16) → the Expense runtime parses `/expense.nsf/views/*`,
-  `/expense.nsf/documents/*`, and `/expense.nsf/designer/*`; legacy `/expense.nsf/design/*`
-  normalizes to Designer routes. View/document/definition selections push matching URLs and browser
-  back/forward updates selected state.
+  `/expense.nsf/documents/*`, and `/expense.nsf/designer/*`. View/document/definition selections push
+  matching URLs and browser back/forward updates selected state.
 - App runtime boot → `GET /api/status|definitions|conflicts` → render shell (`definitions` carries
   `workflows`, `user`, `roles`).
 - First-run setup (M14) → `POST /api/platform/setup` stores org/domain/admin, then catalog renders
