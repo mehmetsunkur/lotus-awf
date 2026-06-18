@@ -36,6 +36,7 @@ Classes map to the path-tagged aspects in `docs/invariants.md`.
 | Access control | Filtered replication by `readers`/`authors` | ACL leak surface | `docs/context/server.md` |
 | Offline-first | Local-replica editing with no server round-trip | local vs server CouchDB | `docs/context/server.md`, `docs/context/client.md` |
 | Query & indexing | Mango selectors + indexes for views | `use_index`, index triplication | `docs/context/server.md` |
+| Deployment & packaging | Built platform artifact and deploy topology | Docker image, deploy compose, readiness, artifact gate | `docs/context/server.md` |
 
 ## Change Types
 
@@ -71,6 +72,7 @@ Mapped to the path-tagged aspects in `docs/invariants.md`.
 | Web UI | React runtime (`src/client`) | e2e check (`npm run test:e2e`) |
 | Internal API | Express endpoints (`src/server`) | API behavior via e2e; caller-impact |
 | CLI/Script | `scripts/*.ts` (seed, reset, replicate, force-conflict, acl-spike) | Dry run or fixture-based check |
+| Deploy Artifact | Docker image + `deploy/compose.yml` | `npm run test:deploy` |
 
 ## Maintenance Rules
 

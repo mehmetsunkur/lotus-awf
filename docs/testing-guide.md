@@ -14,7 +14,10 @@
 ## Commands
 
 ```bash
-# TBD
+npm run build        # TypeScript no-emit check + Vite production build
+npm run test:unit    # Vitest shared/runtime unit tests
+npm run test:e2e     # Playwright source-mode runtime tests; starts CouchDB pair
+npm run test:deploy  # M13 deploy artifact gate; requires Docker API access
 ```
 
 ## Rules
@@ -28,4 +31,7 @@
 
 | Area | Primary Tests |
 | --- | --- |
-| TBD | TBD |
+| Shared pure engines | `npm run test:unit` |
+| Runtime UI/API flows | `npm run test:e2e` |
+| Deploy packaging | `npm run test:deploy` |
+| Docker/compose shape | `docker compose -f deploy/compose.yml config` |

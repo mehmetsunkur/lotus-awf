@@ -11,6 +11,8 @@
   - `tests/e2e/**`
 - Config/runtime areas:
   - `docker-compose.yml`
+  - `deploy/compose.yml`
+  - `Dockerfile`
   - `.env.example`
 - Review trigger:
   - Update this doc when API endpoints, replication, conflict handling, ACL, workflow transitions, or
@@ -21,7 +23,7 @@
 Express API over **two** CouchDB replicas (local `:5985`, server `:5984`). Owns definitions,
 definition validation, business documents, ACL-scoped query/write paths, bidirectional replication,
 revocation purge, conflict inspection/resolution, Mango indexes, (M3) workflow transitions + sync
-reconciliation, and (M6) template export/diff/apply.
+reconciliation, (M6) template export/diff/apply, and (M13) production static-client serving/readiness.
 
 ## Main Files
 
@@ -36,6 +38,7 @@ reconciliation, and (M6) template export/diff/apply.
   (fail-closed). The `runAgents()` tick orchestrator lives in `index.ts`.
 - `scripts/*.ts` — `seed`, `reset`, `replicate`, `force-conflict`, `force-state-conflict`,
   `acl-spike`, and `app` (M7 definitions-as-code `extract`/`apply` CLI).
+- `Dockerfile` / `deploy/compose.yml` — M13 deployable artifact topology; no source bind mount.
 
 ## Key Flows
 
@@ -85,6 +88,11 @@ reconciliation, and (M6) template export/diff/apply.
 - Sync: `POST /api/replicate` → scoped `replicateBidirectional` → local `_purge` of server-revoked
   docs → `reconcileStates` reports concurrent state divergence; conflicts surfaced via
   `/api/conflicts`. Resolve accepts `chosenRev` to elect the winning revision's state.
+- Readiness/deploy (M13): `GET /api/health` is cheap liveness; `GET /api/ready` checks both CouchDB
+  replicas and app DB existence. When `dist/index.html` exists, Express serves the built client and
+  falls back to `index.html` for non-API routes. `npm run test:deploy` builds/runs
+  `deploy/compose.yml`, installs the packaged expense app with `/api/reset`, and exercises runtime
+  plus design operations externally over HTTP.
 
 ## Existing Patterns
 
@@ -106,6 +114,7 @@ this subsystem.
 - `docs/decisions/0001-definitions-as-data.md`
 - `docs/decisions/0002-offline-first-dual-couchdb.md`
 - `docs/decisions/0003-mango-index-strategy.md`
+- `docs/decisions/0008-deployable-docker-artifact.md`
 - `docs/M5/02-access-policy.md`
 - `docs/M5/03-replication-purge.md`
 - `docs/M6/02-template-contract.md`
@@ -114,6 +123,7 @@ this subsystem.
 ## Tests
 
 `tests/e2e/**` (Playwright) — needs the CouchDB pair up; see `tests/e2e/README.md`.
+`tests/deploy/**` — deploy artifact gate; requires Docker API access.
 
 ## Common Pitfalls
 
@@ -133,3 +143,5 @@ this subsystem.
 - Advancing the agent checkpoint before writing runs, or letting an agent handler throw into the tick
   (runs are durable + at-least-once; the tick must be fail-closed per agent).
 - Templating or returning `agentrun:*` / `agent:state` as business documents (they are runtime data).
+- Reintroducing source bind mounts, Vite watch, or host `npm install` assumptions into the deploy
+  artifact path.

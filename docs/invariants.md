@@ -91,6 +91,11 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 - Create/edit/validate/list/option-load must work against the LOCAL CouchDB with no server round-trip; do not add a hard dependency on the server replica or network on an offline path, and source options/definitions from local data.
   - Paths: `src/client/main.tsx`, `src/server/index.ts`, `src/server/config.ts`
 
+## Deployable artifact
+
+- The deploy artifact must run without a source bind mount or watch process: Docker builds from `package-lock.json`, serves the built client from Express, exposes readiness that checks both CouchDB replicas, and `npm run test:deploy` must exercise app install plus runtime/design operations through HTTP.
+  - Paths: `Dockerfile`, `deploy/**`, `package.json`, `src/server/index.ts`, `tests/deploy/**`
+
 ## Index & query
 
 - A new view `sort`/`filter` field may need a Mango index, and the three indexes (`m2-kind-docType-updatedAt`, `m2-readers`, `m3-docType-state-updatedAt`) are defined in THREE places (`scripts/seed.ts`, `scripts/reset.ts`, `ensureIndexes` in `src/server/index.ts`) that must be kept in sync. `createIndex` pins `ddoc === name` so a `use_index: "<name>"` hint resolves and binds.
