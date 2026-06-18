@@ -72,15 +72,65 @@ type Definitions = {
 type Draft = Record<string, unknown>;
 type EditableDefinition = FormDefinition | ViewDefinition | WorkflowDefinition;
 type AppRoute = "setup" | "catalog" | "expense";
+type ExpenseRoute =
+  | { kind: "home" }
+  | { kind: "view"; viewId: string }
+  | { kind: "document"; docId: string }
+  | { kind: "design"; definitionId: string };
+
+type RouteState = {
+  app: AppRoute;
+  expense: ExpenseRoute;
+};
+
+const DEFAULT_EXPENSE_VIEW_ID = "view:my-expenses";
 
 const routeForPath = (path: string): AppRoute => {
   if (path === "/setup.nsf") return "setup";
   if (path === "/expense.nsf") return "expense";
+  if (path.startsWith("/expense.nsf/")) return "expense";
   return "catalog";
 };
 
 const pathForRoute = (route: AppRoute) =>
   route === "setup" ? "/setup.nsf" : route === "expense" ? "/expense.nsf" : "/catalog.nsf";
+
+const viewIdFromSlug = (slug: string) => `view:${slug}`;
+const viewSlugFromId = (id: string) => id.replace(/^view:/, "");
+const formIdFromDocType = (docType: string) => `form:${docType}`;
+const workflowIdFromDocType = (docType: string) => `workflow:${docType}`;
+const docTypeFromDefinitionId = (id: string) => id.replace(/^(form|workflow):/, "");
+
+const expenseRouteForPath = (path: string): ExpenseRoute => {
+  const prefix = "/expense.nsf";
+  if (path === prefix || !path.startsWith(`${prefix}/`)) return { kind: "home" };
+  const parts = path.slice(prefix.length + 1).split("/").filter(Boolean).map(decodeURIComponent);
+  if (parts[0] === "views" && parts[1]) return { kind: "view", viewId: viewIdFromSlug(parts[1]) };
+  if (parts[0] === "documents" && parts[1]) return { kind: "document", docId: parts[1] };
+  if (parts[0] === "design" && parts[1] === "forms" && parts[2]) return { kind: "design", definitionId: formIdFromDocType(parts[2]) };
+  if (parts[0] === "design" && parts[1] === "views" && parts[2]) return { kind: "design", definitionId: viewIdFromSlug(parts[2]) };
+  if (parts[0] === "design" && parts[1] === "workflows" && parts[2]) return { kind: "design", definitionId: workflowIdFromDocType(parts[2]) };
+  return { kind: "home" };
+};
+
+const routeStateForPath = (path: string): RouteState => ({
+  app: routeForPath(path),
+  expense: expenseRouteForPath(path)
+});
+
+const pathForExpenseRoute = (route: ExpenseRoute) => {
+  if (route.kind === "view") return `/expense.nsf/views/${encodeURIComponent(viewSlugFromId(route.viewId))}`;
+  if (route.kind === "document") return `/expense.nsf/documents/${encodeURIComponent(route.docId)}`;
+  if (route.kind === "design") {
+    if (route.definitionId.startsWith("form:")) return `/expense.nsf/design/forms/${encodeURIComponent(docTypeFromDefinitionId(route.definitionId))}`;
+    if (route.definitionId.startsWith("view:")) return `/expense.nsf/design/views/${encodeURIComponent(viewSlugFromId(route.definitionId))}`;
+    if (route.definitionId.startsWith("workflow:")) return `/expense.nsf/design/workflows/${encodeURIComponent(docTypeFromDefinitionId(route.definitionId))}`;
+  }
+  return `/expense.nsf/views/${encodeURIComponent(viewSlugFromId(DEFAULT_EXPENSE_VIEW_ID))}`;
+};
+
+const pathForRouteState = (route: RouteState) =>
+  route.app === "expense" ? pathForExpenseRoute(route.expense) : pathForRoute(route.app);
 
 const api = async <T,>(path: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(path, {
@@ -1222,13 +1272,13 @@ function AppCatalog({
 
 function App() {
   const [platformState, setPlatformState] = React.useState<PlatformState>();
-  const [route, setRoute] = React.useState<AppRoute>(() => routeForPath(window.location.pathname));
+  const [route, setRoute] = React.useState<RouteState>(() => routeStateForPath(window.location.pathname));
   const [status, setStatus] = React.useState<ReplicationStatus>();
   const [definitions, setDefinitions] = React.useState<Definitions>();
   const [documents, setDocuments] = React.useState<BusinessDocument[]>([]);
   const [conflicts, setConflicts] = React.useState<CouchDocument[]>([]);
   const [optionsByField, setOptionsByField] = React.useState<SelectOptionsByField>({});
-  const [selectedViewId, setSelectedViewId] = React.useState("view:my-expenses");
+  const [selectedViewId, setSelectedViewId] = React.useState(DEFAULT_EXPENSE_VIEW_ID);
   const [selectedDefinitionId, setSelectedDefinitionId] = React.useState("form:expense");
   const [selectedId, setSelectedId] = React.useState<string>();
   const [selectedConflict, setSelectedConflict] = React.useState<ConflictDetails>();
@@ -1276,13 +1326,21 @@ function App() {
     setPlatformState(await api<PlatformState>("/api/platform/state"));
   }, []);
 
-  const navigate = React.useCallback((nextRoute: AppRoute, replace = false) => {
-    const nextPath = pathForRoute(nextRoute);
+  const navigate = React.useCallback((nextRoute: RouteState, replace = false) => {
+    const nextPath = pathForRouteState(nextRoute);
     if (window.location.pathname !== nextPath) {
       window.history[replace ? "replaceState" : "pushState"]({}, "", nextPath);
     }
     setRoute(nextRoute);
   }, []);
+
+  const navigateApp = React.useCallback((app: AppRoute, replace = false) => {
+    navigate({ app, expense: { kind: "home" } }, replace);
+  }, [navigate]);
+
+  const navigateExpense = React.useCallback((expense: ExpenseRoute, replace = false) => {
+    navigate({ app: "expense", expense }, replace);
+  }, [navigate]);
 
   const run = async (label: string, task: () => Promise<void>) => {
     setBusy(true);
@@ -1303,35 +1361,68 @@ function App() {
   }, []);
 
   React.useEffect(() => {
-    const onPopState = () => setRoute(routeForPath(window.location.pathname));
+    const onPopState = () => setRoute(routeStateForPath(window.location.pathname));
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
   React.useEffect(() => {
     if (!platformState) return;
-    if (!platformState.setupComplete && route !== "setup") {
-      navigate("setup", true);
+    if (!platformState.setupComplete && route.app !== "setup") {
+      navigateApp("setup", true);
       return;
     }
-    if (platformState.setupComplete && route === "setup") {
-      navigate("catalog", true);
+    if (platformState.setupComplete && route.app === "setup") {
+      navigateApp("catalog", true);
     }
-  }, [navigate, platformState, route]);
+  }, [navigateApp, platformState, route.app]);
 
   React.useEffect(() => {
-    if (!platformState || route !== "expense") return;
+    if (!platformState || route.app !== "expense") return;
     const expenseInstalled =
       platformState.installedApps.some((app) => app.appId === "expense") ||
       platformState.samples.some((sample) => sample.appId === "expense" && sample.installed);
     if (!expenseInstalled) {
-      navigate("catalog", true);
+      navigateApp("catalog", true);
       return;
     }
-    if (route === "expense") {
-      run("Open Expense", refresh);
+    if (route.expense.kind === "home") {
+      navigateExpense({ kind: "view", viewId: selectedViewId || DEFAULT_EXPENSE_VIEW_ID }, true);
+      return;
     }
-  }, [navigate, platformState, refresh, route]);
+    run("Open Expense", refresh);
+  }, [navigateApp, navigateExpense, platformState, refresh, route.app, route.expense, selectedViewId]);
+
+  React.useEffect(() => {
+    if (!definitions || route.app !== "expense") return;
+    const expenseRoute = route.expense;
+    if (expenseRoute.kind === "view") {
+      if (definitions.views.some((view) => view._id === expenseRoute.viewId)) {
+        setSelectedId(undefined);
+        setSelectedViewId(expenseRoute.viewId);
+      } else {
+        navigateExpense({ kind: "view", viewId: DEFAULT_EXPENSE_VIEW_ID }, true);
+      }
+      return;
+    }
+    if (expenseRoute.kind === "design") {
+      if (editableDefinitions.some((definition) => definition._id === expenseRoute.definitionId)) {
+        setSelectedDefinitionId(expenseRoute.definitionId);
+      } else {
+        navigateExpense({ kind: "view", viewId: DEFAULT_EXPENSE_VIEW_ID }, true);
+      }
+    }
+  }, [definitions, editableDefinitions, navigateExpense, route.app, route.expense]);
+
+  React.useEffect(() => {
+    const expenseRoute = route.expense;
+    if (route.app !== "expense" || expenseRoute.kind !== "document") return;
+    if (documents.some((doc) => doc._id === expenseRoute.docId)) {
+      setSelectedId(expenseRoute.docId);
+    } else if (documents.length) {
+      navigateExpense({ kind: "view", viewId: selectedView?._id ?? DEFAULT_EXPENSE_VIEW_ID }, true);
+    }
+  }, [documents, navigateExpense, route.app, route.expense, selectedView?._id]);
 
   // Load the selected document's audit trail (read-only; recorded server-side).
   React.useEffect(() => {
@@ -1384,14 +1475,14 @@ function App() {
         onSubmit={(payload) =>
           run("Complete setup", async () => {
             setPlatformState(await api<PlatformState>("/api/platform/setup", { method: "POST", body: JSON.stringify(payload) }));
-            navigate("catalog", true);
+            navigateApp("catalog", true);
           })
         }
       />
     );
   }
 
-  if (route !== "expense") {
+  if (route.app !== "expense") {
     return (
       <AppCatalog
         state={platformState}
@@ -1407,7 +1498,7 @@ function App() {
             );
           })
         }
-        onOpenExpense={() => navigate("expense")}
+        onOpenExpense={() => navigateExpense({ kind: "home" })}
       />
     );
   }
@@ -1437,6 +1528,7 @@ function App() {
         onSelect={(id) => {
           setSelectedId(undefined);
           setSelectedViewId(id);
+          navigateExpense({ kind: "view", viewId: id });
         }}
       />
       <form
@@ -1475,7 +1567,7 @@ function App() {
         )}
       </form>
       <div className="workspace">
-        <DocumentTable view={selectedView} documents={documents} selectedId={selectedId} onSelect={(doc) => setSelectedId(doc._id)} />
+        <DocumentTable view={selectedView} documents={documents} selectedId={selectedId} onSelect={(doc) => navigateExpense({ kind: "document", docId: doc._id })} />
         <DocumentForm
           form={selectedForm}
           selected={selected}
@@ -1484,7 +1576,10 @@ function App() {
           user={definitions.user}
           roles={definitions.roles}
           auditEvents={auditEvents}
-          onNew={() => setSelectedId(undefined)}
+          onNew={() => {
+            setSelectedId(undefined);
+            navigateExpense({ kind: "view", viewId: selectedView._id });
+          }}
           onTransition={(doc, transitionId) =>
             run("Transition", () =>
               api(`/api/documents/${encodeURIComponent(doc._id)}/transition`, {
@@ -1514,7 +1609,10 @@ function App() {
       <DefinitionEditor
         definitions={editableDefinitions}
         selectedId={selectedDefinitionId}
-        onSelect={setSelectedDefinitionId}
+        onSelect={(id) => {
+          setSelectedDefinitionId(id);
+          navigateExpense({ kind: "design", definitionId: id });
+        }}
         optionsByField={optionsByField}
         user={definitions.user}
         roles={definitions.roles}
@@ -1533,6 +1631,7 @@ function App() {
             // picker at the new type so it is immediately in front of the user.
             setSelectedDefinitionId(`form:${docType}`);
             setSelectedViewId(`view:${docType}`);
+            navigateExpense({ kind: "design", definitionId: `form:${docType}` });
           })
         }
       />

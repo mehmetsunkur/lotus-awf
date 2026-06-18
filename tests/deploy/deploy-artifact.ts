@@ -129,7 +129,13 @@ async function runAssertions() {
   const root = await fetch(baseUrl);
   assert.equal(root.status, 200, "built client should be served by the app container");
   assert.match(await root.text(), /<div id="root"><\/div>/, "built client HTML should include the React root");
-  for (const route of ["/setup.nsf", "/catalog.nsf", "/expense.nsf"]) {
+  for (const route of [
+    "/setup.nsf",
+    "/catalog.nsf",
+    "/expense.nsf",
+    "/expense.nsf/views/vendors",
+    "/expense.nsf/design/forms/expense"
+  ]) {
     const routed = await fetch(`${baseUrl}${route}`);
     assert.equal(routed.status, 200, `${route} should be served by the app container`);
     assert.match(await routed.text(), /<div id="root"><\/div>/, `${route} should use the SPA fallback`);
