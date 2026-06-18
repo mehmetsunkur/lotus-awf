@@ -17,7 +17,7 @@ test.describe("create a document type", () => {
     await expect(app.documentRows()).toHaveCount(0);
 
     // The scaffolded form has a Title field; a document of the new type lists.
-    await app.newDocument();
+    await app.newDocument("invoice");
     await app.fillField("title", "First invoice");
     await app.save();
     await expect(app.message()).toHaveText("Save local document complete.");

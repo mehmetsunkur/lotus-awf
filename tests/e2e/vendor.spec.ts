@@ -6,7 +6,7 @@ test.describe("vendor documents", () => {
     await app.openView("view:vendors");
 
     const before = await app.documentCount();
-    await app.newDocument();
+    await app.newDocument("vendor");
     await app.fillField("name", "Acme Tooling");
     // category defaults to "travel"; name is the only required field.
     await app.save();
@@ -18,7 +18,7 @@ test.describe("vendor documents", () => {
   test("enforces the contact email rule from the vendor form definition", async ({ app, page }) => {
     await app.goto();
     await app.openView("view:vendors");
-    await app.newDocument();
+    await app.newDocument("vendor");
 
     await app.fillField("name", "No At Sign");
     await app.fillField("contactEmail", "not-an-email");

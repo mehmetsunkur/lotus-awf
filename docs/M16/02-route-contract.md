@@ -5,6 +5,7 @@
 - `/expense.nsf`
 - `/expense.nsf/views/:viewSlug`
 - `/expense.nsf/documents/:docId`
+- `/expense.nsf/new/:docType`
 
 `/expense.nsf` normalizes to `/expense.nsf/views/my-expenses`.
 
@@ -31,3 +32,6 @@ Unknown in-app routes, including old `/expense.nsf/design/...` paths, normalize 
 
 Direct document routes load the document by id from the local replica. They do not depend on the
 document being present in the active view result set.
+
+Create routes render a focused new-document workspace for the requested `docType`. Saving a new
+document navigates to `/expense.nsf/documents/:docId`.

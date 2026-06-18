@@ -74,29 +74,30 @@ type Definitions = {
 
 type Draft = Record<string, unknown>;
 type EditableDefinition = FormDefinition | ViewDefinition | WorkflowDefinition;
-type AppRoute = "setup" | "catalog" | "expense";
-type ExpenseRoute =
+type PlatformRoute = "setup" | "catalog" | "expense";
+type NsfRoute =
   | { kind: "home" }
   | { kind: "view"; viewId: string }
   | { kind: "document"; docId: string }
+  | { kind: "new"; docType: string }
   | { kind: "designerHome" }
   | { kind: "designer"; definitionId: string };
 
 type RouteState = {
-  app: AppRoute;
-  expense: ExpenseRoute;
+  app: PlatformRoute;
+  nsf: NsfRoute;
 };
 
 const DEFAULT_EXPENSE_VIEW_ID = "view:my-expenses";
 
-const routeForPath = (path: string): AppRoute => {
+const routeForPath = (path: string): PlatformRoute => {
   if (path === "/setup.nsf") return "setup";
   if (path === "/expense.nsf") return "expense";
   if (path.startsWith("/expense.nsf/")) return "expense";
   return "catalog";
 };
 
-const pathForRoute = (route: AppRoute) =>
+const pathForRoute = (route: PlatformRoute) =>
   route === "setup" ? "/setup.nsf" : route === "expense" ? "/expense.nsf" : "/catalog.nsf";
 
 const viewIdFromSlug = (slug: string) => `view:${slug}`;
@@ -105,12 +106,13 @@ const formIdFromDocType = (docType: string) => `form:${docType}`;
 const workflowIdFromDocType = (docType: string) => `workflow:${docType}`;
 const docTypeFromDefinitionId = (id: string) => id.replace(/^(form|workflow):/, "");
 
-const expenseRouteForPath = (path: string): ExpenseRoute => {
+const nsfRouteForPath = (path: string): NsfRoute => {
   const prefix = "/expense.nsf";
   if (path === prefix || !path.startsWith(`${prefix}/`)) return { kind: "home" };
   const parts = path.slice(prefix.length + 1).split("/").filter(Boolean).map(decodeURIComponent);
   if (parts[0] === "views" && parts[1]) return { kind: "view", viewId: viewIdFromSlug(parts[1]) };
   if (parts[0] === "documents" && parts[1]) return { kind: "document", docId: parts[1] };
+  if (parts[0] === "new" && parts[1]) return { kind: "new", docType: parts[1] };
   if (parts[0] === "designer" && !parts[1]) return { kind: "designerHome" };
   if (parts[0] === "designer" && parts[1] === "forms" && parts[2]) return { kind: "designer", definitionId: formIdFromDocType(parts[2]) };
   if (parts[0] === "designer" && parts[1] === "views" && parts[2]) return { kind: "designer", definitionId: viewIdFromSlug(parts[2]) };
@@ -120,12 +122,13 @@ const expenseRouteForPath = (path: string): ExpenseRoute => {
 
 const routeStateForPath = (path: string): RouteState => ({
   app: routeForPath(path),
-  expense: expenseRouteForPath(path)
+  nsf: nsfRouteForPath(path)
 });
 
-const pathForExpenseRoute = (route: ExpenseRoute) => {
+const pathForNsfRoute = (route: NsfRoute) => {
   if (route.kind === "view") return `/expense.nsf/views/${encodeURIComponent(viewSlugFromId(route.viewId))}`;
   if (route.kind === "document") return `/expense.nsf/documents/${encodeURIComponent(route.docId)}`;
+  if (route.kind === "new") return `/expense.nsf/new/${encodeURIComponent(route.docType)}`;
   if (route.kind === "designerHome") return "/expense.nsf/designer";
   if (route.kind === "designer") {
     if (route.definitionId.startsWith("form:")) return `/expense.nsf/designer/forms/${encodeURIComponent(docTypeFromDefinitionId(route.definitionId))}`;
@@ -136,11 +139,12 @@ const pathForExpenseRoute = (route: ExpenseRoute) => {
 };
 
 const pathForRouteState = (route: RouteState) =>
-  route.app === "expense" ? pathForExpenseRoute(route.expense) : pathForRoute(route.app);
+  route.app === "expense" ? pathForNsfRoute(route.nsf) : pathForRoute(route.app);
 
-const expenseRouteKey = (route: ExpenseRoute) => {
+const nsfRouteKey = (route: NsfRoute) => {
   if (route.kind === "view") return `view:${route.viewId}`;
   if (route.kind === "document") return `document:${route.docId}`;
+  if (route.kind === "new") return `new:${route.docType}`;
   if (route.kind === "designer") return `designer:${route.definitionId}`;
   if (route.kind === "designerHome") return "designer";
   return "home";
@@ -538,7 +542,6 @@ function DocumentForm({
   preview = false,
   onSave,
   onDelete,
-  onNew,
   onTransition
 }: {
   form: FormDefinition;
@@ -553,7 +556,6 @@ function DocumentForm({
   preview?: boolean;
   onSave?: (payload: Record<string, unknown>) => void;
   onDelete?: (doc: BusinessDocument) => void;
-  onNew?: () => void;
   onTransition?: (doc: BusinessDocument, transitionId: string) => void;
 }) {
   const [draft, setDraft] = React.useState<Draft>(() => applyFormDefaults(form, selected?.payload ?? {}));
@@ -579,7 +581,6 @@ function DocumentForm({
           <p className="kicker" data-testid={preview ? "preview-record-id" : "form-record-id"}>{preview ? "Preview" : selected ? selected._id : `New ${form.docType}`}</p>
           <h2>{form.title}</h2>
         </div>
-        {preview ? null : <button onClick={onNew} data-testid="form-new">New</button>}
       </div>
       {!preview && selected && workflow ? (
         <WorkflowBar
@@ -1418,7 +1419,6 @@ function App() {
   const [selectedViewId, setSelectedViewId] = React.useState(DEFAULT_EXPENSE_VIEW_ID);
   const [selectedDefinitionId, setSelectedDefinitionId] = React.useState("form:expense");
   const [selectedId, setSelectedId] = React.useState<string>();
-  const [newDocType, setNewDocType] = React.useState<string>();
   const [selectedConflict, setSelectedConflict] = React.useState<ConflictDetails>();
   const [message, setMessage] = React.useState("Runtime booting.");
   const [busy, setBusy] = React.useState(false);
@@ -1430,11 +1430,12 @@ function App() {
   // M10: audit trail for the selected document (read-only, server-recorded).
   const [auditEvents, setAuditEvents] = React.useState<AuditEvent[]>([]);
   const selectedIdRef = React.useRef<string | undefined>(undefined);
-  const lastOpenedExpenseRouteRef = React.useRef("");
+  const lastOpenedNsfRouteRef = React.useRef("");
 
   const selectedView = definitions?.views.find((view) => view._id === selectedViewId) ?? definitions?.views[0];
   const selected = focusedDocument ?? documents.find((doc) => doc._id === selectedId);
-  const activeDocType = newDocType ?? selected?.docType ?? selectedView?.docType;
+  const routeDocType = route.nsf.kind === "new" ? route.nsf.docType : undefined;
+  const activeDocType = routeDocType ?? selected?.docType ?? selectedView?.docType;
   const selectedForm = definitions?.forms.find((form) => form.docType === activeDocType) ?? definitions?.form;
   const selectedWorkflow = definitions?.workflows.find((workflow) => workflow.docType === selectedForm?.docType);
   const editableDefinitions = React.useMemo(
@@ -1482,12 +1483,12 @@ function App() {
     setRoute(nextRoute);
   }, []);
 
-  const navigateApp = React.useCallback((app: AppRoute, replace = false) => {
-    navigate({ app, expense: { kind: "home" } }, replace);
+  const navigateApp = React.useCallback((app: PlatformRoute, replace = false) => {
+    navigate({ app, nsf: { kind: "home" } }, replace);
   }, [navigate]);
 
-  const navigateExpense = React.useCallback((expense: ExpenseRoute, replace = false) => {
-    navigate({ app: "expense", expense }, replace);
+  const navigateNsf = React.useCallback((nsf: NsfRoute, replace = false) => {
+    navigate({ app: "expense", nsf }, replace);
   }, [navigate]);
 
   const run = async (label: string, task: () => Promise<void>, options: { refreshAfter?: boolean } = {}) => {
@@ -1534,76 +1535,89 @@ function App() {
       navigateApp("catalog", true);
       return;
     }
-    if (route.expense.kind === "home") {
-      navigateExpense({ kind: "view", viewId: selectedViewId || DEFAULT_EXPENSE_VIEW_ID }, true);
+    if (route.nsf.kind === "home") {
+      navigateNsf({ kind: "view", viewId: selectedViewId || DEFAULT_EXPENSE_VIEW_ID }, true);
       return;
     }
 
-    const targetViewId = route.expense.kind === "view" ? route.expense.viewId : selectedViewId || DEFAULT_EXPENSE_VIEW_ID;
-    const routeKey = expenseRouteKey(route.expense);
-    if (lastOpenedExpenseRouteRef.current === routeKey) return;
-    lastOpenedExpenseRouteRef.current = routeKey;
-    if (route.expense.kind === "view") {
+    const targetViewId = route.nsf.kind === "view" ? route.nsf.viewId : selectedViewId || DEFAULT_EXPENSE_VIEW_ID;
+    const routeKey = nsfRouteKey(route.nsf);
+    if (lastOpenedNsfRouteRef.current === routeKey) return;
+    lastOpenedNsfRouteRef.current = routeKey;
+    if (route.nsf.kind === "view") {
       setSelectedId(undefined);
       selectedIdRef.current = undefined;
-      setNewDocType(undefined);
       setFocusedDocument(undefined);
       setDocumentRouteError("");
-      setSelectedViewId(route.expense.viewId);
+      setSelectedViewId(route.nsf.viewId);
     }
-    if (route.expense.kind === "document") {
-      selectedIdRef.current = route.expense.docId;
-      setSelectedId(route.expense.docId);
+    if (route.nsf.kind === "new") {
+      setSelectedId(undefined);
+      selectedIdRef.current = undefined;
+      setFocusedDocument(undefined);
+      setDocumentRouteError("");
     }
-    run("Open Expense", () => refresh(targetViewId, { autoSelectFirst: route.expense.kind !== "document" }), { refreshAfter: false });
-  }, [navigateApp, navigateExpense, platformState, refresh, route.app, route.expense, selectedViewId]);
+    if (route.nsf.kind === "document") {
+      selectedIdRef.current = route.nsf.docId;
+      setSelectedId(route.nsf.docId);
+    }
+    run("Open Expense", () => refresh(targetViewId, { autoSelectFirst: route.nsf.kind !== "document" }), { refreshAfter: false });
+  }, [navigateApp, navigateNsf, platformState, refresh, route.app, route.nsf, selectedViewId]);
 
   React.useEffect(() => {
     if (!definitions || route.app !== "expense") return;
-    const expenseRoute = route.expense;
-    if (expenseRoute.kind === "view") {
-      if (definitions.views.some((view) => view._id === expenseRoute.viewId)) {
-        if (selectedViewId !== expenseRoute.viewId) {
+    const nsfRoute = route.nsf;
+    if (nsfRoute.kind === "view") {
+      if (definitions.views.some((view) => view._id === nsfRoute.viewId)) {
+        if (selectedViewId !== nsfRoute.viewId) {
           setSelectedId(undefined);
-          setNewDocType(undefined);
           setFocusedDocument(undefined);
           setDocumentRouteError("");
-          setSelectedViewId(expenseRoute.viewId);
+          setSelectedViewId(nsfRoute.viewId);
         }
       } else {
-        navigateExpense({ kind: "view", viewId: DEFAULT_EXPENSE_VIEW_ID }, true);
+        navigateNsf({ kind: "view", viewId: DEFAULT_EXPENSE_VIEW_ID }, true);
       }
       return;
     }
-    if (expenseRoute.kind === "designerHome") {
-      const firstDefinition = editableDefinitions[0];
-      if (firstDefinition) navigateExpense({ kind: "designer", definitionId: firstDefinition._id }, true);
+    if (nsfRoute.kind === "new") {
+      if (definitions.forms.some((form) => form.docType === nsfRoute.docType)) {
+        setSelectedId(undefined);
+        setFocusedDocument(undefined);
+        setDocumentRouteError("");
+      } else {
+        navigateNsf({ kind: "view", viewId: DEFAULT_EXPENSE_VIEW_ID }, true);
+      }
       return;
     }
-    if (expenseRoute.kind === "designer") {
-      if (editableDefinitions.some((definition) => definition._id === expenseRoute.definitionId)) {
-        setSelectedDefinitionId(expenseRoute.definitionId);
+    if (nsfRoute.kind === "designerHome") {
+      const firstDefinition = editableDefinitions[0];
+      if (firstDefinition) navigateNsf({ kind: "designer", definitionId: firstDefinition._id }, true);
+      return;
+    }
+    if (nsfRoute.kind === "designer") {
+      if (editableDefinitions.some((definition) => definition._id === nsfRoute.definitionId)) {
+        setSelectedDefinitionId(nsfRoute.definitionId);
       } else {
         const firstDefinition = editableDefinitions[0];
-        navigateExpense(firstDefinition ? { kind: "designer", definitionId: firstDefinition._id } : { kind: "view", viewId: DEFAULT_EXPENSE_VIEW_ID }, true);
+        navigateNsf(firstDefinition ? { kind: "designer", definitionId: firstDefinition._id } : { kind: "view", viewId: DEFAULT_EXPENSE_VIEW_ID }, true);
       }
     }
-  }, [definitions, editableDefinitions, navigateExpense, route.app, route.expense, selectedViewId]);
+  }, [definitions, editableDefinitions, navigateNsf, route.app, route.nsf, selectedViewId]);
 
   React.useEffect(() => {
-    const expenseRoute = route.expense;
-    if (route.app !== "expense" || expenseRoute.kind !== "document") {
+    const nsfRoute = route.nsf;
+    if (route.app !== "expense" || nsfRoute.kind !== "document") {
       setFocusedDocument(undefined);
       setDocumentRouteError("");
       return;
     }
 
     let cancelled = false;
-    setSelectedId(expenseRoute.docId);
-    selectedIdRef.current = expenseRoute.docId;
-    setNewDocType(undefined);
+    setSelectedId(nsfRoute.docId);
+    selectedIdRef.current = nsfRoute.docId;
     setDocumentRouteError("");
-    api<BusinessDocument>(`/api/documents/${encodeURIComponent(expenseRoute.docId)}`)
+    api<BusinessDocument>(`/api/documents/${encodeURIComponent(nsfRoute.docId)}`)
       .then(async (doc) => {
         if (cancelled) return;
         setFocusedDocument(doc);
@@ -1620,7 +1634,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [definitions?.forms, route.app, route.expense]);
+  }, [definitions?.forms, route.app, route.nsf]);
 
   // Load the selected document's audit trail (read-only; recorded server-side).
   React.useEffect(() => {
@@ -1704,7 +1718,7 @@ function App() {
             { refreshAfter: false }
           )
         }
-        onOpenExpense={() => navigateExpense({ kind: "home" })}
+        onOpenExpense={() => navigateNsf({ kind: "home" })}
       />
     );
   }
@@ -1726,17 +1740,15 @@ function App() {
 
   const selectView = (id: string) => {
     setSelectedId(undefined);
-    setNewDocType(undefined);
     setSelectedViewId(id);
-    navigateExpense({ kind: "view", viewId: id });
+    navigateNsf({ kind: "view", viewId: id });
   };
   const startNewDocument = (docType: string) => {
-    setSelectedId(undefined);
-    setNewDocType(docType);
+    navigateNsf({ kind: "new", docType });
   };
   const selectDefinition = (id: string) => {
     setSelectedDefinitionId(id);
-    navigateExpense({ kind: "designer", definitionId: id });
+    navigateNsf({ kind: "designer", definitionId: id });
   };
   const saveDefinition = (id: string, doc: EditableDefinition) =>
     run("Save local definition", () =>
@@ -1752,7 +1764,7 @@ function App() {
       // new type so it is immediately editable.
       setSelectedDefinitionId(`form:${docType}`);
       setSelectedViewId(`view:${docType}`);
-      navigateExpense({ kind: "designer", definitionId: `form:${docType}` });
+      navigateNsf({ kind: "designer", definitionId: `form:${docType}` });
     });
   const saveDocument = (payload: Record<string, unknown>) =>
     run("Save local document", async () => {
@@ -1763,16 +1775,17 @@ function App() {
         });
         if (focusedDocument?._id === updated._id) setFocusedDocument(updated);
       } else {
-        await api("/api/documents", {
+        const created = await api<BusinessDocument>("/api/documents", {
           method: "POST",
           body: JSON.stringify({ docType: selectedForm.docType, payload })
         });
-        setNewDocType(undefined);
+        navigateNsf({ kind: "document", docId: created._id });
       }
     });
-  const isDesignerRoute = route.expense.kind === "designer" || route.expense.kind === "designerHome";
-  const isDocumentRoute = route.expense.kind === "document";
-  const documentRouteId = route.expense.kind === "document" ? route.expense.docId : "";
+  const isDesignerRoute = route.nsf.kind === "designer" || route.nsf.kind === "designerHome";
+  const isDocumentRoute = route.nsf.kind === "document";
+  const isCreateRoute = route.nsf.kind === "new";
+  const documentRouteId = route.nsf.kind === "document" ? route.nsf.docId : "";
 
   return (
     <main className="shell">
@@ -1805,30 +1818,29 @@ function App() {
           <RuntimeSidebar
             views={definitions.views}
             forms={definitions.forms}
-            selectedViewId={newDocType || isDocumentRoute ? undefined : selectedView._id}
-            activeDocType={newDocType}
+            selectedViewId={isCreateRoute || isDocumentRoute ? undefined : selectedView._id}
+            activeDocType={isCreateRoute ? routeDocType : undefined}
             onSelectView={selectView}
             onNewDocument={startNewDocument}
-            onOpenDesigner={() => window.open(pathForExpenseRoute({ kind: "designerHome" }), "_blank", "noopener,noreferrer")}
+            onOpenDesigner={() => window.open(pathForNsfRoute({ kind: "designerHome" }), "_blank", "noopener,noreferrer")}
           />
           <div className="workspaceMain">
-            {isDocumentRoute ? (
+            {isDocumentRoute || isCreateRoute ? (
               documentRouteError ? (
                 <section className="emptyState documentState" data-testid="document-not-found">
                   <h2>Document not found</h2>
                   <p>{documentRouteError}</p>
                 </section>
-              ) : focusedDocument ? (
-                <div className="documentWorkspace" data-testid="document-workspace">
+              ) : focusedDocument || isCreateRoute ? (
+                <div className="documentWorkspace" data-testid={isCreateRoute ? "create-workspace" : "document-workspace"}>
                   <DocumentForm
                     form={selectedForm}
-                    selected={selected}
+                    selected={isCreateRoute ? undefined : selected}
                     optionsByField={optionsByField}
-                    workflow={selectedWorkflow}
+                    workflow={isCreateRoute ? undefined : selectedWorkflow}
                     user={definitions.user}
                     roles={definitions.roles}
-                    auditEvents={auditEvents}
-                    onNew={() => startNewDocument(selectedForm.docType)}
+                    auditEvents={isCreateRoute ? [] : auditEvents}
                     onTransition={(doc, transitionId) =>
                       run("Transition", () =>
                         api(`/api/documents/${encodeURIComponent(doc._id)}/transition`, {
@@ -1891,8 +1903,8 @@ function App() {
                     view={selectedView}
                     documents={documents}
                     selectedId={selectedId}
-                    onSelect={(doc) => navigateExpense({ kind: "document", docId: doc._id })}
-                    documentHref={(doc) => pathForExpenseRoute({ kind: "document", docId: doc._id })}
+                    onSelect={(doc) => navigateNsf({ kind: "document", docId: doc._id })}
+                    documentHref={(doc) => pathForNsfRoute({ kind: "document", docId: doc._id })}
                   />
                   <DocumentForm
                     form={selectedForm}
@@ -1902,7 +1914,6 @@ function App() {
                     user={definitions.user}
                     roles={definitions.roles}
                     auditEvents={auditEvents}
-                    onNew={() => startNewDocument(selectedForm.docType)}
                     onTransition={(doc, transitionId) =>
                       run("Transition", () =>
                         api(`/api/documents/${encodeURIComponent(doc._id)}/transition`, {

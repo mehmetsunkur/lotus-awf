@@ -51,8 +51,8 @@ export class RuntimeApp {
     await this.refresh();
   }
 
-  async newDocument(): Promise<void> {
-    await this.page.getByTestId("form-new").click();
+  async newDocument(docType = "expense"): Promise<void> {
+    await this.page.getByTestId(`new-doc-${docType}`).click();
     // New documents have no Delete button; wait for it to confirm the form
     // really cleared the selection before we start filling fields.
     await expect(this.page.getByTestId("form-delete")).toBeHidden();
