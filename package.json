@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -n api,web -c cyan,green \"tsx watch src/server/index.ts\" \"vite --host 0.0.0.0 --port 3000\"",
+    "start": "NODE_ENV=production tsx src/server/index.ts",
     "build": "tsc --noEmit && vite build",
     "seed": "tsx scripts/seed.ts",
     "reset": "tsx scripts/reset.ts",

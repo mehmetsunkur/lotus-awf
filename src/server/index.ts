@@ -1,5 +1,7 @@
 import cors from "cors";
 import express from "express";
+import fs from "node:fs";
+import path from "node:path";
 import { ulid } from "ulid";
 import type {
   AclRules,
@@ -578,6 +580,27 @@ app.get(
       ]);
 
     response.json({ localReachable, serverReachable, localDbExists, serverDbExists, replications });
+  })
+);
+
+app.get(
+  "/api/ready",
+  asyncRoute(async (_request, response) => {
+    const [localReachable, serverReachable, localDbExists, serverDbExists] = await Promise.all([
+      ping("local"),
+      ping("server"),
+      dbExists("local"),
+      dbExists("server")
+    ]);
+    const ready = localReachable && serverReachable && localDbExists && serverDbExists;
+    response.status(ready ? 200 : 503).json({
+      ok: ready,
+      appDb: config.appDb,
+      localReachable,
+      serverReachable,
+      localDbExists,
+      serverDbExists
+    });
   })
 );
 
@@ -1165,6 +1188,15 @@ app.post(
     response.json({ formRev: formResult.rev, viewRev: viewResult.rev });
   })
 );
+
+const staticDir = path.resolve(process.cwd(), "dist");
+if (fs.existsSync(path.join(staticDir, "index.html"))) {
+  app.use(express.static(staticDir));
+  app.get(/^(?!\/api(?:\/|$)).*/, (_request, response) => {
+    response.sendFile(path.join(staticDir, "index.html"));
+  });
+  console.log(`Serving built client from ${staticDir}`);
+}
 
 app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
   console.error(error);
