@@ -132,6 +132,13 @@ const pathForExpenseRoute = (route: ExpenseRoute) => {
 const pathForRouteState = (route: RouteState) =>
   route.app === "expense" ? pathForExpenseRoute(route.expense) : pathForRoute(route.app);
 
+const expenseRouteKey = (route: ExpenseRoute) => {
+  if (route.kind === "view") return `view:${route.viewId}`;
+  if (route.kind === "document") return `document:${route.docId}`;
+  if (route.kind === "design") return `design:${route.definitionId}`;
+  return "home";
+};
+
 const api = async <T,>(path: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(path, {
     ...init,
@@ -1291,6 +1298,8 @@ function App() {
   const searchQueryRef = React.useRef("");
   // M10: audit trail for the selected document (read-only, server-recorded).
   const [auditEvents, setAuditEvents] = React.useState<AuditEvent[]>([]);
+  const selectedIdRef = React.useRef<string | undefined>(undefined);
+  const lastOpenedExpenseRouteRef = React.useRef("");
 
   const selectedView = definitions?.views.find((view) => view._id === selectedViewId) ?? definitions?.views[0];
   const selectedForm = definitions?.forms.find((form) => form.docType === selectedView?.docType) ?? definitions?.form;
@@ -1298,13 +1307,17 @@ function App() {
   const selected = documents.find((doc) => doc._id === selectedId);
   const editableDefinitions = [...(definitions?.forms ?? []), ...(definitions?.views ?? []), ...(definitions?.workflows ?? [])];
 
-  const refresh = React.useCallback(async () => {
+  React.useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
+
+  const refresh = React.useCallback(async (viewId = selectedViewId) => {
     const [nextStatus, nextDefinitions, nextConflicts] = await Promise.all([
       api<ReplicationStatus>("/api/status"),
       api<Definitions>("/api/definitions"),
       api<CouchDocument[]>("/api/conflicts")
     ]);
-    const view = nextDefinitions.views.find((item) => item._id === selectedViewId) ?? nextDefinitions.views[0];
+    const view = nextDefinitions.views.find((item) => item._id === viewId) ?? nextDefinitions.views[0];
     const query = searchQueryRef.current.trim();
     const documentsUrl = view
       ? `/api/views/${encodeURIComponent(view._id)}/documents${query ? `?q=${encodeURIComponent(query)}` : ""}`
@@ -1318,9 +1331,9 @@ function App() {
     setDocuments(nextDocuments);
     setConflicts(nextConflicts);
     setOptionsByField(nextOptions);
-    if (!nextDefinitions.views.some((viewDef) => viewDef._id === selectedViewId) && view) setSelectedViewId(view._id);
-    if (!selectedId && nextDocuments[0]) setSelectedId(nextDocuments[0]._id);
-  }, [selectedId, selectedViewId]);
+    if (!nextDefinitions.views.some((viewDef) => viewDef._id === viewId) && view) setSelectedViewId(view._id);
+    if (!selectedIdRef.current && nextDocuments[0]) setSelectedId(nextDocuments[0]._id);
+  }, [selectedViewId]);
 
   const refreshPlatform = React.useCallback(async () => {
     setPlatformState(await api<PlatformState>("/api/platform/state"));
@@ -1342,12 +1355,12 @@ function App() {
     navigate({ app: "expense", expense }, replace);
   }, [navigate]);
 
-  const run = async (label: string, task: () => Promise<void>) => {
+  const run = async (label: string, task: () => Promise<void>, options: { refreshAfter?: boolean } = {}) => {
     setBusy(true);
     setMessage(`${label}...`);
     try {
       await task();
-      await refresh();
+      if (options.refreshAfter ?? true) await refresh();
       setMessage(`${label} complete.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : `${label} failed.`);
@@ -1357,7 +1370,7 @@ function App() {
   };
 
   React.useEffect(() => {
-    run("Initial refresh", refreshPlatform);
+    run("Initial refresh", refreshPlatform, { refreshAfter: false });
   }, []);
 
   React.useEffect(() => {
@@ -1390,7 +1403,17 @@ function App() {
       navigateExpense({ kind: "view", viewId: selectedViewId || DEFAULT_EXPENSE_VIEW_ID }, true);
       return;
     }
-    run("Open Expense", refresh);
+
+    const targetViewId = route.expense.kind === "view" ? route.expense.viewId : selectedViewId || DEFAULT_EXPENSE_VIEW_ID;
+    const routeKey = expenseRouteKey(route.expense);
+    if (lastOpenedExpenseRouteRef.current === routeKey) return;
+    lastOpenedExpenseRouteRef.current = routeKey;
+    if (route.expense.kind === "view") {
+      setSelectedId(undefined);
+      selectedIdRef.current = undefined;
+      setSelectedViewId(route.expense.viewId);
+    }
+    run("Open Expense", () => refresh(targetViewId), { refreshAfter: false });
   }, [navigateApp, navigateExpense, platformState, refresh, route.app, route.expense, selectedViewId]);
 
   React.useEffect(() => {
@@ -1453,7 +1476,7 @@ function App() {
     onDefinitionConflictDemo: () =>
       run("Definition conflict demo", () => api("/api/demo/definition-conflict", { method: "POST" })),
     onDesignDemo: () => run("Server design edit", () => api("/api/admin/server-definition-demo", { method: "POST" })),
-    onRefresh: () => run("Refresh", refresh)
+    onRefresh: () => run("Refresh", refresh, { refreshAfter: false })
   };
 
   if (!platformState) {
@@ -1473,10 +1496,14 @@ function App() {
         busy={busy}
         message={message}
         onSubmit={(payload) =>
-          run("Complete setup", async () => {
-            setPlatformState(await api<PlatformState>("/api/platform/setup", { method: "POST", body: JSON.stringify(payload) }));
-            navigateApp("catalog", true);
-          })
+          run(
+            "Complete setup",
+            async () => {
+              setPlatformState(await api<PlatformState>("/api/platform/setup", { method: "POST", body: JSON.stringify(payload) }));
+              navigateApp("catalog", true);
+            },
+            { refreshAfter: false }
+          )
         }
       />
     );
@@ -1488,15 +1515,19 @@ function App() {
         state={platformState}
         busy={busy}
         message={message}
-        onRefresh={() => run("Refresh catalog", refreshPlatform)}
+        onRefresh={() => run("Refresh catalog", refreshPlatform, { refreshAfter: false })}
         onInstallExpense={() =>
-          run("Install Expense sample", async () => {
-            setPlatformState(
-              await api<PlatformState>("/api/platform/install-sample/expense", {
-                method: "POST"
-              })
-            );
-          })
+          run(
+            "Install Expense sample",
+            async () => {
+              setPlatformState(
+                await api<PlatformState>("/api/platform/install-sample/expense", {
+                  method: "POST"
+                })
+              );
+            },
+            { refreshAfter: false }
+          )
         }
         onOpenExpense={() => navigateExpense({ kind: "home" })}
       />
@@ -1537,7 +1568,7 @@ function App() {
         onSubmit={(event) => {
           event.preventDefault();
           searchQueryRef.current = searchInput;
-          run(searchInput.trim() ? "Search" : "Refresh", refresh);
+          run(searchInput.trim() ? "Search" : "Refresh", refresh, { refreshAfter: false });
         }}
       >
         <input
@@ -1559,7 +1590,7 @@ function App() {
             onClick={() => {
               setSearchInput("");
               searchQueryRef.current = "";
-              run("Refresh", refresh);
+              run("Refresh", refresh, { refreshAfter: false });
             }}
           >
             Clear
