@@ -14,7 +14,7 @@ be driven from outside the source process.
 1. Tear down any prior `lotus-m13-deploy-test` stack.
 2. Build and start `deploy/compose.yml`.
 3. Wait for `/api/health`.
-4. Wait for `/api/ready`, which requires the packaged expense app to be installed automatically.
+4. Wait for `/api/ready`, which requires the first-run platform app/control databases to exist.
 6. Verify the built client is served from the app container.
 7. Verify expense definitions are installed.
 8. Create, update, submit, and approve an expense.

@@ -21,7 +21,6 @@
 
 ## Decision
 
-M13 deploy compose sets `APP_AUTO_SETUP=1`, so the packaged expense app is installed automatically
-after both CouchDB replicas are reachable. A future control plane can replace this boot-time packaged
-app install with app-template installation and governed change sets, but the deploy artifact must not
-land on an empty "Setup Database" screen.
+M13 introduced `APP_AUTO_SETUP=1` as the deploy artifact install mechanism. M14 supersedes the initial
+Expense auto-install policy: fresh deploy now installs `setup.nsf` / `setup_app` and the platform
+catalog, while Expense is an explicit sample install.

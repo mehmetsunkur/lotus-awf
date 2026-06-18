@@ -5,7 +5,7 @@ services:
       COUCHDB_USER: admin
       COUCHDB_PASSWORD: password
     ports:
-      - "15984:5984"
+      - "${LOTUS_SERVER_COUCH_PORT:-15984}:5984"
     volumes:
       - server-couchdb-data:/opt/couchdb/data
 
@@ -15,7 +15,7 @@ services:
       COUCHDB_USER: admin
       COUCHDB_PASSWORD: password
     ports:
-      - "15985:5984"
+      - "${LOTUS_LOCAL_COUCH_PORT:-15985}:5984"
     volumes:
       - local-couchdb-data:/opt/couchdb/data
 
@@ -34,7 +34,7 @@ services:
       API_PORT: 3001
       APP_AUTO_SETUP: "1"
     ports:
-      - "3101:3001"
+      - "${LOTUS_APP_PORT:-3101}:3001"
     depends_on:
       - local-couchdb
       - server-couchdb

@@ -9,6 +9,11 @@ export class RuntimeApp {
 
   async goto(): Promise<void> {
     await this.page.goto("/");
+    const catalog = this.page.getByTestId("catalog-shell");
+    if (await catalog.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      const open = this.page.getByTestId("open-expense").or(this.page.getByTestId("open-expense-sample"));
+      await open.first().click();
+    }
     await this.waitForReady();
   }
 
@@ -20,7 +25,7 @@ export class RuntimeApp {
    */
   async waitForReady(): Promise<void> {
     await expect(this.page.getByTestId("view-picker")).toBeVisible();
-    await expect(this.message()).toHaveText("Initial refresh complete.");
+    await expect(this.message()).toHaveText(/Initial refresh complete\.|Open Expense complete\./);
   }
 
   async selectView(viewId: string): Promise<void> {

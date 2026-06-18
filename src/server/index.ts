@@ -238,6 +238,41 @@ async function platformState(): Promise<PlatformState> {
   };
 }
 
+function expenseInstallRecord(installedAt = timestamp()): AppInstall {
+  return {
+    _id: "appinstall:expense",
+    kind: "appinstall",
+    appId: "expense",
+    title: "Expense sample",
+    database: config.appDb,
+    templateId: "sample:expense",
+    installedAt,
+    installedBy: config.appUser
+  };
+}
+
+async function markExpenseInstalled(target: "local" | "server") {
+  await upsertDocInDb(target, config.platformDb, expenseInstallRecord());
+}
+
+async function completeDevPlatformSetup(target: "local" | "server") {
+  const now = timestamp();
+  await seedSetupTarget(target);
+  await seedPlatformTarget(target);
+  await upsertDocInDb<PlatformConfig>(target, config.platformDb, {
+    _id: "platform:config",
+    kind: "platformconfig",
+    setupComplete: true,
+    orgName: "Development Org",
+    domainName: "dev.local",
+    adminUser: config.appUser,
+    adminPasswordHash: createHash("sha256").update("password").digest("hex"),
+    createdAt: now,
+    updatedAt: now
+  });
+  await markExpenseInstalled(target);
+}
+
 async function waitForCouch(target: "local" | "server", attempts = 60) {
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     if (await ping(target)) return;
@@ -810,6 +845,7 @@ app.post(
   "/api/reset",
   asyncRoute(async (_request, response) => {
     await Promise.all([seedTarget("local", true), seedTarget("server", true)]);
+    await Promise.all([completeDevPlatformSetup("local"), completeDevPlatformSetup("server")]);
     clearEffectLog();
     response.json({ ok: true });
   })
@@ -874,16 +910,7 @@ app.post(
     if (!serverInstalled) await seedTarget("server");
 
     const installedAt = timestamp();
-    const install: AppInstall = {
-      _id: "appinstall:expense",
-      kind: "appinstall",
-      appId: "expense",
-      title: "Expense sample",
-      database: config.appDb,
-      templateId: "sample:expense",
-      installedAt,
-      installedBy: config.appUser
-    };
+    const install = expenseInstallRecord(installedAt);
     const existing = await docExistsInDb("local", config.platformDb, install._id);
     const localResult = await upsertDocInDb("local", config.platformDb, install);
     await upsertDocInDb("server", config.platformDb, install);

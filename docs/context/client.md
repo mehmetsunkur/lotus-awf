@@ -17,9 +17,9 @@
 
 ## Purpose
 
-React metadata-driven runtime UI: renders forms/views from replicated definitions, edits local
-documents, hosts the M4 structured definition studio (with JSON escape hatch) and the conflict
-resolution panel.
+React platform/runtime UI: first-run setup and app catalog (M14), plus the metadata-driven runtime
+that renders forms/views from replicated definitions, edits local documents, hosts the M4 structured
+definition studio (with JSON escape hatch) and the conflict resolution panel.
 
 ## Main Files
 
@@ -30,8 +30,13 @@ resolution panel.
 
 ## Key Flows
 
-- Boot → `GET /api/status|definitions|conflicts` → render shell (`definitions` carries `workflows`,
-  `user`, `roles`).
+- Boot (M14) → `GET /api/platform/state` → render setup, catalog, or opened app runtime.
+- App runtime boot → `GET /api/status|definitions|conflicts` → render shell (`definitions` carries
+  `workflows`, `user`, `roles`).
+- First-run setup (M14) → `POST /api/platform/setup` stores org/domain/admin, then catalog renders
+  with no business apps installed.
+- Sample install (M14) → catalog `POST /api/platform/install-sample/expense`, then the user can open
+  the existing Expense runtime.
 - Edit → shared `validatePayload` runs client-side → `POST/PUT /api/documents` (local replica).
 - Compute (M7) → `applyComputedFields` (shared) derives `compute` fields from the live draft, offline;
   computed fields render read-only and recompute as inputs change.
@@ -65,8 +70,8 @@ resolution panel.
 
 ## Invariants
 
-See `docs/invariants.md`: **Validation parity**, **Offline editing**, and **Form layout authoring**
-govern this subsystem.
+See `docs/invariants.md`: **Validation parity**, **Offline editing**, **Form layout authoring**, and
+**Deployable artifact** govern this subsystem.
 
 ## Relevant Decisions
 

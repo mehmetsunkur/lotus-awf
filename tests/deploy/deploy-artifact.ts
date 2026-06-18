@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 
 const compose = ["compose", "-p", "lotus-m13-deploy-test", "-f", "deploy/compose.yml"];
-let baseUrl = process.env.DEPLOY_BASE_URL ?? "http://localhost:3101";
+process.env.LOTUS_APP_PORT ??= "33101";
+process.env.LOTUS_SERVER_COUCH_PORT ??= "25984";
+process.env.LOTUS_LOCAL_COUCH_PORT ??= "25985";
+let baseUrl = process.env.DEPLOY_BASE_URL ?? `http://localhost:${process.env.LOTUS_APP_PORT}`;
 const dockerRunner = selectDockerRunner();
 
 type HttpOptions = {
@@ -21,14 +24,22 @@ function commandWorks(command: string, args: string[]) {
 }
 
 function selectDockerRunner(): { command: string; args: string[] } {
+  const sudoDocker = [
+    "-n",
+    "env",
+    `LOTUS_APP_PORT=${process.env.LOTUS_APP_PORT}`,
+    `LOTUS_SERVER_COUCH_PORT=${process.env.LOTUS_SERVER_COUCH_PORT}`,
+    `LOTUS_LOCAL_COUCH_PORT=${process.env.LOTUS_LOCAL_COUCH_PORT}`,
+    "docker"
+  ];
   if (process.env.DOCKER_USE_SUDO === "1") {
-    return { command: "sudo", args: ["-n", "docker"] };
+    return { command: "sudo", args: sudoDocker };
   }
   if (commandWorks("docker", ["version"])) {
     return { command: "docker", args: [] };
   }
   if (commandWorks("sudo", ["-n", "docker", "version"])) {
-    return { command: "sudo", args: ["-n", "docker"] };
+    return { command: "sudo", args: sudoDocker };
   }
   throw new Error("Docker is not accessible. Grant Docker socket access or configure passwordless sudo for docker.");
 }

@@ -4,6 +4,22 @@ const LOCAL_COUCH = "http://localhost:5985/";
 const SERVER_COUCH = "http://localhost:5984/";
 const COMPOSE_SERVICES = ["local-couchdb", "server-couchdb"];
 
+function commandWorks(command: string, args: string[]) {
+  try {
+    execFileSync(command, args, { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function dockerRunner(): { command: string; args: string[] } {
+  if (process.env.DOCKER_USE_SUDO === "1") return { command: "sudo", args: ["-n", "docker"] };
+  if (commandWorks("docker", ["version"])) return { command: "docker", args: [] };
+  if (commandWorks("sudo", ["-n", "docker", "version"])) return { command: "sudo", args: ["-n", "docker"] };
+  throw new Error("Docker is not accessible. Grant Docker socket access or configure passwordless sudo for docker.");
+}
+
 async function waitForCouch(url: string, timeoutMs = 60_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   let lastError = "";
@@ -27,8 +43,9 @@ async function waitForCouch(url: string, timeoutMs = 60_000): Promise<void> {
  * reset fixture's job, and the app server may not be ready at this point.
  */
 export default async function globalSetup(): Promise<void> {
+  const runner = dockerRunner();
   try {
-    execFileSync("docker", ["compose", "up", "-d", ...COMPOSE_SERVICES], {
+    execFileSync(runner.command, [...runner.args, "compose", "up", "-d", ...COMPOSE_SERVICES], {
       stdio: "inherit"
     });
   } catch (error) {

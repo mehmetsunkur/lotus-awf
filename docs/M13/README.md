@@ -13,7 +13,8 @@ substrate can run from a built artifact rather than a source checkout.
 - Build a self-contained Docker image from `package-lock.json`.
 - Serve the built React client from the Express runtime in production mode.
 - Run the platform with a deploy compose topology that has no source bind mount.
-- Install the packaged expense app into fresh CouchDB replicas.
+- Install the packaged app into fresh CouchDB replicas (M14 changes the first-run packaged app to
+  `setup.nsf`).
 - Exercise CRUD, workflow, search, design mutation, agents, audit, template export, and replication
   through external HTTP calls.
 - Keep dev/test source-mode workflows unchanged.

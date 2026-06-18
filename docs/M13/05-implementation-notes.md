@@ -10,8 +10,8 @@ M13 adds a deployable runtime path:
 - `GET /api/ready` checks both CouchDB replicas and app database existence.
 - `deploy/compose.yml` runs the built app image plus local/server CouchDB replicas on isolated host
   ports and enables `APP_AUTO_SETUP=1`.
-- `APP_AUTO_SETUP=1` waits for both CouchDB replicas and installs the packaged expense app when
-  `app:config` is missing, so a fresh deploy does not land on an empty setup screen.
+- `APP_AUTO_SETUP=1` waits for both CouchDB replicas and installs the first-run packaged app/control
+  databases so a fresh deploy does not land on an empty setup screen.
 - `npm run test:deploy` runs `tests/deploy/deploy-artifact.ts`, an external HTTP integration gate over
   the deploy compose stack.
 
@@ -31,8 +31,8 @@ environment.
 
 ## Known limitations and risks
 
-- Boot-time packaged-app setup is the M13 install path; future app-template installation should
-  replace it.
+- Boot-time first-run setup is the M13 install mechanism; M14 changes the installed app to
+  `setup.nsf`, and future app-template installation should replace the sample installer.
 - The image includes dev/build dependencies in `node_modules`; a smaller multi-stage image is deferred.
 - Production auth, secrets, expression sandboxing, and governed AI change sets remain future work.
 - The deploy gate depends on local Docker API access or passwordless sudo for Docker.

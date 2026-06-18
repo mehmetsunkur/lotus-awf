@@ -88,12 +88,12 @@ reconciliation, (M6) template export/diff/apply, and (M13) production static-cli
 - Sync: `POST /api/replicate` → scoped `replicateBidirectional` → local `_purge` of server-revoked
   docs → `reconcileStates` reports concurrent state divergence; conflicts surfaced via
   `/api/conflicts`. Resolve accepts `chosenRev` to elect the winning revision's state.
-- Readiness/deploy (M13): `GET /api/health` is cheap liveness; `GET /api/ready` checks both CouchDB
-  replicas and app DB existence. When `dist/index.html` exists, Express serves the built client and
-  falls back to `index.html` for non-API routes. `deploy/compose.yml` enables `APP_AUTO_SETUP=1`, so a
-  fresh artifact install seeds the packaged expense app after CouchDB is reachable. `npm run
-  test:deploy` builds/runs that topology and exercises runtime plus design operations externally over
-  HTTP without a manual setup click.
+- Readiness/deploy (M13/M14): `GET /api/health` is cheap liveness; `GET /api/ready` checks CouchDB
+  plus first-run setup/platform readiness. When `dist/index.html` exists, Express serves the built
+  client and falls back to `index.html` for non-API routes. `deploy/compose.yml` enables
+  `APP_AUTO_SETUP=1`, so a fresh artifact install creates `setup_app` and `platform_app`; Expense is
+  installed only through the sample installer after setup. `npm run test:deploy` builds/runs that
+  topology and exercises setup, catalog, runtime, and design operations externally over HTTP.
 
 ## Existing Patterns
 

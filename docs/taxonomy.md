@@ -37,6 +37,7 @@ Classes map to the path-tagged aspects in `docs/invariants.md`.
 | Offline-first | Local-replica editing with no server round-trip | local vs server CouchDB | `docs/context/server.md`, `docs/context/client.md` |
 | Query & indexing | Mango selectors + indexes for views | `use_index`, index triplication | `docs/context/server.md` |
 | Deployment & packaging | Built platform artifact and deploy topology | Docker image, deploy compose, readiness, artifact gate | `docs/context/server.md` |
+| App lifecycle | First-run setup, app catalog, sample/template install | setup.nsf, platform state, installed apps | `docs/context/server.md`, `docs/context/client.md` |
 
 ## Change Types
 
