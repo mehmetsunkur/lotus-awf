@@ -2,11 +2,20 @@
 
 The built client starts with `GET /api/platform/state`.
 
+## Canonical routes
+
+- `/setup.nsf` — first-run setup.
+- `/catalog.nsf` — platform app catalog.
+- `/expense.nsf` — installed Expense sample runtime.
+- `/` — compatibility entry; client routing replaces it with setup or catalog after platform state
+  loads.
+
 ## Modes
 
-1. `setupComplete: false` -> render setup screen (`setup.nsf`).
-2. `setupComplete: true` and no opened app -> render app catalog.
-3. User opens installed Expense sample -> render the existing metadata runtime.
+1. `setupComplete: false` -> navigate/render `/setup.nsf`.
+2. `setupComplete: true` and setup route requested -> navigate/render `/catalog.nsf`.
+3. User opens installed Expense sample -> navigate/render `/expense.nsf`.
+4. Direct `/expense.nsf` before sample install -> return to `/catalog.nsf`.
 
 The current Expense runtime remains single-app and uses the existing `expense_app` APIs. M14 does not
 introduce general multi-app routing.

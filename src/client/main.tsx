@@ -71,6 +71,16 @@ type Definitions = {
 
 type Draft = Record<string, unknown>;
 type EditableDefinition = FormDefinition | ViewDefinition | WorkflowDefinition;
+type AppRoute = "setup" | "catalog" | "expense";
+
+const routeForPath = (path: string): AppRoute => {
+  if (path === "/setup.nsf") return "setup";
+  if (path === "/expense.nsf") return "expense";
+  return "catalog";
+};
+
+const pathForRoute = (route: AppRoute) =>
+  route === "setup" ? "/setup.nsf" : route === "expense" ? "/expense.nsf" : "/catalog.nsf";
 
 const api = async <T,>(path: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(path, {
@@ -1212,7 +1222,7 @@ function AppCatalog({
 
 function App() {
   const [platformState, setPlatformState] = React.useState<PlatformState>();
-  const [selectedAppId, setSelectedAppId] = React.useState<string>();
+  const [route, setRoute] = React.useState<AppRoute>(() => routeForPath(window.location.pathname));
   const [status, setStatus] = React.useState<ReplicationStatus>();
   const [definitions, setDefinitions] = React.useState<Definitions>();
   const [documents, setDocuments] = React.useState<BusinessDocument[]>([]);
@@ -1266,6 +1276,14 @@ function App() {
     setPlatformState(await api<PlatformState>("/api/platform/state"));
   }, []);
 
+  const navigate = React.useCallback((nextRoute: AppRoute, replace = false) => {
+    const nextPath = pathForRoute(nextRoute);
+    if (window.location.pathname !== nextPath) {
+      window.history[replace ? "replaceState" : "pushState"]({}, "", nextPath);
+    }
+    setRoute(nextRoute);
+  }, []);
+
   const run = async (label: string, task: () => Promise<void>) => {
     setBusy(true);
     setMessage(`${label}...`);
@@ -1285,10 +1303,35 @@ function App() {
   }, []);
 
   React.useEffect(() => {
-    if (selectedAppId === "expense") {
+    const onPopState = () => setRoute(routeForPath(window.location.pathname));
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  React.useEffect(() => {
+    if (!platformState) return;
+    if (!platformState.setupComplete && route !== "setup") {
+      navigate("setup", true);
+      return;
+    }
+    if (platformState.setupComplete && route === "setup") {
+      navigate("catalog", true);
+    }
+  }, [navigate, platformState, route]);
+
+  React.useEffect(() => {
+    if (!platformState || route !== "expense") return;
+    const expenseInstalled =
+      platformState.installedApps.some((app) => app.appId === "expense") ||
+      platformState.samples.some((sample) => sample.appId === "expense" && sample.installed);
+    if (!expenseInstalled) {
+      navigate("catalog", true);
+      return;
+    }
+    if (route === "expense") {
       run("Open Expense", refresh);
     }
-  }, [selectedAppId]);
+  }, [navigate, platformState, refresh, route]);
 
   // Load the selected document's audit trail (read-only; recorded server-side).
   React.useEffect(() => {
@@ -1341,13 +1384,14 @@ function App() {
         onSubmit={(payload) =>
           run("Complete setup", async () => {
             setPlatformState(await api<PlatformState>("/api/platform/setup", { method: "POST", body: JSON.stringify(payload) }));
+            navigate("catalog", true);
           })
         }
       />
     );
   }
 
-  if (selectedAppId !== "expense") {
+  if (route !== "expense") {
     return (
       <AppCatalog
         state={platformState}
@@ -1363,7 +1407,7 @@ function App() {
             );
           })
         }
-        onOpenExpense={() => setSelectedAppId("expense")}
+        onOpenExpense={() => navigate("expense")}
       />
     );
   }

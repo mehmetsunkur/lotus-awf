@@ -8,12 +8,7 @@ export class RuntimeApp {
   constructor(public readonly page: Page) {}
 
   async goto(): Promise<void> {
-    await this.page.goto("/");
-    const catalog = this.page.getByTestId("catalog-shell");
-    if (await catalog.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      const open = this.page.getByTestId("open-expense").or(this.page.getByTestId("open-expense-sample"));
-      await open.first().click();
-    }
+    await this.page.goto("/expense.nsf");
     await this.waitForReady();
   }
 

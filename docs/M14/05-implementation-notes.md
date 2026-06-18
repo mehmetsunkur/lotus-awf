@@ -9,6 +9,7 @@
   `POST /api/platform/install-sample/expense`.
 - Updated `/api/ready` to check setup/platform readiness and setup completion state.
 - Added setup and catalog client modes before the existing Expense runtime mode.
+- Added dependency-free client routing for `/setup.nsf`, `/catalog.nsf`, and `/expense.nsf`.
 - Updated `npm run test:deploy` to verify fresh setup, empty catalog, explicit Expense sample install,
   and the prior runtime smoke.
 

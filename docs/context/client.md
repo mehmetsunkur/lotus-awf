@@ -30,7 +30,8 @@ definition studio (with JSON escape hatch) and the conflict resolution panel.
 
 ## Key Flows
 
-- Boot (M14) → `GET /api/platform/state` → render setup, catalog, or opened app runtime.
+- Boot (M14) → `GET /api/platform/state` → route/render `/setup.nsf`, `/catalog.nsf`, or
+  `/expense.nsf`.
 - App runtime boot → `GET /api/status|definitions|conflicts` → render shell (`definitions` carries
   `workflows`, `user`, `roles`).
 - First-run setup (M14) → `POST /api/platform/setup` stores org/domain/admin, then catalog renders
