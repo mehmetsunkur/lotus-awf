@@ -1,0 +1,43 @@
+services:
+  server-couchdb:
+    image: couchdb:3.4
+    environment:
+      COUCHDB_USER: admin
+      COUCHDB_PASSWORD: password
+    ports:
+      - "15984:5984"
+    volumes:
+      - server-couchdb-data:/opt/couchdb/data
+
+  local-couchdb:
+    image: couchdb:3.4
+    environment:
+      COUCHDB_USER: admin
+      COUCHDB_PASSWORD: password
+    ports:
+      - "15985:5984"
+    volumes:
+      - local-couchdb-data:/opt/couchdb/data
+
+  app:
+    image: lotus-notes-platform:m13
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      APP_DB: expense_app
+      APP_USER: user:alice
+      LOCAL_COUCH_URL: http://admin:password@local-couchdb:5984
+      SERVER_COUCH_URL: http://admin:password@server-couchdb:5984
+      LOCAL_COUCH_REPLICATION_URL: http://admin:password@local-couchdb:5984
+      SERVER_COUCH_REPLICATION_URL: http://admin:password@server-couchdb:5984
+      API_PORT: 3001
+    ports:
+      - "3101:3001"
+    depends_on:
+      - local-couchdb
+      - server-couchdb
+
+volumes:
+  local-couchdb-data:
+  server-couchdb-data:
