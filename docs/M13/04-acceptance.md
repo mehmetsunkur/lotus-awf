@@ -6,7 +6,7 @@ M13 is accepted when:
 - `npm run test:unit` passes.
 - `npm run test:deploy` passes in an environment with Docker API access.
 - The deploy compose stack starts from the built image with no source bind mount.
-- `GET /api/ready` reports both CouchDB replicas and app databases ready after install.
+- `GET /api/ready` reports both CouchDB replicas and the packaged app installed without manual setup.
 - The deploy gate creates and mutates business documents through HTTP.
 - The deploy gate applies at least one design mutation and proves the new type is usable.
 - The deploy gate verifies agents, audit, template export, and replication.

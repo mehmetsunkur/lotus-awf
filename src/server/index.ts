@@ -100,6 +100,41 @@ async function ensureIndexes(target: "local" | "server") {
   await createIndex(target, "m3-docType-state-updatedAt", ["docType", "state", "updatedAt"]);
 }
 
+async function appInstalled(target: "local" | "server") {
+  try {
+    await getDoc<AppConfig>(target, "app:config");
+    return true;
+  } catch (error) {
+    if (error instanceof CouchError && error.status === 404) return false;
+    return false;
+  }
+}
+
+async function waitForCouch(target: "local" | "server", attempts = 60) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (await ping(target)) return;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  throw new Error(`${target} CouchDB was not reachable after ${attempts} seconds`);
+}
+
+async function autoSetupPackagedApp() {
+  if (!config.autoSetup) return;
+  try {
+    await Promise.all([waitForCouch("local"), waitForCouch("server")]);
+    const [localInstalled, serverInstalled] = await Promise.all([appInstalled("local"), appInstalled("server")]);
+    const setups: Array<Promise<void>> = [];
+    if (!localInstalled) setups.push(seedTarget("local"));
+    if (!serverInstalled) setups.push(seedTarget("server"));
+    if (setups.length) {
+      await Promise.all(setups);
+      console.log(`Installed packaged app "${config.appDb}"`);
+    }
+  } catch (error) {
+    console.error("packaged app auto-setup failed", error);
+  }
+}
+
 async function replicationTasks() {
   const [localTasks, serverTasks] = await Promise.allSettled([
     couchRequest("local", "/_active_tasks"),
@@ -586,20 +621,24 @@ app.get(
 app.get(
   "/api/ready",
   asyncRoute(async (_request, response) => {
-    const [localReachable, serverReachable, localDbExists, serverDbExists] = await Promise.all([
+    const [localReachable, serverReachable, localDbExists, serverDbExists, localAppInstalled, serverAppInstalled] = await Promise.all([
       ping("local"),
       ping("server"),
       dbExists("local"),
-      dbExists("server")
+      dbExists("server"),
+      appInstalled("local"),
+      appInstalled("server")
     ]);
-    const ready = localReachable && serverReachable && localDbExists && serverDbExists;
+    const ready = localReachable && serverReachable && localDbExists && serverDbExists && localAppInstalled && serverAppInstalled;
     response.status(ready ? 200 : 503).json({
       ok: ready,
       appDb: config.appDb,
       localReachable,
       serverReachable,
       localDbExists,
-      serverDbExists
+      serverDbExists,
+      localAppInstalled,
+      serverAppInstalled
     });
   })
 );
@@ -1207,6 +1246,7 @@ app.use((error: unknown, _request: express.Request, response: express.Response, 
 
 app.listen(config.apiPort, () => {
   console.log(`M1 API listening on ${config.apiPort}`);
+  void autoSetupPackagedApp();
 });
 
 // Optional background agent loop. Off by default (and in tests) — agents are

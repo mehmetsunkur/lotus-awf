@@ -90,9 +90,10 @@ reconciliation, (M6) template export/diff/apply, and (M13) production static-cli
   `/api/conflicts`. Resolve accepts `chosenRev` to elect the winning revision's state.
 - Readiness/deploy (M13): `GET /api/health` is cheap liveness; `GET /api/ready` checks both CouchDB
   replicas and app DB existence. When `dist/index.html` exists, Express serves the built client and
-  falls back to `index.html` for non-API routes. `npm run test:deploy` builds/runs
-  `deploy/compose.yml`, installs the packaged expense app with `/api/reset`, and exercises runtime
-  plus design operations externally over HTTP.
+  falls back to `index.html` for non-API routes. `deploy/compose.yml` enables `APP_AUTO_SETUP=1`, so a
+  fresh artifact install seeds the packaged expense app after CouchDB is reachable. `npm run
+  test:deploy` builds/runs that topology and exercises runtime plus design operations externally over
+  HTTP without a manual setup click.
 
 ## Existing Patterns
 

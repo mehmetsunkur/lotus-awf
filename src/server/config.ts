@@ -12,5 +12,6 @@ export const config = {
   serverReplicationUrl:
     process.env.SERVER_COUCH_REPLICATION_URL ??
     (serverCouchUrl.includes("localhost:5984") ? "http://admin:password@server-couchdb:5984" : serverCouchUrl),
-  apiPort: Number(process.env.API_PORT ?? 3001)
+  apiPort: Number(process.env.API_PORT ?? 3001),
+  autoSetup: process.env.APP_AUTO_SETUP === "1"
 };

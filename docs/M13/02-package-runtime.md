@@ -24,14 +24,16 @@ The image:
 - `local-couchdb` on host port `15985`;
 - `app` on host port `3101`;
 - named volumes for both CouchDB replicas;
-- no bind mount from the source checkout.
+- no bind mount from the source checkout;
+- `APP_AUTO_SETUP=1`, which installs the packaged expense app when `app:config` is missing.
 
 The existing root `docker-compose.yml` remains the development topology.
 
 ## Readiness
 
 - `GET /api/health` is cheap liveness and does not touch CouchDB.
-- `GET /api/ready` checks local CouchDB, server CouchDB, and both app databases.
+- `GET /api/ready` checks local CouchDB, server CouchDB, both app databases, and the packaged app
+  marker (`app:config`) in each replica.
 
-The deploy gate waits for liveness, installs the packaged app with `/api/reset`, then waits for
-readiness.
+The deploy gate waits for liveness and then readiness. It does not call `/api/reset`; a fresh deploy
+must install the packaged app during startup.

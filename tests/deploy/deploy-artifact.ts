@@ -113,8 +113,7 @@ async function retry<T>(description: string, action: () => Promise<T>, timeoutMs
 
 async function runAssertions() {
   await waitFor("/api/health", "app liveness");
-  await retry("expense app install/reset", () => request("/api/reset", { method: "POST" }));
-  await waitFor("/api/ready", "CouchDB-backed readiness");
+  await waitFor("/api/ready", "packaged app auto-install readiness");
 
   const root = await fetch(baseUrl);
   assert.equal(root.status, 200, "built client should be served by the app container");

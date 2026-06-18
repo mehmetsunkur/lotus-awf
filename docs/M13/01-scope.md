@@ -21,6 +21,7 @@
 
 ## Decision
 
-M13 treats `/api/reset` as the packaged expense-app install path for the deploy gate. A future control
-plane can replace that with app-template installation and governed change sets, but this milestone only
-needs a deterministic, externally verifiable platform install.
+M13 deploy compose sets `APP_AUTO_SETUP=1`, so the packaged expense app is installed automatically
+after both CouchDB replicas are reachable. A future control plane can replace this boot-time packaged
+app install with app-template installation and governed change sets, but the deploy artifact must not
+land on an empty "Setup Database" screen.
