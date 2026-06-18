@@ -12,8 +12,12 @@
 # Source nvm and select the LTS Node before any node/npm/npx call. Recipes run
 # under a non-interactive shell that does not read ~/.bashrc, so we do it here.
 NVM := export NVM_DIR="$$HOME/.nvm"; . "$$NVM_DIR/nvm.sh"; nvm use --lts >/dev/null;
+DOCKER ?= sudo docker
+DEPLOY_PROJECT ?= lotus-fresh
+DEPLOY_COMPOSE ?= deploy/compose.yml
 
-.PHONY: help e2e e2e-headed e2e-ui e2e-debug e2e-report setup-e2e
+.PHONY: help e2e e2e-headed e2e-ui e2e-debug e2e-report setup-e2e \
+	deploy-up deploy-down
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*## .*$$' $(MAKEFILE_LIST) \
@@ -36,3 +40,9 @@ e2e-debug: ## Step through the suite with the Playwright Inspector
 
 e2e-report: ## Open the last HTML report
 	$(NVM) npx playwright show-report
+
+deploy-up: ## Build and start the deploy artifact stack (lotus-fresh) using deploy/compose.yml
+	$(DOCKER) compose -p $(DEPLOY_PROJECT) -f $(DEPLOY_COMPOSE) up -d --build
+
+deploy-down: ## Stop and remove deploy artifact stack (+ volumes + orphans)
+	$(DOCKER) compose -p $(DEPLOY_PROJECT) -f $(DEPLOY_COMPOSE) down -v --remove-orphans
