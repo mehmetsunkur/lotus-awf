@@ -160,6 +160,60 @@ button:disabled {
   margin-bottom: 16px;
 }
 
+.setupShell,
+.catalogShell {
+  max-width: 980px;
+}
+
+.setupHero {
+  margin: 32px 0 18px;
+}
+
+.setupHero h1 {
+  font-size: clamp(2rem, 6vw, 4.5rem);
+  line-height: 0.95;
+  margin: 0;
+}
+
+.setupForm {
+  background: rgb(255 250 240 / 88%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 14px;
+  max-width: 560px;
+  padding: 18px;
+}
+
+.sectionHeader {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.definitionList {
+  display: grid;
+  gap: 10px;
+}
+
+.definitionCard {
+  align-items: center;
+  background: rgb(255 250 240 / 88%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 14px;
+}
+
+.definitionCard span {
+  color: var(--muted);
+}
+
 .segmented {
   display: flex;
   flex-wrap: wrap;

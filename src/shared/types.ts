@@ -288,6 +288,49 @@ export type AuditState = {
   lastSeq: string;
 };
 
+export type PlatformConfig = {
+  _id: "platform:config";
+  _rev?: string;
+  kind: "platformconfig";
+  setupComplete: boolean;
+  orgName?: string;
+  domainName?: string;
+  adminUser?: string;
+  /** Development-only placeholder until a real auth subsystem lands. */
+  adminPasswordHash?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type AppInstall = {
+  _id: `appinstall:${string}`;
+  _rev?: string;
+  kind: "appinstall";
+  appId: string;
+  title: string;
+  database: string;
+  templateId?: string;
+  installedAt: string;
+  installedBy: string;
+};
+
+export type SampleApp = {
+  appId: string;
+  title: string;
+  database: string;
+  description: string;
+  installed: boolean;
+};
+
+export type PlatformState = {
+  setupComplete: boolean;
+  orgName?: string;
+  domainName?: string;
+  adminUser?: string;
+  installedApps: AppInstall[];
+  samples: SampleApp[];
+};
+
 export type DesignDocument =
   | AppConfig
   | FormDefinition

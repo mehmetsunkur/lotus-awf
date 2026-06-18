@@ -113,11 +113,48 @@ async function retry<T>(description: string, action: () => Promise<T>, timeoutMs
 
 async function runAssertions() {
   await waitFor("/api/health", "app liveness");
-  await waitFor("/api/ready", "packaged app auto-install readiness");
+  await waitFor("/api/ready", "setup.nsf readiness");
 
   const root = await fetch(baseUrl);
   assert.equal(root.status, 200, "built client should be served by the app container");
   assert.match(await root.text(), /<div id="root"><\/div>/, "built client HTML should include the React root");
+
+  const firstRun = await request<{
+    setupComplete: boolean;
+    installedApps: unknown[];
+    samples: Array<{ appId: string; installed: boolean }>;
+  }>("/api/platform/state");
+  assert.equal(firstRun.setupComplete, false, "fresh deploy should start in setup mode");
+  assert.equal(firstRun.installedApps.length, 0, "fresh deploy should have an empty app catalog");
+  assert.equal(firstRun.samples.find((sample) => sample.appId === "expense")?.installed, false, "expense sample should not be installed by default");
+
+  const configured = await request<{
+    setupComplete: boolean;
+    orgName?: string;
+    domainName?: string;
+    adminUser?: string;
+    installedApps: unknown[];
+  }>("/api/platform/setup", {
+    body: {
+      orgName: "Deploy Test Org",
+      domainName: "deploy.test",
+      adminUser: "admin",
+      adminPassword: "password123",
+      confirmPassword: "password123"
+    }
+  });
+  assert.equal(configured.setupComplete, true, "setup should complete");
+  assert.equal(configured.orgName, "Deploy Test Org", "org name should persist");
+  assert.equal(configured.domainName, "deploy.test", "domain name should persist");
+  assert.equal(configured.adminUser, "admin", "admin username should persist");
+  assert.equal(configured.installedApps.length, 0, "setup should still land on an empty app catalog");
+
+  const installed = await request<{
+    installedApps: Array<{ appId: string }>;
+    samples: Array<{ appId: string; installed: boolean }>;
+  }>("/api/platform/install-sample/expense", { method: "POST", ok: 201 });
+  assert.ok(installed.installedApps.some((app) => app.appId === "expense"), "expense sample install should create an app install record");
+  assert.equal(installed.samples.find((sample) => sample.appId === "expense")?.installed, true, "expense sample should be marked installed");
 
   const definitions = await request<{ forms: Array<{ _id: string }>; views: Array<{ _id: string }> }>("/api/definitions");
   assert.ok(definitions.forms.some((form) => form._id === "form:expense"), "expense form should be installed");

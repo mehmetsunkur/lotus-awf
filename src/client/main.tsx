@@ -23,6 +23,7 @@ import type {
   FieldType,
   FormDefinition,
   FormField,
+  PlatformState,
   ReplicationStatus,
   SelectOptionsByField,
   ViewDefinition,
@@ -1049,7 +1050,169 @@ function Revision({
   );
 }
 
+function SetupScreen({
+  busy,
+  message,
+  onSubmit
+}: {
+  busy: boolean;
+  message: string;
+  onSubmit: (payload: {
+    orgName: string;
+    domainName: string;
+    adminUser: string;
+    adminPassword: string;
+    confirmPassword: string;
+  }) => void;
+}) {
+  const [orgName, setOrgName] = React.useState("");
+  const [domainName, setDomainName] = React.useState("");
+  const [adminUser, setAdminUser] = React.useState("");
+  const [adminPassword, setAdminPassword] = React.useState("");
+  const [confirmPassword, setConfirmPassword] = React.useState("");
+
+  return (
+    <main className="shell setupShell" data-testid="setup-shell">
+      <section className="setupHero">
+        <p className="kicker">setup.nsf</p>
+        <h1>Lotus Platform Setup</h1>
+      </section>
+      <form
+        className="band setupForm"
+        data-testid="setup-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit({ orgName, domainName, adminUser, adminPassword, confirmPassword });
+        }}
+      >
+        <label>
+          Organization name
+          <input value={orgName} data-testid="setup-org" onChange={(event) => setOrgName(event.target.value)} />
+        </label>
+        <label>
+          Domain name
+          <input value={domainName} data-testid="setup-domain" onChange={(event) => setDomainName(event.target.value)} />
+        </label>
+        <label>
+          Admin username
+          <input value={adminUser} data-testid="setup-admin" onChange={(event) => setAdminUser(event.target.value)} />
+        </label>
+        <label>
+          Admin password
+          <input
+            type="password"
+            value={adminPassword}
+            data-testid="setup-password"
+            onChange={(event) => setAdminPassword(event.target.value)}
+          />
+        </label>
+        <label>
+          Confirm password
+          <input
+            type="password"
+            value={confirmPassword}
+            data-testid="setup-confirm-password"
+            onChange={(event) => setConfirmPassword(event.target.value)}
+          />
+        </label>
+        <button className="primary" type="submit" disabled={busy} data-testid="setup-submit">
+          <Save size={16} /> Complete Setup
+        </button>
+        <p className="message" data-testid="message">{message}</p>
+      </form>
+    </main>
+  );
+}
+
+function AppCatalog({
+  state,
+  busy,
+  message,
+  onInstallExpense,
+  onOpenExpense,
+  onRefresh
+}: {
+  state: PlatformState;
+  busy: boolean;
+  message: string;
+  onInstallExpense: () => void;
+  onOpenExpense: () => void;
+  onRefresh: () => void;
+}) {
+  const expenseInstalled =
+    state.installedApps.some((app) => app.appId === "expense") ||
+    state.samples.some((sample) => sample.appId === "expense" && sample.installed);
+
+  return (
+    <main className="shell catalogShell" data-testid="catalog-shell">
+      <header className="topbar">
+        <div>
+          <p className="kicker">{state.domainName}</p>
+          <h1>{state.orgName || "Lotus Platform"}</h1>
+        </div>
+        <div className="statusCluster">
+          <span className="pill ok" data-testid="catalog-admin">
+            <Database size={16} /> {state.adminUser}
+          </span>
+          <button onClick={onRefresh} disabled={busy} data-testid="catalog-refresh">
+            <RefreshCcw size={16} /> Refresh
+          </button>
+        </div>
+      </header>
+      <p className="message" data-testid="message">{message}</p>
+      <section className="band" data-testid="installed-apps">
+        <div className="sectionHeader">
+          <div>
+            <p className="kicker">App Catalog</p>
+            <h2>Installed apps</h2>
+          </div>
+        </div>
+        {state.installedApps.length ? (
+          <div className="definitionList">
+            {state.installedApps.map((app) => (
+              <article className="definitionCard" key={app._id} data-testid={`installed-app-${app.appId}`}>
+                <strong>{app.title}</strong>
+                <span>{app.database}</span>
+                {app.appId === "expense" && (
+                  <button className="primary" onClick={onOpenExpense} disabled={busy} data-testid="open-expense">
+                    <List size={16} /> Open
+                  </button>
+                )}
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p data-testid="empty-catalog">No business apps installed.</p>
+        )}
+      </section>
+      <section className="band" data-testid="sample-apps">
+        <div className="sectionHeader">
+          <div>
+            <p className="kicker">Samples</p>
+            <h2>Available templates</h2>
+          </div>
+        </div>
+        <article className="definitionCard" data-testid="sample-expense">
+          <strong>Expense sample</strong>
+          <span>Approval workflow, metadata forms, views, agents, search, and audit.</span>
+          {expenseInstalled ? (
+            <button className="primary" onClick={onOpenExpense} disabled={busy} data-testid="open-expense-sample">
+              <List size={16} /> Open Expense
+            </button>
+          ) : (
+            <button className="primary" onClick={onInstallExpense} disabled={busy} data-testid="install-expense-sample">
+              <Database size={16} /> Install
+            </button>
+          )}
+        </article>
+      </section>
+    </main>
+  );
+}
+
 function App() {
+  const [platformState, setPlatformState] = React.useState<PlatformState>();
+  const [selectedAppId, setSelectedAppId] = React.useState<string>();
   const [status, setStatus] = React.useState<ReplicationStatus>();
   const [definitions, setDefinitions] = React.useState<Definitions>();
   const [documents, setDocuments] = React.useState<BusinessDocument[]>([]);
@@ -1099,6 +1262,10 @@ function App() {
     if (!selectedId && nextDocuments[0]) setSelectedId(nextDocuments[0]._id);
   }, [selectedId, selectedViewId]);
 
+  const refreshPlatform = React.useCallback(async () => {
+    setPlatformState(await api<PlatformState>("/api/platform/state"));
+  }, []);
+
   const run = async (label: string, task: () => Promise<void>) => {
     setBusy(true);
     setMessage(`${label}...`);
@@ -1114,8 +1281,14 @@ function App() {
   };
 
   React.useEffect(() => {
-    run("Initial refresh", refresh);
+    run("Initial refresh", refreshPlatform);
   }, []);
+
+  React.useEffect(() => {
+    if (selectedAppId === "expense") {
+      run("Open Expense", refresh);
+    }
+  }, [selectedAppId]);
 
   // Load the selected document's audit trail (read-only; recorded server-side).
   React.useEffect(() => {
@@ -1148,6 +1321,52 @@ function App() {
     onDesignDemo: () => run("Server design edit", () => api("/api/admin/server-definition-demo", { method: "POST" })),
     onRefresh: () => run("Refresh", refresh)
   };
+
+  if (!platformState) {
+    return (
+      <main className="shell">
+        <section className="emptyState" data-testid="platform-loading">
+          <h2>Loading Lotus platform</h2>
+          <p data-testid="message">{message}</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (!platformState.setupComplete) {
+    return (
+      <SetupScreen
+        busy={busy}
+        message={message}
+        onSubmit={(payload) =>
+          run("Complete setup", async () => {
+            setPlatformState(await api<PlatformState>("/api/platform/setup", { method: "POST", body: JSON.stringify(payload) }));
+          })
+        }
+      />
+    );
+  }
+
+  if (selectedAppId !== "expense") {
+    return (
+      <AppCatalog
+        state={platformState}
+        busy={busy}
+        message={message}
+        onRefresh={() => run("Refresh catalog", refreshPlatform)}
+        onInstallExpense={() =>
+          run("Install Expense sample", async () => {
+            setPlatformState(
+              await api<PlatformState>("/api/platform/install-sample/expense", {
+                method: "POST"
+              })
+            );
+          })
+        }
+        onOpenExpense={() => setSelectedAppId("expense")}
+      />
+    );
+  }
 
   if (!definitions || !selectedView || !selectedForm) {
     return (

@@ -1,5 +1,6 @@
 import cors from "cors";
 import express from "express";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { ulid } from "ulid";
@@ -8,6 +9,7 @@ import type {
   AgentDefinition,
   AgentRun,
   AgentState,
+  AppInstall,
   AppConfig,
   AuditAction,
   AuditEvent,
@@ -18,6 +20,9 @@ import type {
   CouchDocument,
   DesignDocument,
   FormDefinition,
+  PlatformConfig,
+  PlatformState,
+  SampleApp,
   SelectOptionsByField,
   TemplateArtifact,
   ViewDefinition,
@@ -94,13 +99,63 @@ async function seedTarget(target: "local" | "server", reset = false) {
   await ensureIndexes(target);
 }
 
+async function ensureNamedDb(target: "local" | "server", db: string) {
+  await ensureDb(target, db);
+}
+
+async function putDocInDb<T extends { _id: string; _rev?: string }>(
+  target: "local" | "server",
+  db: string,
+  doc: T
+): Promise<{ ok: boolean; id: string; rev: string }> {
+  return couchRequest(target, `/${db}/${encodeURIComponent(doc._id)}`, {
+    method: "PUT",
+    body: JSON.stringify(doc)
+  });
+}
+
+async function upsertDocInDb<T extends { _id: string; _rev?: string }>(
+  target: "local" | "server",
+  db: string,
+  doc: T
+): Promise<{ ok: boolean; id: string; rev: string }> {
+  try {
+    const existing = await getDocFromNamedDb<{ _rev?: string }>(target, db, doc._id);
+    return putDocInDb(target, db, { ...doc, _rev: existing._rev });
+  } catch (error) {
+    if (error instanceof CouchError && error.status === 404) return putDocInDb(target, db, { ...doc, _rev: undefined });
+    throw error;
+  }
+}
+
+async function getDocFromNamedDb<T>(target: "local" | "server", db: string, id: string): Promise<T> {
+  return couchRequest<T>(target, `/${db}/${encodeURIComponent(id)}`);
+}
+
+async function allDocsFromDb<T>(target: "local" | "server", db: string) {
+  return couchRequest<{ rows: Array<{ id: string; doc?: T }> }>(
+    target,
+    `/${db}/_all_docs?include_docs=true`
+  );
+}
+
+async function docExistsInDb(target: "local" | "server", db: string, id: string) {
+  try {
+    await getDocFromNamedDb(target, db, id);
+    return true;
+  } catch (error) {
+    if (error instanceof CouchError && error.status === 404) return false;
+    return false;
+  }
+}
+
 async function ensureIndexes(target: "local" | "server") {
   await createIndex(target, "m2-kind-docType-updatedAt", ["kind", "docType", "updatedAt"]);
   await createIndex(target, "m2-readers", ["readers"]);
   await createIndex(target, "m3-docType-state-updatedAt", ["docType", "state", "updatedAt"]);
 }
 
-async function appInstalled(target: "local" | "server") {
+async function expenseAppInstalled(target: "local" | "server") {
   try {
     await getDoc<AppConfig>(target, "app:config");
     return true;
@@ -108,6 +163,79 @@ async function appInstalled(target: "local" | "server") {
     if (error instanceof CouchError && error.status === 404) return false;
     return false;
   }
+}
+
+async function seedSetupTarget(target: "local" | "server") {
+  await ensureNamedDb(target, config.setupDb);
+  if (!(await docExistsInDb(target, config.setupDb, "app:config"))) {
+    await putDocInDb<AppConfig>(target, config.setupDb, {
+      _id: "app:config",
+      kind: "app",
+      appId: "setup",
+      title: "Setup",
+      database: config.setupDb
+    });
+  }
+}
+
+async function seedPlatformTarget(target: "local" | "server") {
+  await ensureNamedDb(target, config.platformDb);
+  if (!(await docExistsInDb(target, config.platformDb, "platform:config"))) {
+    await putDocInDb<PlatformConfig>(target, config.platformDb, {
+      _id: "platform:config",
+      kind: "platformconfig",
+      setupComplete: false
+    });
+  }
+}
+
+async function platformConfig(): Promise<PlatformConfig> {
+  try {
+    return await getDocFromNamedDb<PlatformConfig>("local", config.platformDb, "platform:config");
+  } catch (error) {
+    if (error instanceof CouchError && error.status === 404) {
+      return { _id: "platform:config", kind: "platformconfig", setupComplete: false };
+    }
+    throw error;
+  }
+}
+
+async function installedApps(): Promise<AppInstall[]> {
+  try {
+    const rows = await allDocsFromDb<AppInstall>("local", config.platformDb);
+    return rows.rows
+      .map((row) => row.doc)
+      .filter((doc): doc is AppInstall => Boolean(doc && doc.kind === "appinstall"))
+      .sort((left, right) => left.title.localeCompare(right.title));
+  } catch (error) {
+    if (error instanceof CouchError && error.status === 404) return [];
+    throw error;
+  }
+}
+
+async function platformState(): Promise<PlatformState> {
+  const [platform, apps, expenseInstalled] = await Promise.all([
+    platformConfig(),
+    installedApps(),
+    expenseAppInstalled("local")
+  ]);
+  const samples: SampleApp[] = [
+    {
+      appId: "expense",
+      title: "Expense sample",
+      database: config.appDb,
+      description: "A sample approval app with forms, views, workflow, agents, search, and audit.",
+      installed: apps.some((app) => app.appId === "expense") || expenseInstalled
+    }
+  ];
+  return {
+    setupComplete: platform.setupComplete,
+    orgName: platform.orgName,
+    domainName: platform.domainName,
+    adminUser: platform.adminUser,
+    installedApps: apps,
+    samples
+  };
 }
 
 async function waitForCouch(target: "local" | "server", attempts = 60) {
@@ -122,14 +250,8 @@ async function autoSetupPackagedApp() {
   if (!config.autoSetup) return;
   try {
     await Promise.all([waitForCouch("local"), waitForCouch("server")]);
-    const [localInstalled, serverInstalled] = await Promise.all([appInstalled("local"), appInstalled("server")]);
-    const setups: Array<Promise<void>> = [];
-    if (!localInstalled) setups.push(seedTarget("local"));
-    if (!serverInstalled) setups.push(seedTarget("server"));
-    if (setups.length) {
-      await Promise.all(setups);
-      console.log(`Installed packaged app "${config.appDb}"`);
-    }
+    await Promise.all([seedSetupTarget("local"), seedSetupTarget("server"), seedPlatformTarget("local"), seedPlatformTarget("server")]);
+    console.log(`Installed setup.nsf (${config.setupDb}) and platform catalog (${config.platformDb})`);
   } catch (error) {
     console.error("packaged app auto-setup failed", error);
   }
@@ -621,24 +743,57 @@ app.get(
 app.get(
   "/api/ready",
   asyncRoute(async (_request, response) => {
-    const [localReachable, serverReachable, localDbExists, serverDbExists, localAppInstalled, serverAppInstalled] = await Promise.all([
-      ping("local"),
-      ping("server"),
-      dbExists("local"),
-      dbExists("server"),
-      appInstalled("local"),
-      appInstalled("server")
-    ]);
-    const ready = localReachable && serverReachable && localDbExists && serverDbExists && localAppInstalled && serverAppInstalled;
-    response.status(ready ? 200 : 503).json({
-      ok: ready,
-      appDb: config.appDb,
+    const [
       localReachable,
       serverReachable,
-      localDbExists,
-      serverDbExists,
-      localAppInstalled,
-      serverAppInstalled
+      localSetupDbExists,
+      serverSetupDbExists,
+      localPlatformDbExists,
+      serverPlatformDbExists,
+      localSetupInstalled,
+      serverSetupInstalled,
+      localPlatformInstalled,
+      serverPlatformInstalled,
+      state
+    ] = await Promise.all([
+      ping("local"),
+      ping("server"),
+      dbExists("local", config.setupDb),
+      dbExists("server", config.setupDb),
+      dbExists("local", config.platformDb),
+      dbExists("server", config.platformDb),
+      docExistsInDb("local", config.setupDb, "app:config"),
+      docExistsInDb("server", config.setupDb, "app:config"),
+      docExistsInDb("local", config.platformDb, "platform:config"),
+      docExistsInDb("server", config.platformDb, "platform:config"),
+      platformState()
+    ]);
+    const ready =
+      localReachable &&
+      serverReachable &&
+      localSetupDbExists &&
+      serverSetupDbExists &&
+      localPlatformDbExists &&
+      serverPlatformDbExists &&
+      localSetupInstalled &&
+      serverSetupInstalled &&
+      localPlatformInstalled &&
+      serverPlatformInstalled;
+    response.status(ready ? 200 : 503).json({
+      ok: ready,
+      setupDb: config.setupDb,
+      platformDb: config.platformDb,
+      localReachable,
+      serverReachable,
+      localSetupDbExists,
+      serverSetupDbExists,
+      localPlatformDbExists,
+      serverPlatformDbExists,
+      localSetupInstalled,
+      serverSetupInstalled,
+      localPlatformInstalled,
+      serverPlatformInstalled,
+      setupComplete: state.setupComplete
     });
   })
 );
@@ -657,6 +812,82 @@ app.post(
     await Promise.all([seedTarget("local", true), seedTarget("server", true)]);
     clearEffectLog();
     response.json({ ok: true });
+  })
+);
+
+app.get(
+  "/api/platform/state",
+  asyncRoute(async (_request, response) => {
+    response.json(await platformState());
+  })
+);
+
+app.post(
+  "/api/platform/setup",
+  asyncRoute(async (request, response) => {
+    const orgName = String(request.body.orgName ?? "").trim();
+    const domainName = String(request.body.domainName ?? "").trim();
+    const adminUser = String(request.body.adminUser ?? "").trim();
+    const adminPassword = String(request.body.adminPassword ?? "");
+    const confirmPassword = String(request.body.confirmPassword ?? "");
+    const errors: Array<{ field: string; message: string }> = [];
+    if (!orgName) errors.push({ field: "orgName", message: "Organization name is required" });
+    if (!domainName) errors.push({ field: "domainName", message: "Domain name is required" });
+    if (!adminUser) errors.push({ field: "adminUser", message: "Admin username is required" });
+    if (adminPassword.length < 8) errors.push({ field: "adminPassword", message: "Admin password must be at least 8 characters" });
+    if (adminPassword !== confirmPassword) errors.push({ field: "confirmPassword", message: "Passwords must match" });
+    if (errors.length) {
+      response.status(422).json({ error: "setup_validation_failed", errors });
+      return;
+    }
+
+    const now = timestamp();
+    const existing = await platformConfig();
+    const next: PlatformConfig = {
+      ...existing,
+      setupComplete: true,
+      orgName,
+      domainName,
+      adminUser,
+      // Development-only until a real auth/session subsystem replaces this.
+      adminPasswordHash: createHash("sha256").update(adminPassword).digest("hex"),
+      createdAt: existing.createdAt ?? now,
+      updatedAt: now
+    };
+    const localResult = await upsertDocInDb("local", config.platformDb, next);
+    await upsertDocInDb("server", config.platformDb, next);
+    response.json({ ...(await platformState()), rev: localResult.rev });
+  })
+);
+
+app.post(
+  "/api/platform/install-sample/expense",
+  asyncRoute(async (_request, response) => {
+    const state = await platformState();
+    if (!state.setupComplete) {
+      response.status(409).json({ error: "setup_required", reason: "Complete setup before installing sample apps" });
+      return;
+    }
+
+    const [localInstalled, serverInstalled] = await Promise.all([expenseAppInstalled("local"), expenseAppInstalled("server")]);
+    if (!localInstalled) await seedTarget("local");
+    if (!serverInstalled) await seedTarget("server");
+
+    const installedAt = timestamp();
+    const install: AppInstall = {
+      _id: "appinstall:expense",
+      kind: "appinstall",
+      appId: "expense",
+      title: "Expense sample",
+      database: config.appDb,
+      templateId: "sample:expense",
+      installedAt,
+      installedBy: config.appUser
+    };
+    const existing = await docExistsInDb("local", config.platformDb, install._id);
+    const localResult = await upsertDocInDb("local", config.platformDb, install);
+    await upsertDocInDb("server", config.platformDb, install);
+    response.status(existing ? 200 : 201).json({ ...(await platformState()), rev: localResult.rev });
   })
 );
 
