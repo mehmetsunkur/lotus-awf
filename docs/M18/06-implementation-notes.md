@@ -19,6 +19,7 @@ Implemented in commits:
 - `GET /api/session` and `GET /api/platform/state` return the current session state, including the
   public person, direct groups, effective principals, and app ACL level.
 - Fresh setup creates the admin Person, `group:admins`, and an authenticated admin session.
+- M19 adds the authenticated `setup.nsf` Directory Console on top of these directory documents.
 - Installing the Expense sample seeds Alice/Bob demo people and groups, and adds the current
   installer to `group:finance` so the fresh admin can use the sample.
 - App APIs now require authenticated sessions after setup and evaluate access from session-derived

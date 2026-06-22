@@ -25,6 +25,8 @@ No DOM, no Node/server-only APIs.
 - `src/shared/types.ts` — `FormDefinition`, `ViewDefinition`, `WorkflowDefinition`, `FormField`,
   `BusinessDocument` (incl. optional `state`/`history`), `TransitionEvent`, plus M18
   `PersonDocument`, `GroupDocument`, `SessionDocument`, `SessionState`, and `AccessLevel`.
+- `src/shared/types.ts` also carries M19 platform shell types: `SystemApp`, `PublicGroup`, and
+  `SetupDirectoryState`.
 - `src/shared/access.ts` (M5/M18) — pure helpers for session-derived principal scopes, readable docs,
   editable docs, derived readers, app ACL levels, and access selectors.
 - `src/shared/validation.ts` — `validatePayload`, `applyFormDefaults`, `normalizePayload`, `isFieldRequired/Visible/ReadOnly`.
@@ -97,6 +99,10 @@ normalized (every field in exactly one section) — the runtime renders by secti
 M12 adds the pure document-type scaffold. Creating a type builds a form + list view from it (both
 validated by the shared validator) so a brand-new type is reachable in the runtime; the server writes
 the pair local-first.
+
+M19 adds platform/system-app shell types. `SystemApp` records are not `appinstall:*` documents; they
+describe always-present system apps such as `setup.nsf`. `SetupDirectoryState` is sanitized and must
+not grow server-only password/session fields.
 
 ## Existing Patterns
 

@@ -30,8 +30,9 @@ definition studio (with JSON escape hatch), the conflict resolution panel, and M
 
 ## Key Flows
 
-- Boot (M14) → `GET /api/platform/state` → route/render `/setup.nsf`, `/catalog.nsf`, or
+- Boot (M14/M19) → `GET /api/platform/state` → route/render `/setup.nsf`, `/catalog.nsf`, or
   `/expense.nsf`. If setup is complete but no session is authenticated, route/render `/login.nsf`.
+  After setup, `/setup.nsf` opens the authenticated Directory Console instead of redirecting away.
 - Login/logout (M18) → login form posts to `POST /api/session/login`; logout posts to
   `POST /api/session/logout`, refreshes platform state, and returns to login. The session cookie is
   HTTP-only, so the client only observes session state through API responses.
@@ -46,6 +47,9 @@ definition studio (with JSON escape hatch), the conflict resolution panel, and M
   installed.
 - Sample install (M14) → catalog `POST /api/platform/install-sample/expense`, then the user can open
   the existing Expense runtime.
+- Directory Console (M19) → catalog System apps card opens `/setup.nsf`; the console fetches
+  `GET /api/setup/directory` and calls manager-only People/Groups APIs. It renders only public person
+  data, groups, and installed-app summaries.
 - Edit → shared `validatePayload` runs client-side → `POST/PUT /api/documents` (local replica).
 - Compute (M7) → `applyComputedFields` (shared) derives `compute` fields from the live draft, offline;
   computed fields render read-only and recompute as inputs change.
@@ -100,3 +104,5 @@ the host `fs.inotify` `EMFILE` limit.
 - Removing/renaming a `data-testid` relied on by e2e specs.
 - Reading or storing the session token in client state; the browser should only receive public
   session state from the API.
+- Treating system apps as removable business app installs; `setup.nsf` comes from
+  `PlatformState.systemApps`.

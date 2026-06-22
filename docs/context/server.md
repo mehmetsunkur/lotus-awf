@@ -58,9 +58,11 @@ and (M18) directory-backed session authentication.
   reject if `form:`/`view:<docType>` exists (409) → `scaffoldDocumentType` → validate both →
   `applyDefinition` upsert each. The scaffolded form + view promote via the template artifact; no new
   Mango index (the list view binds `m2-kind-docType-updatedAt`).
-- Directory/session (M18): `person:*` and `group:*` live in `setup_app`; `session:*` lives in
+- Directory/session (M18/M19): `person:*` and `group:*` live in `setup_app`; `session:*` lives in
   `platform_app`. `POST /api/session/login` sets the HTTP-only `lotus_session` cookie, and
-  `requireSession()` resolves the request to a principal scope before protected routes run.
+  `requireSession()` resolves the request to a principal scope before protected routes run. M19 adds
+  manager-only `/api/setup/directory`, `/api/setup/people*`, and `/api/setup/groups*` APIs; responses
+  are sanitized and never expose password hashes/salts or session tokens.
 - Access (M5/M18): current principals come from the authenticated session (`person:<username>`,
   direct groups, plus any explicit principals) and app-level `acl:rules` entries grant
   `reader`/`author`/`editor`/`designer`/`manager`. Business reads match document `readers`, payload
@@ -114,7 +116,8 @@ and (M18) directory-backed session authentication.
   client and falls back to `index.html` for non-API routes. `deploy/compose.yml` enables
   `APP_AUTO_SETUP=1`, so a fresh artifact install creates `setup_app` and `platform_app`; Expense is
   installed only through the sample installer after setup. Setup creates and logs in the admin person;
-  unauthenticated app APIs return `401`. `npm run test:deploy` builds/runs that topology and
+  unauthenticated app APIs return `401`; `GET /api/platform/state` always advertises `setup.nsf` in
+  `systemApps`. `npm run test:deploy` builds/runs that topology and
   exercises setup, catalog, runtime, and design operations externally over HTTP.
 
 ## Existing Patterns
@@ -163,6 +166,9 @@ this subsystem.
   checkout bind mount.
 - A query path that ignores `readers` filtering and leaks across people/groups.
 - A protected route that forgets `requireSession()` or checks app ACL levels ad hoc.
+- Exposing `passwordHash`, `passwordSalt`, `passwordParams`, raw session tokens, or `session:*` docs
+  through the setup directory APIs.
+- Letting setup directory mutations remove or deactivate the last active admin.
 - Using normal `DELETE` for revocation cleanup; it can replicate as a global delete. Use local
   `_purge` for M5 revocation shape.
 - A change that makes an offline action depend on the server replica.

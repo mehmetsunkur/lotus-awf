@@ -35,9 +35,26 @@ After setup it stores `orgName`, `domainName`, and `adminUser`. Password hashes 
 }
 ```
 
+`systemApps` in `GET /api/platform/state`:
+
+```json
+[
+  {
+    "appId": "setup",
+    "title": "Setup",
+    "database": "setup_app",
+    "route": "/setup.nsf",
+    "description": "Directory, groups, and platform administration."
+  }
+]
+```
+
+System apps are always present platform apps, not installable business app records.
+
 ## APIs
 
-- `GET /api/platform/state` — setup state, installed apps, available samples, and current session.
+- `GET /api/platform/state` — setup state, system apps, installed apps, available samples, and
+  current session.
 - `POST /api/platform/setup` — validates and stores org/domain/admin setup, creates the admin
   Person and `group:admins`, and sets the session cookie.
 - `POST /api/platform/install-sample/expense` — installs the Expense sample after setup.
