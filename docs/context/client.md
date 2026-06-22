@@ -17,9 +17,10 @@
 
 ## Purpose
 
-React platform/runtime UI: first-run setup and app catalog (M14), plus the metadata-driven runtime
-that renders forms/views from replicated definitions, edits local documents, hosts the M4 structured
-definition studio (with JSON escape hatch), the conflict resolution panel, and M18 login/logout.
+React platform/runtime UI: first-run setup and app catalog (M14), catalog-created business apps
+(M21), plus the metadata-driven runtime that renders forms/views from replicated definitions, edits
+local documents, hosts the M4 structured definition studio (with JSON escape hatch), the conflict
+resolution panel, and M18 login/logout.
 
 ## Main Files
 
@@ -30,23 +31,26 @@ definition studio (with JSON escape hatch), the conflict resolution panel, and M
 
 ## Key Flows
 
-- Boot (M14/M19/M20) → `GET /api/platform/state` → route/render `/setup.nsf`, `/catalog.nsf`, or
-  `/expense.nsf`. If setup is complete but no session is authenticated, route/render `/login.nsf`.
-  After setup, `/setup.nsf` opens the authenticated Directory Console in the standard NSF workspace.
+- Boot (M14/M19/M20/M21) → `GET /api/platform/state` → route/render `/setup.nsf`,
+  `/catalog.nsf`, or an installed business app such as `/expense.nsf` / `/:appId.nsf`. If setup is
+  complete but no session is authenticated, route/render `/login.nsf`. After setup, `/setup.nsf`
+  opens the authenticated Directory Console in the standard NSF workspace.
 - Login/logout (M18) → login form posts to `POST /api/session/login`; logout posts to
   `POST /api/session/logout`, refreshes platform state, and returns to login. The session cookie is
   HTTP-only, so the client only observes session state through API responses.
-- In-app routing (M15/M16/M20) → the app runtime parses generic `/:appSlug.nsf/views/*` routes for
-  system apps and the full `/expense.nsf` metadata route set (`views`, `documents`, `new`, and
-  `designer`). View/document/create/definition selections push matching URLs and browser back/forward
-  updates selected state.
-- App runtime boot → `GET /api/status|definitions|conflicts` → render shell (`platform/state`
-  carries the authenticated person/groups, while definition/runtime APIs are session-protected).
+- In-app routing (M15/M16/M20/M21) → the app runtime parses generic `/:appSlug.nsf/views/*` routes
+  for system apps and installed business apps (`views`, `documents`, `new`, and `designer`).
+  View/document/create/definition selections push matching URLs and browser back/forward updates
+  selected state. Unknown business app slugs return to `/catalog.nsf`.
+- App runtime boot → `GET /api/apps/:appId/status|definitions|conflicts` for business apps (unscoped
+  Expense aliases remain) → render shell (`platform/state` carries the authenticated person/groups,
+  while definition/runtime APIs are session-protected).
 - First-run setup (M14/M18) → `POST /api/platform/setup` stores org/domain/admin, creates the admin
   Person and `group:admins`, sets a session cookie, then catalog renders with no business apps
   installed.
 - Sample install (M14) → catalog `POST /api/platform/install-sample/expense`, then the user can open
-  the existing Expense runtime.
+  the existing Expense runtime. Catalog-created apps (M21) use `POST /api/platform/apps`, then open
+  through `/:appId.nsf`.
 - System app shell (M20) → `/catalog.nsf` and post-setup `/setup.nsf` use the same left-navigation /
   right-content workspace as business apps. Catalog sections are System Apps, Installed Apps, and
   Sample Templates; setup sections are People, Groups, and Installed Apps.

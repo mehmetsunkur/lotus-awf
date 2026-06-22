@@ -24,15 +24,17 @@ Express API over **two** CouchDB replicas (local `:5985`, server `:5984`). Owns 
 definition validation, business documents, ACL-scoped query/write paths, bidirectional replication,
 revocation purge, conflict inspection/resolution, Mango indexes, (M3) workflow transitions + sync
 reconciliation, (M6) template export/diff/apply, (M13) production static-client serving/readiness,
-and (M18) directory-backed session authentication.
+(M18) directory-backed session authentication, and (M21) catalog-created business app databases.
 
 ## Main Files
 
 - `src/server/index.ts` — all HTTP endpoints (definitions, documents, views, conflicts, demos, and
-  the M3 `POST /api/documents/:id/transition` + `reconcileStates` in the replicate flow).
+  the M3 `POST /api/documents/:id/transition` + `reconcileStates` in the replicate flow, plus
+  app-scoped `/api/apps/:appId/*` runtime aliases).
 - `src/server/auth.ts` — username normalization, scrypt password hashing/verification, opaque
   session token/cookie helpers, and public Person shaping.
-- `src/server/couch.ts` — CouchDB client, `replicateBidirectional`/`replicateOnce`, `createIndex`, `findDocs`.
+- `src/server/couch.ts` — CouchDB client, `replicateBidirectional`/`replicateOnce`, `createIndex`,
+  `findDocs`; helpers accept an explicit database for M21 app-scoped runtime paths.
 - `src/server/config.ts` — local vs server Couch URLs and database names.
 - `src/server/seed-data.ts` — compatibility helpers for scripts/e2e; loads the packaged Expense
   sample from the JSON template registry.
@@ -49,11 +51,19 @@ and (M18) directory-backed session authentication.
 
 ## Key Flows
 
-- Direct read: `GET /api/documents/:id` → `getReadableDocument` against **local** Couch with current
-  principal scope; direct document routes do not depend on a view result set.
-- Save: `POST/PUT /api/documents` → shared `validatePayload` → write to **local** Couch. (M12) The
-  POST path stamps the document via the generic `createDocument(docType, …)`, so any scaffolded type is
-  stamped correctly (was hardcoded expense/vendor).
+- Business app resolution (M21): installed app ids map to `/:appId.nsf`, database `${appId}_app`,
+  and app-scoped APIs under `/api/apps/:appId/*`. Unscoped routes remain Expense aliases.
+- Create app (M21): `POST /api/platform/apps` requires manager access, validates/reserves the app id,
+  rejects duplicate install/database collisions, creates local+server app databases, writes starter
+  `app:config` / `acl:rules` / `audit:policy` / form / view definitions, creates the standard Mango
+  indexes, and records `appinstall:<appId>` in `platform_app`.
+- Direct read: `GET /api/apps/:appId/documents/:id` → `getReadableDocument` against the app's
+  **local** Couch database with current principal scope; direct document routes do not depend on a
+  view result set.
+- Save: `POST/PUT /api/apps/:appId/documents` → shared `validatePayload` → write to the app's
+  **local** Couch database. (M12/M21) The POST path stamps the document via the generic
+  `createDocument(docType, …)` and overrides `appId` from the app context, so any scaffolded type/app
+  is stamped correctly.
 - Create type (M12): `POST /api/document-types {docType, title}` → shared `validateDocType` (422),
   reject if `form:`/`view:<docType>` exists (409) → `scaffoldDocumentType` → validate both →
   `applyDefinition` upsert each. The scaffolded form + view promote via the template artifact; no new
