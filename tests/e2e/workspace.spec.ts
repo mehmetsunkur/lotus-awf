@@ -59,7 +59,6 @@ test.describe("app workspace shell", () => {
     await page.getByTestId("field-name").fill("Create Route Vendor");
     await page.getByTestId("form-save").click();
 
-    await expect(page.getByTestId("message")).toHaveText("Save local document complete.");
     await expect(page).toHaveURL(/\/expense\.nsf\/documents\/doc%3Avendor%3A/);
     await expect(page.getByTestId("document-workspace")).toBeVisible();
     await expect(page.getByTestId("document-form").getByRole("heading", { name: "Vendor" })).toBeVisible();

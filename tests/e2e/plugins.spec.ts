@@ -3,7 +3,7 @@ import { test, expect } from "./support/fixtures";
 /**
  * M7 plugin/handler runtime. The seeded expense form has a computed `gross`
  * field (pure handler `expense-total-with-tax`) and the submit transition
- * carries an `audit-transition` effect. The e2e server runs as user:alice.
+ * carries an `audit-transition` effect. The e2e server runs as person:alice.
  */
 test.describe("plugin runtime", () => {
   test.setTimeout(60_000);

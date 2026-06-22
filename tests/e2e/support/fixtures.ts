@@ -1,4 +1,6 @@
-import { test as base, expect, type Page } from "@playwright/test";
+import { test as base, expect, type APIRequestContext, type Page } from "@playwright/test";
+
+const BOB_API = "http://localhost:3003";
 
 /**
  * Page-object helper for the M2 runtime shell. Wraps the data-testid selectors
@@ -105,21 +107,34 @@ export class RuntimeApp {
 
 type Fixtures = {
   app: RuntimeApp;
+  bobApi: APIRequestContext;
   /** Auto fixture: re-seed both CouchDB instances before each test. */
   resetState: void;
 };
 
 export const test = base.extend<Fixtures>({
   resetState: [
-    async ({ request }, use) => {
-      const response = await request.post("/api/reset");
+    async ({ page }, use) => {
+      const response = await page.request.post("/api/reset");
       if (!response.ok()) {
         throw new Error(`/api/reset failed with status ${response.status()}`);
       }
+      const alice = await page.request.post("/api/session/login", { data: { username: "alice", password: "password123" } });
+      if (!alice.ok()) throw new Error(`/api/session/login alice failed with status ${alice.status()}`);
       await use();
     },
     { auto: true }
   ],
+  bobApi: async ({ playwright, resetState }, use) => {
+    void resetState;
+    const bobApi = await playwright.request.newContext({ baseURL: BOB_API });
+    const login = await bobApi.post("/api/session/login", {
+      data: { username: "bob", password: "password123" }
+    });
+    if (!login.ok()) throw new Error(`/api/session/login bob failed with status ${login.status()}`);
+    await use(bobApi);
+    await bobApi.dispose();
+  },
   app: async ({ page }, use) => {
     await use(new RuntimeApp(page));
   }

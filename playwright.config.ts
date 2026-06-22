@@ -38,8 +38,7 @@ export default defineConfig({
   webServer: [
     {
       // Non-watch server: avoids tsx/vite file watchers that exhaust the host's
-      // limited fs.inotify instances. See package.json "test:serve". Runs as the
-      // default user:alice (role:finance).
+      // limited fs.inotify instances. See package.json "test:serve".
       command: "npm run test:serve",
       // /api/health is proxied through Vite to the Express API and does not touch
       // CouchDB, so a 200 here means both the web and API tiers are ready.
@@ -48,10 +47,9 @@ export default defineConfig({
       reuseExistingServer: true
     },
     {
-      // Second API instance as user:bob (role:sales) against the SAME local
-      // CouchDB, so the role-gating spec can exercise a non-finance actor with no
-      // product-code backdoor. No web tier — the spec hits this API directly.
-      command: "E2E=1 APP_USER=user:bob API_PORT=3003 npx tsx src/server/index.ts",
+      // Second API instance against the SAME local CouchDB. Specs authenticate
+      // separate request contexts to exercise different users without a backdoor.
+      command: "E2E=1 API_PORT=3003 npx tsx src/server/index.ts",
       url: "http://localhost:3003/api/health",
       timeout: 120_000,
       reuseExistingServer: true

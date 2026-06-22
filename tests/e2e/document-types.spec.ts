@@ -7,7 +7,6 @@ test.describe("create a document type", () => {
     await page.getByTestId("new-type-doctype").fill("invoice");
     await page.getByTestId("new-type-title").fill("Invoice");
     await page.getByTestId("new-type-create").click();
-    await expect(app.message()).toHaveText("Create document type complete.");
 
     // The scaffolded list view appears in the runtime picker.
     await app.goto();
@@ -20,7 +19,8 @@ test.describe("create a document type", () => {
     await app.newDocument("invoice");
     await app.fillField("title", "First invoice");
     await app.save();
-    await expect(app.message()).toHaveText("Save local document complete.");
+    await expect(page).toHaveURL(/\/expense\.nsf\/documents\/doc%3Ainvoice%3A/);
+    await app.openView("view:invoice");
     await expect(page.getByText("First invoice")).toBeVisible();
     await expect(page.getByTestId("document-count")).toHaveText("1");
   });

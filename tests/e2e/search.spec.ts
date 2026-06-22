@@ -1,7 +1,5 @@
 import { test, expect } from "./support/fixtures";
 
-const BOB_API = "http://localhost:3003";
-
 type Doc = { _id: string; payload: Record<string, unknown> };
 
 /** Commit the search box query and wait for the runtime to settle. */
@@ -39,13 +37,17 @@ test.describe("full-text search", () => {
     await app.fillField("description", "zeta meeting");
     await app.fillField("amount", "10");
     await app.save();
-    await expect(app.message()).toHaveText("Save local document complete.");
+    await expect(page).toHaveURL(/\/expense\.nsf\/documents\/doc%3Aexpense%3A/);
+    await app.goto();
+    await app.openView("view:all-expenses");
 
     await app.newDocument();
     await app.fillField("description", "zeta zeta summit");
     await app.fillField("amount", "20");
     await app.save();
-    await expect(app.message()).toHaveText("Save local document complete.");
+    await expect(page).toHaveURL(/\/expense\.nsf\/documents\/doc%3Aexpense%3A/);
+    await app.goto();
+    await app.openView("view:all-expenses");
 
     await search(app, "zeta");
     await expect(app.documentRows()).toHaveCount(2);
@@ -53,19 +55,15 @@ test.describe("full-text search", () => {
     await expect(firstRow.getByText("zeta zeta summit")).toBeVisible();
   });
 
-  test("search never surfaces a document outside the user's readers", async ({ page }) => {
+  test("search never surfaces a document outside the user's readers", async ({ bobApi }) => {
     // "Stationery" is readable only by Alice/finance; Bob must not see it even
     // when his query matches it — search narrows the ACL-scoped set, never widens.
-    const bobHit = (await page.request
-      .get(`${BOB_API}/api/views/view:all-expenses/documents?q=Stationery`)
-      .then((r) => r.json())) as Doc[];
+    const bobHit = (await bobApi.get("/api/views/view:all-expenses/documents?q=Stationery").then((r) => r.json())) as Doc[];
     expect(bobHit.map((doc) => doc.payload.description)).not.toContain("Stationery");
 
     // Bob's own matching document is still found, so the empty result above is
     // ACL scoping, not a broken query.
-    const bobOwn = (await page.request
-      .get(`${BOB_API}/api/views/view:all-expenses/documents?q=dinner`)
-      .then((r) => r.json())) as Doc[];
+    const bobOwn = (await bobApi.get("/api/views/view:all-expenses/documents?q=dinner").then((r) => r.json())) as Doc[];
     expect(bobOwn.map((doc) => doc.payload.description)).toContain("Client dinner");
   });
 });

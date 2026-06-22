@@ -7,6 +7,7 @@ process.env.LOTUS_SERVER_COUCH_PORT ??= "25984";
 process.env.LOTUS_LOCAL_COUCH_PORT ??= "25985";
 let baseUrl = process.env.DEPLOY_BASE_URL ?? `http://localhost:${process.env.LOTUS_APP_PORT}`;
 const dockerRunner = selectDockerRunner();
+let cookie = "";
 
 type HttpOptions = {
   method?: string;
@@ -59,9 +60,14 @@ async function sleep(ms: number) {
 async function request<T>(path: string, options: HttpOptions = {}): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`, {
     method: options.method ?? (options.body ? "POST" : "GET"),
-    headers: options.body ? { "content-type": "application/json" } : undefined,
+    headers: {
+      ...(options.body ? { "content-type": "application/json" } : {}),
+      ...(cookie ? { cookie } : {})
+    },
     body: options.body ? JSON.stringify(options.body) : undefined
   });
+  const setCookie = response.headers.get("set-cookie");
+  if (setCookie) cookie = setCookie.split(";")[0] ?? cookie;
   const expected = Array.isArray(options.ok) ? options.ok : [options.ok ?? 200];
   assert.ok(expected.includes(response.status), `${path} returned ${response.status}, expected ${expected.join("/")}`);
   if (response.status === 204) return undefined as T;
@@ -131,6 +137,7 @@ async function runAssertions() {
   assert.match(await root.text(), /<div id="root"><\/div>/, "built client HTML should include the React root");
   for (const route of [
     "/setup.nsf",
+    "/login.nsf",
     "/catalog.nsf",
     "/expense.nsf",
     "/expense.nsf/views/vendors",
@@ -143,15 +150,19 @@ async function runAssertions() {
 
   const firstRun = await request<{
     setupComplete: boolean;
+    session: { authenticated: boolean };
     installedApps: unknown[];
     samples: Array<{ appId: string; installed: boolean }>;
   }>("/api/platform/state");
   assert.equal(firstRun.setupComplete, false, "fresh deploy should start in setup mode");
+  assert.equal(firstRun.session.authenticated, false, "fresh deploy should not have an authenticated session");
   assert.equal(firstRun.installedApps.length, 0, "fresh deploy should have an empty app catalog");
   assert.equal(firstRun.samples.find((sample) => sample.appId === "expense")?.installed, false, "expense sample should not be installed by default");
+  await request("/api/definitions", { ok: 401 });
 
   const configured = await request<{
     setupComplete: boolean;
+    session: { authenticated: boolean; person?: { username: string } };
     orgName?: string;
     domainName?: string;
     adminUser?: string;
@@ -166,6 +177,8 @@ async function runAssertions() {
     }
   });
   assert.equal(configured.setupComplete, true, "setup should complete");
+  assert.equal(configured.session.authenticated, true, "setup should create an authenticated admin session");
+  assert.equal(configured.session.person?.username, "admin", "setup session should belong to the admin person");
   assert.equal(configured.orgName, "Deploy Test Org", "org name should persist");
   assert.equal(configured.domainName, "deploy.test", "domain name should persist");
   assert.equal(configured.adminUser, "admin", "admin username should persist");

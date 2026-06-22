@@ -11,6 +11,8 @@ test.describe("vendor documents", () => {
     // category defaults to "travel"; name is the only required field.
     await app.save();
 
+    await expect(page).toHaveURL(/\/expense\.nsf\/documents\/doc%3Avendor%3A/);
+    await app.openView("view:vendors");
     await expect(page.getByText("Acme Tooling")).toBeVisible();
     await expect(page.getByTestId("document-count")).toHaveText(String(before + 1));
   });

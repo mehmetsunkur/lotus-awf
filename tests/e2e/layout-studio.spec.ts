@@ -4,7 +4,7 @@ import { test, expect } from "./support/fixtures";
 // vendorId] and "Accounting" [spentAt, reimbursable, notes].
 test.describe("citizen layout studio", () => {
   test("reorders a field within a section and the preview reflects it", async ({ app, page }) => {
-    await app.goto();
+    await app.gotoDesigner();
     await page.getByTestId("definition-select").selectOption("form:expense");
 
     const firstRow = page.getByTestId("studio-section-0").getByTestId("studio-form-field").first();
@@ -19,7 +19,7 @@ test.describe("citizen layout studio", () => {
   });
 
   test("adds a section, moves a field into it, and the runtime renders the new group", async ({ app, page }) => {
-    await app.goto();
+    await app.gotoDesigner();
     await page.getByTestId("definition-select").selectOption("form:expense");
 
     await page.getByTestId("studio-form-add-section").click();
@@ -30,13 +30,14 @@ test.describe("citizen layout studio", () => {
     await page.getByTestId("definition-save").click();
     await expect(app.message()).toHaveText("Save local definition complete.");
 
+    await app.goto();
     await app.openView("view:all-expenses");
     await app.documentRows().filter({ hasText: "Train ticket" }).click();
     await expect(page.getByTestId("document-form").locator("legend", { hasText: "Extras" })).toBeVisible();
   });
 
   test("removing a section reassigns its fields, never orphaning one", async ({ app, page }) => {
-    await app.goto();
+    await app.gotoDesigner();
     await page.getByTestId("definition-select").selectOption("form:expense");
 
     const allFields = page.getByTestId("studio-form-sections").getByTestId("studio-form-field");
@@ -52,7 +53,7 @@ test.describe("citizen layout studio", () => {
   });
 
   test("native drag-and-drop moves a field between sections (smoke)", async ({ app, page }) => {
-    await app.goto();
+    await app.gotoDesigner();
     await page.getByTestId("definition-select").selectOption("form:expense");
 
     const notes = page.getByTestId("studio-section-1").locator('[data-field="notes"]');

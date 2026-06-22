@@ -4,7 +4,7 @@ import type { BusinessDocument, WorkflowTransition } from "../../src/shared/type
 
 const doc = { _id: "doc:expense:1", docType: "expense" } as unknown as BusinessDocument;
 const transition: WorkflowTransition = { id: "submit", label: "Submit", from: "draft", to: "submitted", action: "audit-transition" };
-const ctx = { document: doc, transition, user: "user:alice", now: "2026-06-15T00:00:00.000Z" };
+const ctx = { document: doc, transition, user: "person:alice", now: "2026-06-15T00:00:00.000Z" };
 
 describe("effect runtime", () => {
   it("returns null when the transition has no action", () => {

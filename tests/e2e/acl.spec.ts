@@ -1,6 +1,5 @@
 import { test, expect } from "./support/fixtures";
 
-const BOB_API = "http://localhost:3003";
 const couchAuth = { authorization: `Basic ${Buffer.from("admin:password").toString("base64")}` };
 
 type Doc = {
@@ -12,21 +11,21 @@ type Doc = {
 };
 
 test.describe("ACL scoped runtime", () => {
-  test("lists and select options are scoped by current user principals", async ({ page }) => {
+  test("lists and select options are scoped by current user principals", async ({ bobApi, page }) => {
     const aliceExpenses = (await page.request.get("/api/documents?docType=expense").then((r) => r.json())) as Doc[];
-    const bobExpenses = (await page.request.get(`${BOB_API}/api/documents?docType=expense`).then((r) => r.json())) as Doc[];
+    const bobExpenses = (await bobApi.get("/api/documents?docType=expense").then((r) => r.json())) as Doc[];
 
     expect(aliceExpenses.map((doc) => doc.payload.description)).toContain("Stationery");
     expect(bobExpenses.map((doc) => doc.payload.description)).not.toContain("Stationery");
     expect(bobExpenses.map((doc) => doc.payload.description)).toContain("Client dinner");
 
-    const bobOptions = await page.request.get(`${BOB_API}/api/forms/expense/options`).then((r) => r.json());
+    const bobOptions = await bobApi.get("/api/forms/expense/options").then((r) => r.json());
     const vendorLabels = (bobOptions.vendorId ?? []).map((option: { label: string }) => option.label);
     expect(vendorLabels).toEqual([]);
   });
 
-  test("payload edits require authorship", async ({ page }) => {
-    const bobExpenses = (await page.request.get(`${BOB_API}/api/documents?docType=expense`).then((r) => r.json())) as Doc[];
+  test("payload edits require authorship", async ({ bobApi, page }) => {
+    const bobExpenses = (await bobApi.get("/api/documents?docType=expense").then((r) => r.json())) as Doc[];
     const financeVisibleBobDoc = bobExpenses.find((doc) => doc.payload.description === "Client dinner");
     expect(financeVisibleBobDoc).toBeTruthy();
 
@@ -38,12 +37,12 @@ test.describe("ACL scoped runtime", () => {
     expect(JSON.stringify(await refused.json())).toContain("not editable");
   });
 
-  test("workflow transitions require read access before role checks", async ({ page }) => {
+  test("workflow transitions require read access before role checks", async ({ bobApi, page }) => {
     const aliceExpenses = (await page.request.get("/api/documents?docType=expense").then((r) => r.json())) as Doc[];
     const aliceOnly = aliceExpenses.find((doc) => doc.payload.description === "Stationery");
     expect(aliceOnly).toBeTruthy();
 
-    const refused = await page.request.post(`${BOB_API}/api/documents/${encodeURIComponent(aliceOnly!._id)}/transition`, {
+    const refused = await bobApi.post(`/api/documents/${encodeURIComponent(aliceOnly!._id)}/transition`, {
       data: { transition: "submit" }
     });
 
@@ -51,8 +50,8 @@ test.describe("ACL scoped runtime", () => {
     expect(JSON.stringify(await refused.json())).toContain("not readable");
   });
 
-  test("revocation purge removes unauthorized local revisions without deleting the server document", async ({ page }) => {
-    const bobExpenses = (await page.request.get(`${BOB_API}/api/documents?docType=expense`).then((r) => r.json())) as Doc[];
+  test("revocation purge removes unauthorized local revisions without deleting the server document", async ({ bobApi, page }) => {
+    const bobExpenses = (await bobApi.get("/api/documents?docType=expense").then((r) => r.json())) as Doc[];
     const visible = bobExpenses.find((doc) => doc.payload.description === "Client dinner");
     expect(visible).toBeTruthy();
 
@@ -61,16 +60,16 @@ test.describe("ACL scoped runtime", () => {
     await page.request.post("/api/replicate");
 
     const revoke = await page.request.post("/api/admin/revoke-reader", {
-      data: { id: visible!._id, readers: ["user:bob"] }
+      data: { id: visible!._id, readers: ["person:bob"] }
     });
     expect(revoke.ok()).toBeTruthy();
 
-    const sync = await page.request.post(`${BOB_API}/api/replicate`);
+    const sync = await bobApi.post("/api/replicate");
     expect(sync.ok()).toBeTruthy();
     const syncBody = await sync.json();
     expect(syncBody.purge.purged).toContain(visible!._id);
 
-    const afterBob = (await page.request.get(`${BOB_API}/api/documents?docType=expense`).then((r) => r.json())) as Doc[];
+    const afterBob = (await bobApi.get("/api/documents?docType=expense").then((r) => r.json())) as Doc[];
     expect(afterBob.map((doc) => doc._id)).not.toContain(visible!._id);
 
     const localDoc = await page.request.get(`http://localhost:5985/expense_app/${encodeURIComponent(visible!._id)}`, {
@@ -84,6 +83,6 @@ test.describe("ACL scoped runtime", () => {
     expect(serverDoc.ok()).toBeTruthy();
     const serverBody = (await serverDoc.json()) as Doc;
     expect(serverBody.payload.description).toBe("Client dinner");
-    expect(serverBody.readers).not.toContain("user:bob");
+    expect(serverBody.readers).not.toContain("person:bob");
   });
 });

@@ -3,7 +3,7 @@ import { test, expect } from "./support/fixtures";
 /**
  * M3 workflow runtime. The seeded "Stationery" expense has no `state`, so it
  * exercises the initialState back-compat default; the e2e server runs as
- * user:alice (role:finance), so finance-gated transitions are offered.
+ * person:alice (group:finance), so finance-gated transitions are offered.
  */
 test.describe("workflow lifecycle", () => {
   test.setTimeout(60_000);
@@ -26,7 +26,7 @@ test.describe("workflow lifecycle", () => {
     await page.getByTestId("workflow-action-submit").click();
     await expect(page.getByTestId("workflow-state")).toHaveText("Submitted");
 
-    // user:alice holds role:finance, so the approve action is offered.
+    // person:alice holds group:finance, so the approve action is offered.
     await page.getByTestId("workflow-action-approve").click();
     await expect(page.getByTestId("workflow-state")).toHaveText("Approved");
 
@@ -79,15 +79,11 @@ test.describe("workflow lifecycle", () => {
     await expect(row.getByTestId("doc-row-state")).toContainText("approved");
   });
 
-  // Second API instance (playwright.config.ts) runs as user:bob (role:sales)
-  // against the same local CouchDB.
-  const BOB_API = "http://localhost:3003";
-
-  test("role gating refuses a transition the actor's role does not allow", async ({ app, page }) => {
+  test("role gating refuses a transition the actor's role does not allow", async ({ app, bobApi, page }) => {
     await app.goto();
 
     // Bob authors and submits an expense he can read; approval is still gated to finance.
-    const created = await page.request.post(`${BOB_API}/api/documents`, {
+    const created = await bobApi.post("/api/documents", {
       data: {
         docType: "expense",
         payload: {
@@ -101,14 +97,14 @@ test.describe("workflow lifecycle", () => {
     expect(created.ok()).toBeTruthy();
     const id: string = (await created.json())._id;
     const path = `/api/documents/${encodeURIComponent(id)}/transition`;
-    await page.request.post(`${BOB_API}${path}`, { data: { transition: "submit" } });
+    await bobApi.post(path, { data: { transition: "submit" } });
 
-    // user:bob (role:sales) can read it but cannot approve — the server refuses with 422.
-    const refused = await page.request.post(`${BOB_API}${path}`, { data: { transition: "approve" } });
+    // person:bob (group:sales) can read it but cannot approve — the server refuses with 422.
+    const refused = await bobApi.post(path, { data: { transition: "approve" } });
     expect(refused.status()).toBe(422);
-    expect(JSON.stringify(await refused.json())).toContain("role:finance");
+    expect(JSON.stringify(await refused.json())).toContain("group:finance");
 
-    // user:alice (role:finance) can approve via the default API.
+    // person:alice (group:finance) can approve via the default API.
     const allowed = await page.request.post(path, { data: { transition: "approve" } });
     expect(allowed.ok()).toBeTruthy();
     expect((await allowed.json()).state).toBe("approved");

@@ -1,15 +1,14 @@
 import { test, expect } from "./support/fixtures";
 import type { APIRequestContext } from "@playwright/test";
 
-const BOB_API = "http://localhost:3003";
 const COUCH = "http://localhost:5985/expense_app";
 const couchAuth = { authorization: `Basic ${Buffer.from("admin:password").toString("base64")}` };
 
 type Doc = { _id: string; payload: Record<string, unknown> };
 type Event = { _id: string; docId: string; action: string; readers: string[] };
 
-const expenseId = async (request: APIRequestContext, api: string, description: string): Promise<string> => {
-  const docs = (await request.get(`${api}/api/documents?docType=expense`).then((r) => r.json())) as Doc[];
+const expenseId = async (request: APIRequestContext, description: string): Promise<string> => {
+  const docs = (await request.get("/api/documents?docType=expense").then((r) => r.json())) as Doc[];
   const doc = docs.find((d) => d.payload.description === description);
   if (!doc) throw new Error(`seed expense "${description}" not found`);
   return doc._id;
@@ -21,7 +20,7 @@ test.describe("audit & retention", () => {
     expect(ran.ok).toBe(true);
     expect(ran.recorded).toBeGreaterThan(0); // the seeded expenses + vendors
 
-    const stationery = await expenseId(page.request, "", "Stationery");
+    const stationery = await expenseId(page.request, "Stationery");
     const first = (await page.request.get("/api/audit").then((r) => r.json())) as Event[];
     expect(first.some((e) => e.docId === stationery && e.action === "created")).toBe(true);
 
@@ -32,13 +31,13 @@ test.describe("audit & retention", () => {
     expect(second.length).toBe(first.length);
   });
 
-  test("audit visibility mirrors the document's readers", async ({ page }) => {
+  test("audit visibility mirrors the document's readers", async ({ bobApi, page }) => {
     await page.request.post("/api/audit/run");
 
-    const stationery = await expenseId(page.request, "", "Stationery"); // alice / finance only
-    const dinner = await expenseId(page.request, BOB_API, "Client dinner"); // bob can read
+    const stationery = await expenseId(page.request, "Stationery"); // alice / finance only
+    const dinner = await expenseId(bobApi, "Client dinner"); // bob can read
 
-    const bobAudit = (await page.request.get(`${BOB_API}/api/audit`).then((r) => r.json())) as Event[];
+    const bobAudit = (await bobApi.get("/api/audit").then((r) => r.json())) as Event[];
     expect(bobAudit.some((e) => e.docId === stationery)).toBe(false);
     expect(bobAudit.some((e) => e.docId === dinner)).toBe(true);
 
@@ -60,9 +59,9 @@ test.describe("audit & retention", () => {
         docType: "expense",
         rev: "1-aged",
         action: "created",
-        actor: "user:alice",
+        actor: "person:alice",
         at: "2000-01-01T00:00:00.000Z",
-        readers: ["user:alice", "role:finance"]
+        readers: ["person:alice", "group:finance"]
       }
     });
 

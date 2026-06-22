@@ -14,6 +14,8 @@ test.describe("expense documents", () => {
     await expect(page.getByTestId("form-save")).toBeEnabled();
     await app.save();
 
+    await expect(page).toHaveURL(/\/expense\.nsf\/documents\/doc%3Aexpense%3A/);
+    await app.openView("view:all-expenses");
     await expect(page.getByText("E2E lunch")).toBeVisible();
     await expect(page.getByTestId("document-count")).toHaveText(String(before + 1));
   });
