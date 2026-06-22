@@ -271,6 +271,36 @@ button:disabled {
   color: var(--muted);
 }
 
+.directoryCard {
+  align-items: stretch;
+}
+
+.inlineForm,
+.memberGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.inlineForm {
+  margin-bottom: 12px;
+}
+
+.inlineForm input,
+.directoryCard input {
+  min-width: 160px;
+}
+
+.checkLabel {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.checkLabel input {
+  min-width: auto;
+}
+
 .segmented {
   display: flex;
   flex-wrap: wrap;

@@ -281,6 +281,13 @@ export type GroupDocument = {
   updatedAt: string;
 };
 
+export type PublicGroup = {
+  _id: `group:${string}`;
+  kind: "group";
+  name: string;
+  members: Array<`person:${string}`>;
+};
+
 export type SessionDocument = {
   _id: `session:${string}`;
   _rev?: string;
@@ -368,6 +375,14 @@ export type AppInstall = {
   installedBy: string;
 };
 
+export type SystemApp = {
+  appId: string;
+  title: string;
+  database: string;
+  route: string;
+  description: string;
+};
+
 export type SampleApp = {
   appId: string;
   title: string;
@@ -382,8 +397,15 @@ export type PlatformState = {
   domainName?: string;
   adminUser?: string;
   session: SessionState;
+  systemApps: SystemApp[];
   installedApps: AppInstall[];
   samples: SampleApp[];
+};
+
+export type SetupDirectoryState = {
+  people: PublicPerson[];
+  groups: PublicGroup[];
+  installedApps: AppInstall[];
 };
 
 export type DesignDocument =

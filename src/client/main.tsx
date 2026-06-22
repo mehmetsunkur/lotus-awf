@@ -30,8 +30,11 @@ import type {
   FormDefinition,
   FormField,
   PlatformState,
+  PublicGroup,
+  PublicPerson,
   ReplicationStatus,
   SelectOptionsByField,
+  SetupDirectoryState,
   ViewDefinition,
   ViewFilter,
   ViewSort,
@@ -1377,6 +1380,7 @@ function AppCatalog({
   state,
   busy,
   message,
+  onOpenSetup,
   onInstallExpense,
   onOpenExpense,
   onRefresh,
@@ -1385,6 +1389,7 @@ function AppCatalog({
   state: PlatformState;
   busy: boolean;
   message: string;
+  onOpenSetup: () => void;
   onInstallExpense: () => void;
   onOpenExpense: () => void;
   onRefresh: () => void;
@@ -1414,6 +1419,28 @@ function AppCatalog({
         </div>
       </header>
       <p className="message" data-testid="message">{message}</p>
+      <section className="band" data-testid="system-apps">
+        <div className="sectionHeader">
+          <div>
+            <p className="kicker">System apps</p>
+            <h2>Platform administration</h2>
+          </div>
+        </div>
+        <div className="definitionList">
+          {state.systemApps.map((app) => (
+            <article className="definitionCard" key={app.appId} data-testid={`system-app-${app.appId}`}>
+              <strong>{app.title}</strong>
+              <span>{app.database}</span>
+              <span>{app.description}</span>
+              {app.appId === "setup" && (
+                <button className="primary" onClick={onOpenSetup} disabled={busy} data-testid="open-setup">
+                  <Database size={16} /> Open setup.nsf
+                </button>
+              )}
+            </article>
+          ))}
+        </div>
+      </section>
       <section className="band" data-testid="installed-apps">
         <div className="sectionHeader">
           <div>
@@ -1464,8 +1491,216 @@ function AppCatalog({
   );
 }
 
+function personLabel(person: PublicPerson) {
+  return `${person.displayName} (${person.username})`;
+}
+
+function DirectoryConsole({
+  directory,
+  busy,
+  message,
+  onBack,
+  onRefresh,
+  onCreatePerson,
+  onUpdatePerson,
+  onResetPassword,
+  onCreateGroup,
+  onUpdateGroup
+}: {
+  directory?: SetupDirectoryState;
+  busy: boolean;
+  message: string;
+  onBack: () => void;
+  onRefresh: () => void;
+  onCreatePerson: (payload: { username: string; displayName: string; password: string }) => void;
+  onUpdatePerson: (person: PublicPerson, payload: { displayName: string; active: boolean }) => void;
+  onResetPassword: (person: PublicPerson, password: string) => void;
+  onCreateGroup: (payload: { slug: string; name: string; members: string[] }) => void;
+  onUpdateGroup: (group: PublicGroup, payload: { name: string; members: string[] }) => void;
+}) {
+  const [newPerson, setNewPerson] = React.useState({ username: "", displayName: "", password: "" });
+  const [newGroup, setNewGroup] = React.useState({ slug: "", name: "", members: [] as string[] });
+  const [personEdits, setPersonEdits] = React.useState<Record<string, { displayName: string; active: boolean }>>({});
+  const [passwords, setPasswords] = React.useState<Record<string, string>>({});
+  const [groupEdits, setGroupEdits] = React.useState<Record<string, { name: string; members: string[] }>>({});
+
+  React.useEffect(() => {
+    if (!directory) return;
+    setPersonEdits(Object.fromEntries(directory.people.map((person) => [person._id, { displayName: person.displayName, active: person.active }])));
+    setGroupEdits(Object.fromEntries(directory.groups.map((group) => [group._id, { name: group.name, members: group.members }])));
+  }, [directory]);
+
+  const people = directory?.people ?? [];
+  const groups = directory?.groups ?? [];
+
+  const toggleMember = (group: PublicGroup, personId: string, checked: boolean) => {
+    const edit = groupEdits[group._id] ?? { name: group.name, members: group.members };
+    const members = checked
+      ? Array.from(new Set([...edit.members, personId]))
+      : edit.members.filter((member) => member !== personId);
+    setGroupEdits((current) => ({ ...current, [group._id]: { ...edit, members } }));
+  };
+
+  return (
+    <main className="shell catalogShell" data-testid="setup-directory">
+      <header className="topbar">
+        <div>
+          <p className="kicker">setup.nsf</p>
+          <h1>Directory Console</h1>
+        </div>
+        <div className="statusCluster">
+          <button onClick={onRefresh} disabled={busy} data-testid="directory-refresh">
+            <RefreshCcw size={16} /> Refresh
+          </button>
+          <button onClick={onBack} disabled={busy} data-testid="directory-back">
+            <List size={16} /> Catalog
+          </button>
+        </div>
+      </header>
+      <p className="message" data-testid="message">{message}</p>
+      {!directory ? (
+        <section className="emptyState" data-testid="directory-empty">
+          <h2>Directory unavailable</h2>
+        </section>
+      ) : (
+        <>
+          <section className="band" data-testid="directory-people">
+            <div className="sectionHeader">
+              <div>
+                <p className="kicker">People</p>
+                <h2>Directory people</h2>
+              </div>
+            </div>
+            <form
+              className="inlineForm"
+              data-testid="person-create-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                onCreatePerson(newPerson);
+                setNewPerson({ username: "", displayName: "", password: "" });
+              }}
+            >
+              <input placeholder="username" value={newPerson.username} data-testid="person-new-username" onChange={(event) => setNewPerson({ ...newPerson, username: event.target.value })} />
+              <input placeholder="display name" value={newPerson.displayName} data-testid="person-new-display" onChange={(event) => setNewPerson({ ...newPerson, displayName: event.target.value })} />
+              <input placeholder="password" type="password" value={newPerson.password} data-testid="person-new-password" onChange={(event) => setNewPerson({ ...newPerson, password: event.target.value })} />
+              <button className="primary" disabled={busy} data-testid="person-create">
+                <User size={16} /> Create person
+              </button>
+            </form>
+            <div className="definitionList">
+              {people.map((person) => {
+                const edit = personEdits[person._id] ?? { displayName: person.displayName, active: person.active };
+                return (
+                  <article className="definitionCard directoryCard" key={person._id} data-testid={`person-row-${person.username}`}>
+                    <strong>{personLabel(person)}</strong>
+                    <label>
+                      Display
+                      <input value={edit.displayName} data-testid={`person-display-${person.username}`} onChange={(event) => setPersonEdits((current) => ({ ...current, [person._id]: { ...edit, displayName: event.target.value } }))} />
+                    </label>
+                    <label className="checkLabel">
+                      <input type="checkbox" checked={edit.active} data-testid={`person-active-${person.username}`} onChange={(event) => setPersonEdits((current) => ({ ...current, [person._id]: { ...edit, active: event.target.checked } }))} />
+                      Active
+                    </label>
+                    <button onClick={() => onUpdatePerson(person, personEdits[person._id] ?? edit)} disabled={busy} data-testid={`person-save-${person.username}`}>
+                      <Save size={16} /> Save
+                    </button>
+                    {edit.active ? (
+                      <button onClick={() => onUpdatePerson(person, { ...(personEdits[person._id] ?? edit), active: false })} disabled={busy} data-testid={`person-deactivate-${person.username}`}>
+                        Deactivate
+                      </button>
+                    ) : (
+                      <button onClick={() => onUpdatePerson(person, { ...(personEdits[person._id] ?? edit), active: true })} disabled={busy} data-testid={`person-activate-${person.username}`}>
+                        Activate
+                      </button>
+                    )}
+                    <input placeholder="new password" type="password" value={passwords[person._id] ?? ""} data-testid={`person-password-${person.username}`} onChange={(event) => setPasswords((current) => ({ ...current, [person._id]: event.target.value }))} />
+                    <button onClick={() => onResetPassword(person, passwords[person._id] ?? "")} disabled={busy} data-testid={`person-reset-${person.username}`}>
+                      <RotateCcw size={16} /> Reset password
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+          <section className="band" data-testid="directory-groups">
+            <div className="sectionHeader">
+              <div>
+                <p className="kicker">Groups</p>
+                <h2>Direct memberships</h2>
+              </div>
+            </div>
+            <form
+              className="inlineForm"
+              data-testid="group-create-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                onCreateGroup(newGroup);
+                setNewGroup({ slug: "", name: "", members: [] });
+              }}
+            >
+              <input placeholder="slug" value={newGroup.slug} data-testid="group-new-slug" onChange={(event) => setNewGroup({ ...newGroup, slug: event.target.value })} />
+              <input placeholder="name" value={newGroup.name} data-testid="group-new-name" onChange={(event) => setNewGroup({ ...newGroup, name: event.target.value })} />
+              <button className="primary" disabled={busy} data-testid="group-create">
+                <Database size={16} /> Create group
+              </button>
+            </form>
+            <div className="definitionList">
+              {groups.map((group) => {
+                const slug = group._id.replace(/^group:/, "");
+                const edit = groupEdits[group._id] ?? { name: group.name, members: group.members };
+                return (
+                  <article className="definitionCard directoryCard" key={group._id} data-testid={`group-row-${slug}`}>
+                    <strong>{group.name}</strong>
+                    <label>
+                      Name
+                      <input value={edit.name} data-testid={`group-name-${slug}`} onChange={(event) => setGroupEdits((current) => ({ ...current, [group._id]: { ...edit, name: event.target.value } }))} />
+                    </label>
+                    <div className="memberGrid">
+                      {people.map((person) => (
+                        <label className="checkLabel" key={person._id}>
+                          <input type="checkbox" checked={edit.members.includes(person._id)} data-testid={`group-member-${slug}-${person.username}`} onChange={(event) => toggleMember(group, person._id, event.target.checked)} />
+                          {person.displayName}
+                        </label>
+                      ))}
+                    </div>
+                    <button onClick={() => onUpdateGroup(group, groupEdits[group._id] ?? edit)} disabled={busy} data-testid={`group-save-${slug}`}>
+                      <Save size={16} /> Save group
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+          <section className="band" data-testid="directory-installed-apps">
+            <div className="sectionHeader">
+              <div>
+                <p className="kicker">Installed apps</p>
+                <h2>Platform catalog summary</h2>
+              </div>
+            </div>
+            {directory.installedApps.length ? (
+              <div className="definitionList">
+                {directory.installedApps.map((app) => (
+                  <article className="definitionCard" key={app._id}>
+                    <strong>{app.title}</strong>
+                    <span>{app.database}</span>
+                    <span>{app.templateId ?? "custom"}</span>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p>No business apps installed.</p>
+            )}
+          </section>
+        </>
+      )}
+    </main>
+  );
+}
+
 function App() {
   const [platformState, setPlatformState] = React.useState<PlatformState>();
+  const [directory, setDirectory] = React.useState<SetupDirectoryState>();
   const [route, setRoute] = React.useState<RouteState>(() => routeStateForPath(window.location.pathname));
   const [status, setStatus] = React.useState<ReplicationStatus>();
   const [definitions, setDefinitions] = React.useState<Definitions>();
@@ -1533,6 +1768,10 @@ function App() {
     setPlatformState(await api<PlatformState>("/api/platform/state"));
   }, []);
 
+  const refreshDirectory = React.useCallback(async () => {
+    setDirectory(await api<SetupDirectoryState>("/api/setup/directory"));
+  }, []);
+
   const navigate = React.useCallback((nextRoute: RouteState, replace = false) => {
     const nextPath = pathForRouteState(nextRoute);
     if (window.location.pathname !== nextPath) {
@@ -1583,10 +1822,30 @@ function App() {
       navigateApp("login", true);
       return;
     }
-    if (platformState.setupComplete && platformState.session.authenticated && (route.app === "setup" || route.app === "login")) {
+    if (platformState.setupComplete && platformState.session.authenticated && route.app === "login") {
       navigateApp("catalog", true);
     }
   }, [navigateApp, platformState, route.app]);
+
+  React.useEffect(() => {
+    if (!platformState?.setupComplete || !platformState.session.authenticated || route.app !== "setup") return;
+    let cancelled = false;
+    setMessage("Open setup.nsf...");
+    api<SetupDirectoryState>("/api/setup/directory")
+      .then((nextDirectory) => {
+        if (cancelled) return;
+        setDirectory(nextDirectory);
+        setMessage("Open setup.nsf complete.");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setDirectory(undefined);
+        setMessage(error instanceof Error ? error.message : "Open setup.nsf failed.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [platformState?.session.authenticated, platformState?.setupComplete, route.app]);
 
   React.useEffect(() => {
     if (!platformState || route.app !== "expense" || !platformState.session.authenticated) return;
@@ -1781,11 +2040,69 @@ function App() {
   }
 
   if (route.app !== "expense") {
+    if (route.app === "setup") {
+      const runDirectory = (label: string, task: () => Promise<void>) => run(label, task, { refreshAfter: false });
+      return (
+        <DirectoryConsole
+          directory={directory}
+          busy={busy}
+          message={message}
+          onBack={() => navigateApp("catalog")}
+          onRefresh={() => runDirectory("Refresh directory", refreshDirectory)}
+          onCreatePerson={(payload) =>
+            runDirectory("Create person", async () => {
+              const result = await api<{ directory: SetupDirectoryState }>("/api/setup/people", {
+                method: "POST",
+                body: JSON.stringify(payload)
+              });
+              setDirectory(result.directory);
+            })
+          }
+          onUpdatePerson={(person, payload) =>
+            runDirectory("Save person", async () => {
+              const result = await api<{ directory: SetupDirectoryState }>(`/api/setup/people/${encodeURIComponent(person.username)}`, {
+                method: "PUT",
+                body: JSON.stringify(payload)
+              });
+              setDirectory(result.directory);
+            })
+          }
+          onResetPassword={(person, password) =>
+            runDirectory("Reset password", async () => {
+              const result = await api<{ directory: SetupDirectoryState }>(`/api/setup/people/${encodeURIComponent(person.username)}/password`, {
+                method: "POST",
+                body: JSON.stringify({ password })
+              });
+              setDirectory(result.directory);
+            })
+          }
+          onCreateGroup={(payload) =>
+            runDirectory("Create group", async () => {
+              const result = await api<{ directory: SetupDirectoryState }>("/api/setup/groups", {
+                method: "POST",
+                body: JSON.stringify(payload)
+              });
+              setDirectory(result.directory);
+            })
+          }
+          onUpdateGroup={(group, payload) =>
+            runDirectory("Save group", async () => {
+              const result = await api<{ directory: SetupDirectoryState }>(`/api/setup/groups/${encodeURIComponent(group._id.replace(/^group:/, ""))}`, {
+                method: "PUT",
+                body: JSON.stringify(payload)
+              });
+              setDirectory(result.directory);
+            })
+          }
+        />
+      );
+    }
     return (
       <AppCatalog
         state={platformState}
         busy={busy}
         message={message}
+        onOpenSetup={() => navigateApp("setup")}
         onRefresh={() => run("Refresh catalog", refreshPlatform, { refreshAfter: false })}
         onLogout={() =>
           run(

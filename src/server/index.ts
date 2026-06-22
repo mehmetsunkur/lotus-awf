@@ -24,10 +24,14 @@ import type {
   PersonDocument,
   PlatformConfig,
   PlatformState,
+  PublicGroup,
+  PublicPerson,
   SampleApp,
   SessionDocument,
   SessionState,
   SelectOptionsByField,
+  SetupDirectoryState,
+  SystemApp,
   TemplateArtifact,
   ViewDefinition,
   ViewFilter,
@@ -193,6 +197,50 @@ async function groupsForPerson(target: "local" | "server", personId: `person:${s
   }
 }
 
+function publicGroup(group: GroupDocument): PublicGroup {
+  return {
+    _id: group._id,
+    kind: "group",
+    name: group.name,
+    members: group.members
+  };
+}
+
+async function listPeople(target: "local" | "server" = "local"): Promise<PersonDocument[]> {
+  try {
+    const rows = await allDocsFromDb<PersonDocument>(target, config.setupDb);
+    return rows.rows
+      .map((row) => row.doc)
+      .filter((doc): doc is PersonDocument => Boolean(doc && doc.kind === "person"))
+      .sort((left, right) => left.username.localeCompare(right.username));
+  } catch (error) {
+    if (error instanceof CouchError && error.status === 404) return [];
+    throw error;
+  }
+}
+
+async function listGroups(target: "local" | "server" = "local"): Promise<GroupDocument[]> {
+  try {
+    const rows = await allDocsFromDb<GroupDocument>(target, config.setupDb);
+    return rows.rows
+      .map((row) => row.doc)
+      .filter((doc): doc is GroupDocument => Boolean(doc && doc.kind === "group"))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  } catch (error) {
+    if (error instanceof CouchError && error.status === 404) return [];
+    throw error;
+  }
+}
+
+async function setupDirectoryState(): Promise<SetupDirectoryState> {
+  const [people, groups, apps] = await Promise.all([listPeople(), listGroups(), installedApps()]);
+  return {
+    people: people.map(publicPerson),
+    groups: groups.map(publicGroup),
+    installedApps: apps
+  };
+}
+
 async function appAccessLevel(principals: string[]): Promise<AccessLevel> {
   const levels: AccessLevel[] = [];
   if (principals.includes("group:admins")) levels.push("manager");
@@ -331,6 +379,67 @@ async function upsertGroup(target: "local" | "server", id: `group:${string}`, na
   });
 }
 
+function normalizeGroupSlug(slug: string): string {
+  return normalizeUsername(slug);
+}
+
+function groupIdForSlug(slug: string): `group:${string}` {
+  return `group:${normalizeGroupSlug(slug)}`;
+}
+
+async function deleteSessionsForPerson(personId: `person:${string}`): Promise<void> {
+  await Promise.all(
+    (["local", "server"] as const).map(async (target) => {
+      try {
+        const rows = await allDocsFromDb<SessionDocument>(target, config.platformDb);
+        await Promise.all(
+          rows.rows
+            .map((row) => row.doc)
+            .filter((doc): doc is SessionDocument => Boolean(doc && doc.kind === "session" && doc.personId === personId && doc._rev))
+            .map((doc) => deleteDocInDb(target, config.platformDb, doc._id, doc._rev!))
+        );
+      } catch (error) {
+        if (!(error instanceof CouchError) || error.status !== 404) throw error;
+      }
+    })
+  );
+}
+
+async function assertPeopleExist(personIds: Array<`person:${string}`>): Promise<void> {
+  const people = await listPeople();
+  const existing = new Set(people.map((person) => person._id));
+  const missing = personIds.filter((personId) => !existing.has(personId));
+  if (missing.length) {
+    throw new CouchError(422, { error: "directory_validation_failed", reason: `Unknown people: ${missing.join(", ")}` });
+  }
+}
+
+async function assertActiveAdminExists(nextGroups?: GroupDocument[], nextPeople?: PersonDocument[]): Promise<void> {
+  const [currentPeople, currentGroups] = await Promise.all([listPeople(), listGroups()]);
+  const people = nextPeople ?? currentPeople;
+  const groups = nextGroups ?? currentGroups;
+  const admins = groups.find((group) => group._id === "group:admins");
+  const activePeople = new Set(people.filter((person) => person.active).map((person) => person._id));
+  const activeAdminCount = admins?.members.filter((member) => activePeople.has(member)).length ?? 0;
+  if (activeAdminCount < 1) {
+    throw new CouchError(422, { error: "directory_validation_failed", reason: "At least one active admin is required" });
+  }
+}
+
+async function writePersonBothTargets(person: PersonDocument): Promise<void> {
+  await Promise.all([
+    upsertDocInDb("local", config.setupDb, person),
+    upsertDocInDb("server", config.setupDb, person)
+  ]);
+}
+
+async function writeGroupBothTargets(group: GroupDocument): Promise<void> {
+  await Promise.all([
+    upsertDocInDb("local", config.setupDb, group),
+    upsertDocInDb("server", config.setupDb, group)
+  ]);
+}
+
 async function seedDevDirectory(target: "local" | "server", adminUser = "alice", adminPassword = DEV_PASSWORD) {
   await seedSetupTarget(target);
   const alice = await upsertPerson(target, "alice", "Alice Finance", adminUser === "alice" ? adminPassword : DEV_PASSWORD);
@@ -414,6 +523,18 @@ async function installedApps(): Promise<AppInstall[]> {
   }
 }
 
+function systemApps(): SystemApp[] {
+  return [
+    {
+      appId: "setup",
+      title: "Setup",
+      database: config.setupDb,
+      route: "/setup.nsf",
+      description: "Directory, groups, and platform administration."
+    }
+  ];
+}
+
 async function platformState(request?: Request): Promise<PlatformState> {
   const [platform, apps, expenseInstalled, session] = await Promise.all([
     platformConfig(),
@@ -436,6 +557,7 @@ async function platformState(request?: Request): Promise<PlatformState> {
     domainName: platform.domainName,
     adminUser: platform.adminUser,
     session,
+    systemApps: systemApps(),
     installedApps: apps,
     samples
   };
@@ -1012,6 +1134,12 @@ app.post(
       response.status(404).json({ error: "not_found" });
       return;
     }
+    await Promise.all([
+      deleteDb("local", config.setupDb),
+      deleteDb("server", config.setupDb),
+      deleteDb("local", config.platformDb),
+      deleteDb("server", config.platformDb)
+    ]);
     await Promise.all([seedTarget("local", true), seedTarget("server", true)]);
     await Promise.all([completeDevPlatformSetup("local"), completeDevPlatformSetup("server")]);
     clearEffectLog();
@@ -1115,6 +1243,134 @@ app.post(
   asyncRoute(async (request, response) => {
     await logoutSession(request, response);
     response.json(emptySession());
+  })
+);
+
+app.get(
+  "/api/setup/directory",
+  asyncRoute(async (request, response) => {
+    await requireSession(request, "manager");
+    response.json(await setupDirectoryState());
+  })
+);
+
+app.post(
+  "/api/setup/people",
+  asyncRoute(async (request, response) => {
+    await requireSession(request, "manager");
+    const username = normalizeUsername(String(request.body.username ?? ""));
+    const displayName = String(request.body.displayName ?? "").trim();
+    const password = String(request.body.password ?? "");
+    const errors: Array<{ field: string; message: string }> = [];
+    if (!username) errors.push({ field: "username", message: "Username is required" });
+    if (!displayName) errors.push({ field: "displayName", message: "Display name is required" });
+    if (password.length < 8) errors.push({ field: "password", message: "Password must be at least 8 characters" });
+    if (username && (await docExistsInDb("local", config.setupDb, personIdForUsername(username)))) {
+      errors.push({ field: "username", message: "Username already exists" });
+    }
+    if (errors.length) {
+      response.status(422).json({ error: "directory_validation_failed", errors });
+      return;
+    }
+
+    const [localPerson] = await Promise.all([
+      upsertPerson("local", username, displayName, password),
+      upsertPerson("server", username, displayName, password)
+    ]);
+    response.status(201).json({ person: publicPerson(localPerson), directory: await setupDirectoryState() });
+  })
+);
+
+app.put(
+  "/api/setup/people/:username",
+  asyncRoute(async (request, response) => {
+    await requireSession(request, "manager");
+    const username = normalizeUsername(routeParam(request.params.username));
+    const existing = await getDocFromNamedDb<PersonDocument>("local", config.setupDb, personIdForUsername(username));
+    const displayName = String(request.body.displayName ?? existing.displayName).trim();
+    const active = typeof request.body.active === "boolean" ? request.body.active : existing.active;
+    if (!displayName) {
+      response.status(422).json({ error: "directory_validation_failed", errors: [{ field: "displayName", message: "Display name is required" }] });
+      return;
+    }
+
+    const next: PersonDocument = { ...existing, displayName, active, updatedAt: timestamp() };
+    const people = (await listPeople()).map((person) => (person._id === next._id ? next : person));
+    await assertActiveAdminExists(undefined, people);
+    await writePersonBothTargets(next);
+    if (!next.active) await deleteSessionsForPerson(next._id);
+    response.json({ person: publicPerson(next), directory: await setupDirectoryState() });
+  })
+);
+
+app.post(
+  "/api/setup/people/:username/password",
+  asyncRoute(async (request, response) => {
+    await requireSession(request, "manager");
+    const username = normalizeUsername(routeParam(request.params.username));
+    const password = String(request.body.password ?? "");
+    if (password.length < 8) {
+      response.status(422).json({ error: "directory_validation_failed", errors: [{ field: "password", message: "Password must be at least 8 characters" }] });
+      return;
+    }
+    const existing = await getDocFromNamedDb<PersonDocument>("local", config.setupDb, personIdForUsername(username));
+    const passwordFields = await hashPassword(password);
+    const next: PersonDocument = { ...existing, ...passwordFields, updatedAt: timestamp() };
+    await writePersonBothTargets(next);
+    response.json({ person: publicPerson(next), directory: await setupDirectoryState() });
+  })
+);
+
+app.post(
+  "/api/setup/groups",
+  asyncRoute(async (request, response) => {
+    await requireSession(request, "manager");
+    const slug = normalizeGroupSlug(String(request.body.slug ?? ""));
+    const name = String(request.body.name ?? "").trim();
+    const members = Array.isArray(request.body.members)
+      ? Array.from(new Set(request.body.members.map((member: unknown) => String(member)).filter((member: string) => member.startsWith("person:")))) as Array<`person:${string}`>
+      : [];
+    const errors: Array<{ field: string; message: string }> = [];
+    if (!slug) errors.push({ field: "slug", message: "Group slug is required" });
+    if (!name) errors.push({ field: "name", message: "Group name is required" });
+    const id = groupIdForSlug(slug);
+    if (slug && (await docExistsInDb("local", config.setupDb, id))) {
+      errors.push({ field: "slug", message: "Group already exists" });
+    }
+    if (errors.length) {
+      response.status(422).json({ error: "directory_validation_failed", errors });
+      return;
+    }
+    await assertPeopleExist(members);
+    const now = timestamp();
+    const group: GroupDocument = { _id: id, kind: "group", name, members, createdAt: now, updatedAt: now };
+    const groups = [...(await listGroups()), group];
+    await assertActiveAdminExists(groups);
+    await writeGroupBothTargets(group);
+    response.status(201).json({ group: publicGroup(group), directory: await setupDirectoryState() });
+  })
+);
+
+app.put(
+  "/api/setup/groups/:slug",
+  asyncRoute(async (request, response) => {
+    await requireSession(request, "manager");
+    const slug = normalizeGroupSlug(routeParam(request.params.slug));
+    const existing = await getDocFromNamedDb<GroupDocument>("local", config.setupDb, groupIdForSlug(slug));
+    const name = String(request.body.name ?? existing.name).trim();
+    const members = Array.isArray(request.body.members)
+      ? Array.from(new Set(request.body.members.map((member: unknown) => String(member)).filter((member: string) => member.startsWith("person:")))) as Array<`person:${string}`>
+      : existing.members;
+    if (!name) {
+      response.status(422).json({ error: "directory_validation_failed", errors: [{ field: "name", message: "Group name is required" }] });
+      return;
+    }
+    await assertPeopleExist(members);
+    const next: GroupDocument = { ...existing, name, members, updatedAt: timestamp() };
+    const groups = (await listGroups()).map((group) => (group._id === next._id ? next : group));
+    await assertActiveAdminExists(groups);
+    await writeGroupBothTargets(next);
+    response.json({ group: publicGroup(next), directory: await setupDirectoryState() });
   })
 );
 

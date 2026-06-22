@@ -151,11 +151,13 @@ async function runAssertions() {
   const firstRun = await request<{
     setupComplete: boolean;
     session: { authenticated: boolean };
+    systemApps: Array<{ appId: string; route: string }>;
     installedApps: unknown[];
     samples: Array<{ appId: string; installed: boolean }>;
   }>("/api/platform/state");
   assert.equal(firstRun.setupComplete, false, "fresh deploy should start in setup mode");
   assert.equal(firstRun.session.authenticated, false, "fresh deploy should not have an authenticated session");
+  assert.ok(firstRun.systemApps.some((app) => app.appId === "setup" && app.route === "/setup.nsf"), "setup.nsf should be advertised as a system app");
   assert.equal(firstRun.installedApps.length, 0, "fresh deploy should have an empty app catalog");
   assert.equal(firstRun.samples.find((sample) => sample.appId === "expense")?.installed, false, "expense sample should not be installed by default");
   await request("/api/definitions", { ok: 401 });
@@ -163,6 +165,7 @@ async function runAssertions() {
   const configured = await request<{
     setupComplete: boolean;
     session: { authenticated: boolean; person?: { username: string } };
+    systemApps: Array<{ appId: string; route: string }>;
     orgName?: string;
     domainName?: string;
     adminUser?: string;
@@ -179,6 +182,7 @@ async function runAssertions() {
   assert.equal(configured.setupComplete, true, "setup should complete");
   assert.equal(configured.session.authenticated, true, "setup should create an authenticated admin session");
   assert.equal(configured.session.person?.username, "admin", "setup session should belong to the admin person");
+  assert.ok(configured.systemApps.some((app) => app.appId === "setup" && app.route === "/setup.nsf"), "setup.nsf should stay visible after setup");
   assert.equal(configured.orgName, "Deploy Test Org", "org name should persist");
   assert.equal(configured.domainName, "deploy.test", "domain name should persist");
   assert.equal(configured.adminUser, "admin", "admin username should persist");
