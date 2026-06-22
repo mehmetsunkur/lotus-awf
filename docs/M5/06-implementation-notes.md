@@ -2,14 +2,15 @@
 
 ## Implemented runtime behavior
 
-M5 centralizes the app/API access policy in `src/shared/access.ts`:
+M5 centralizes the app/API access policy in `src/shared/access.ts` (M18 changes the source of these
+principals from fixed config to authenticated sessions):
 
-- effective principals are `[user, ...roles]`;
+- effective principals are `[person, ...groups, ...principals]`;
 - a business document is readable when one `readers` entry matches the actor's principals;
-- payload edits and deletes require `authors` to include the actor's user id;
+- payload edits and deletes require `authors` to include the actor's person id;
 - workflow transitions require read access first, then the existing workflow guard/role check;
 - new documents derive readers from the actor, with expense documents also visible to
-  `role:finance` for approval.
+  `group:finance` for approval.
 
 The server now applies this policy to:
 
@@ -40,8 +41,8 @@ business-document ids for the actor. Any local document no longer readable is re
 - workflow transitions fail with `403` before role checks when the actor cannot read the document;
 - revocation purge removes the local revision while preserving the server document.
 
-The existing workflow role-gating test was updated to use a Bob-authored readable document, so it
-still proves `role:sales` cannot approve while no longer depending on Bob reading an Alice-only doc.
+The existing workflow principal-gating test uses a Bob-authored readable document, so it still proves
+Bob cannot approve without `group:finance` while no longer depending on Bob reading an Alice-only doc.
 
 ## Verification performed
 
@@ -52,7 +53,8 @@ npx playwright test tests/e2e/workflow.spec.ts
 npm run test:e2e
 ```
 
-Final e2e result: `24 passed`.
+Original M5 e2e result: `24 passed`. Current M18 verification covers the updated policy in the full
+suite.
 
 The Tier-3 review workflow was attempted, but `.claude/workflows/review-change.js` failed to load
 under Node with `SyntaxError: Illegal return statement`, so no automated review report was produced.

@@ -83,8 +83,13 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 
 ## ACL / readers
 
-- `readers`/`authors` must be set correctly on documents this code creates, no row/field/select-option may leak across users or roles, and new query paths must still honour `readers` filtering.
-  - Paths: `src/shared/access.ts`, `src/server/seed-data.ts`, `src/server/index.ts`, `scripts/acl-spike.ts`
+- `readers`/`authors` must be set correctly on documents this code creates, no row/field/select-option may leak across people or groups, and new query paths must still honour `readers` filtering.
+  - Paths: `src/shared/access.ts`, `src/server/seed-data.ts`, `src/server/index.ts`, `scripts/acl-spike.ts`, `templates/**`
+
+## Identity & sessions
+
+- Protected API routes must resolve the current actor from an authenticated HTTP-only session cookie, never from client-supplied principal ids or stale fixed-user config; password hashes stay on `person:*` docs in `setup_app`, session tokens are stored only as hashes in `platform_app`, public session payloads must not expose hashes/tokens, and app ACL levels must be checked through shared access helpers.
+  - Paths: `src/server/auth.ts`, `src/server/index.ts`, `src/shared/access.ts`, `src/shared/types.ts`, `src/client/main.tsx`, `tests/e2e/**`, `tests/deploy/**`
 
 ## Offline editing
 

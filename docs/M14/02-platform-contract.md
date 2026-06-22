@@ -2,9 +2,9 @@
 
 ## Databases
 
-- `setup_app` — first-run setup app marker. Seeded with `app:config` (`appId: "setup"`, title
-  `"Setup"`).
-- `platform_app` — platform control state.
+- `setup_app` — first-run setup and directory system app. Seeded with `app:config` (`appId:
+  "setup"`, title `"Setup"`) and M18 `person:*` / `group:*` directory documents.
+- `platform_app` — platform control state and M18 `session:*` runtime documents.
 - `expense_app` — optional sample business app, installed only after setup.
 
 ## Platform documents
@@ -19,7 +19,8 @@
 }
 ```
 
-After setup it stores `orgName`, `domainName`, `adminUser`, and a development-only password hash.
+After setup it stores `orgName`, `domainName`, and `adminUser`. Password hashes live on
+`person:*` documents in `setup_app`.
 
 `appinstall:<appId>`:
 
@@ -36,13 +37,20 @@ After setup it stores `orgName`, `domainName`, `adminUser`, and a development-on
 
 ## APIs
 
-- `GET /api/platform/state` — setup state, installed apps, and available samples.
-- `POST /api/platform/setup` — validates and stores org/domain/admin setup.
+- `GET /api/platform/state` — setup state, installed apps, available samples, and current session.
+- `POST /api/platform/setup` — validates and stores org/domain/admin setup, creates the admin
+  Person and `group:admins`, and sets the session cookie.
 - `POST /api/platform/install-sample/expense` — installs the Expense sample after setup.
+- `GET /api/session` — returns public session state.
+- `POST /api/session/login` — username/password login; sets the HTTP-only `lotus_session` cookie.
+- `POST /api/session/logout` — clears the session cookie and deletes the session if present.
 - `GET /api/ready` — checks CouchDB, `setup_app`, and `platform_app`; it does not require Expense.
 
 ## Security posture
 
-The admin password is captured to shape the correct product flow, but M14 does not implement real auth.
-The stored hash is development-only and must be replaced by a real identity/session subsystem before
-production use.
+M18 replaces M14's placeholder password flow with first-party username/password login backed by
+directory Person documents. Passwords are salted and hashed with Node `crypto.scrypt`; sessions are
+opaque tokens stored as hashes in `platform_app` and carried by an HTTP-only cookie.
+
+This is still a first-party platform auth layer, not OIDC/LDAP. External identity integration,
+password reset, policy controls, and offline login remain future work.

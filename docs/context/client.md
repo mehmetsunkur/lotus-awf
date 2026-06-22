@@ -19,7 +19,7 @@
 
 React platform/runtime UI: first-run setup and app catalog (M14), plus the metadata-driven runtime
 that renders forms/views from replicated definitions, edits local documents, hosts the M4 structured
-definition studio (with JSON escape hatch) and the conflict resolution panel.
+definition studio (with JSON escape hatch), the conflict resolution panel, and M18 login/logout.
 
 ## Main Files
 
@@ -31,15 +31,19 @@ definition studio (with JSON escape hatch) and the conflict resolution panel.
 ## Key Flows
 
 - Boot (M14) → `GET /api/platform/state` → route/render `/setup.nsf`, `/catalog.nsf`, or
-  `/expense.nsf`.
+  `/expense.nsf`. If setup is complete but no session is authenticated, route/render `/login.nsf`.
+- Login/logout (M18) → login form posts to `POST /api/session/login`; logout posts to
+  `POST /api/session/logout`, refreshes platform state, and returns to login. The session cookie is
+  HTTP-only, so the client only observes session state through API responses.
 - In-app routing (M15/M16) → the app runtime parses `/expense.nsf/views/*`,
   `/expense.nsf/documents/*`, `/expense.nsf/new/*`, and `/expense.nsf/designer/*`.
   View/document/create/definition selections push matching URLs and browser back/forward updates
   selected state.
-- App runtime boot → `GET /api/status|definitions|conflicts` → render shell (`definitions` carries
-  `workflows`, `user`, `roles`).
-- First-run setup (M14) → `POST /api/platform/setup` stores org/domain/admin, then catalog renders
-  with no business apps installed.
+- App runtime boot → `GET /api/status|definitions|conflicts` → render shell (`platform/state`
+  carries the authenticated person/groups, while definition/runtime APIs are session-protected).
+- First-run setup (M14/M18) → `POST /api/platform/setup` stores org/domain/admin, creates the admin
+  Person and `group:admins`, sets a session cookie, then catalog renders with no business apps
+  installed.
 - Sample install (M14) → catalog `POST /api/platform/install-sample/expense`, then the user can open
   the existing Expense runtime.
 - Edit → shared `validatePayload` runs client-side → `POST/PUT /api/documents` (local replica).
@@ -76,12 +80,13 @@ definition studio (with JSON escape hatch) and the conflict resolution panel.
 ## Invariants
 
 See `docs/invariants.md`: **Validation parity**, **Offline editing**, **Form layout authoring**, and
-**Deployable artifact** govern this subsystem.
+**Identity & sessions**, and **Deployable artifact** govern this subsystem.
 
 ## Relevant Decisions
 
 - `docs/decisions/0001-definitions-as-data.md`
 - `docs/decisions/0002-offline-first-dual-couchdb.md`
+- `docs/decisions/0010-directory-and-session-auth.md`
 
 ## Tests
 
@@ -93,3 +98,5 @@ the host `fs.inotify` `EMFILE` limit.
 - Re-implementing validation in the component instead of using `src/shared`.
 - Adding a save/option path that requires the server replica (breaks offline).
 - Removing/renaming a `data-testid` relied on by e2e specs.
+- Reading or storing the session token in client state; the browser should only receive public
+  session state from the API.

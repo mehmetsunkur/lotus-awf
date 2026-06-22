@@ -23,14 +23,17 @@
 Express API over **two** CouchDB replicas (local `:5985`, server `:5984`). Owns definitions,
 definition validation, business documents, ACL-scoped query/write paths, bidirectional replication,
 revocation purge, conflict inspection/resolution, Mango indexes, (M3) workflow transitions + sync
-reconciliation, (M6) template export/diff/apply, and (M13) production static-client serving/readiness.
+reconciliation, (M6) template export/diff/apply, (M13) production static-client serving/readiness,
+and (M18) directory-backed session authentication.
 
 ## Main Files
 
 - `src/server/index.ts` — all HTTP endpoints (definitions, documents, views, conflicts, demos, and
   the M3 `POST /api/documents/:id/transition` + `reconcileStates` in the replicate flow).
+- `src/server/auth.ts` — username normalization, scrypt password hashing/verification, opaque
+  session token/cookie helpers, and public Person shaping.
 - `src/server/couch.ts` — CouchDB client, `replicateBidirectional`/`replicateOnce`, `createIndex`, `findDocs`.
-- `src/server/config.ts` — local vs server Couch URLs, app db/user.
+- `src/server/config.ts` — local vs server Couch URLs and database names.
 - `src/server/seed-data.ts` — compatibility helpers for scripts/e2e; loads the packaged Expense
   sample from the JSON template registry.
 - `src/server/template-registry.ts` — filesystem-backed sample template loader/validator for
@@ -55,19 +58,25 @@ reconciliation, (M6) template export/diff/apply, and (M13) production static-cli
   reject if `form:`/`view:<docType>` exists (409) → `scaffoldDocumentType` → validate both →
   `applyDefinition` upsert each. The scaffolded form + view promote via the template artifact; no new
   Mango index (the list view binds `m2-kind-docType-updatedAt`).
-- Access (M5): current `{ user, roles }` comes from `config.appUser` + `acl:rules`; business reads
-  match document `readers`, payload writes/deletes require `authors`, and sourced select options use
-  the same readable-document scope.
+- Directory/session (M18): `person:*` and `group:*` live in `setup_app`; `session:*` lives in
+  `platform_app`. `POST /api/session/login` sets the HTTP-only `lotus_session` cookie, and
+  `requireSession()` resolves the request to a principal scope before protected routes run.
+- Access (M5/M18): current principals come from the authenticated session (`person:<username>`,
+  direct groups, plus any explicit principals) and app-level `acl:rules` entries grant
+  `reader`/`author`/`editor`/`designer`/`manager`. Business reads match document `readers`, payload
+  writes/deletes require `authors`, design routes require designer-level access, and sourced select
+  options use the same readable-document scope.
 - List: `GET /api/views/:id/documents` → `mangoSelector(view.filters)` + access selector →
   `findDocs`; on `updatedAt` sort binds `m3-docType-state-updatedAt` for state-filtered views, else
   `m2-kind-docType-updatedAt` (hints bind because `createIndex` pins `ddoc === name`).
 - Search (M9): the same endpoint with `?q=` applies the shared `searchDocuments` matcher **after** the
   `canReadDocument` ACL filter (loading the view's form from local Couch), so search narrows the
   ACL-scoped set and never widens it. No new Mango index; the matcher runs in-memory over the candidates.
-- Transition (M3/M5): `POST /api/documents/:id/transition` → read-access check → shared
-  `applyTransition` (roles from `acl:rules`) → write **local** Couch; `403` when unreadable and `422`
-  on an illegal/role-gated transition. (M7) After the authoritative write, a transition's `action`
-  effect runs best-effort via `runEffect`, surfaced as `effects[]`.
+- Transition (M3/M5/M18): `POST /api/documents/:id/transition` → session + read-access check →
+  shared `applyTransition` (required principals such as `group:finance`) → write **local** Couch;
+  `403` when unreadable and `422` on an illegal/principal-gated transition. (M7) After the
+  authoritative write, a transition's `action` effect runs best-effort via `runEffect`, surfaced as
+  `effects[]`.
 - Compute (M7): `POST/PUT /api/documents` apply `applyComputedFields` (shared) so computed fields are
   derived identically to the client. `GET /api/plugins/manifest` and `GET /api/plugins/log` expose
   the handler manifest and the in-memory effect log (cleared on `/api/reset`).
@@ -95,7 +104,8 @@ reconciliation, (M6) template export/diff/apply, and (M13) production static-cli
   by `templates/expense/template.json` (design docs) and `templates/expense/sample-data.json`
   (optional demo business docs). The server validates the template artifact, validates each design
   doc, rejects runtime/business docs from the design template, and keeps `seedDocuments()` as a
-  compatibility wrapper over the same artifacts.
+  compatibility wrapper over the same artifacts. M18 also seeds sample directory records (Alice,
+  Bob, `group:finance`, `group:sales`) around the same install/reset paths.
 - Sync: `POST /api/replicate` → scoped `replicateBidirectional` → local `_purge` of server-revoked
   docs → `reconcileStates` reports concurrent state divergence; conflicts surfaced via
   `/api/conflicts`. Resolve accepts `chosenRev` to elect the winning revision's state.
@@ -103,8 +113,9 @@ reconciliation, (M6) template export/diff/apply, and (M13) production static-cli
   plus first-run setup/platform readiness. When `dist/index.html` exists, Express serves the built
   client and falls back to `index.html` for non-API routes. `deploy/compose.yml` enables
   `APP_AUTO_SETUP=1`, so a fresh artifact install creates `setup_app` and `platform_app`; Expense is
-  installed only through the sample installer after setup. `npm run test:deploy` builds/runs that
-  topology and exercises setup, catalog, runtime, and design operations externally over HTTP.
+  installed only through the sample installer after setup. Setup creates and logs in the admin person;
+  unauthenticated app APIs return `401`. `npm run test:deploy` builds/runs that topology and
+  exercises setup, catalog, runtime, and design operations externally over HTTP.
 
 ## Existing Patterns
 
@@ -116,7 +127,7 @@ reconciliation, (M6) template export/diff/apply, and (M13) production static-cli
 
 ## Invariants
 
-See `docs/invariants.md`: **Replication & conflict**, **ACL / readers**, **Offline editing**,
+See `docs/invariants.md`: **Replication & conflict**, **ACL / readers**, **Identity & sessions**, **Offline editing**,
 **Index & query**, **Validation parity**, **Definitions-as-data contract**, **Handler / plugin
 runtime**, **Agent runtime**, **Search**, **Audit & retention**, **Document-type creation** govern
 this subsystem.
@@ -127,6 +138,7 @@ this subsystem.
 - `docs/decisions/0002-offline-first-dual-couchdb.md`
 - `docs/decisions/0003-mango-index-strategy.md`
 - `docs/decisions/0008-deployable-docker-artifact.md`
+- `docs/decisions/0010-directory-and-session-auth.md`
 - `docs/M5/02-access-policy.md`
 - `docs/M5/03-replication-purge.md`
 - `docs/M6/02-template-contract.md`
@@ -149,7 +161,8 @@ this subsystem.
 - Accidentally including `kind: "document"` business docs in template export/apply.
 - Forgetting to copy `templates/` into the Docker image; deploy installs must not depend on a source
   checkout bind mount.
-- A query path that ignores `readers` filtering and leaks across users/roles.
+- A query path that ignores `readers` filtering and leaks across people/groups.
+- A protected route that forgets `requireSession()` or checks app ACL levels ad hoc.
 - Using normal `DELETE` for revocation cleanup; it can replicate as a global delete. Use local
   `_purge` for M5 revocation shape.
 - A change that makes an offline action depend on the server replica.

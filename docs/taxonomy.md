@@ -34,6 +34,7 @@ Classes map to the path-tagged aspects in `docs/invariants.md`.
 | Validation & expressions | Shared rules + portable evaluator | parity (client+API), eval safety, determinism | `docs/context/shared.md` |
 | Replication & conflict | Bidirectional CouchDB sync + resolution | `_rev`/`_conflicts`, push/pull | `docs/context/server.md` |
 | Access control | Filtered replication by `readers`/`authors` | ACL leak surface | `docs/context/server.md` |
+| Identity & sessions | Directory people/groups, login, session cookies, app ACL levels | setup.nsf directory, `person:*`, `group:*`, `session:*` | `docs/context/server.md`, `docs/context/client.md`, `docs/context/shared.md` |
 | Offline-first | Local-replica editing with no server round-trip | local vs server CouchDB | `docs/context/server.md`, `docs/context/client.md` |
 | Query & indexing | Mango selectors + indexes for views | `use_index`, index triplication | `docs/context/server.md` |
 | Deployment & packaging | Built platform artifact and deploy topology | Docker image, deploy compose, readiness, artifact gate | `docs/context/server.md` |
@@ -63,6 +64,7 @@ Mapped to the path-tagged aspects in `docs/invariants.md`.
 | Agent safety | Agent runtime | Server-authoritative tick; durable at-least-once runs with dedupe; checkpoint advances after writes; failing handler never crashes the tick; runtime docs never templated |
 | Data integrity | Replication & conflict | `_rev`/`_conflicts` correctness; no silent loss on resolve |
 | Security | ACL / readers | No cross-user/role leak; `readers` honoured |
+| Authentication | Identity & sessions | Sessions are HTTP-only, token hashes only, protected routes require session + app ACL |
 | Availability | Offline editing | Works against local replica with no server round-trip |
 | Performance | Index & query | New sort/filter has an index; three index sites in sync |
 

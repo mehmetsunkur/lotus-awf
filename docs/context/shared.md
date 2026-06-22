@@ -23,9 +23,10 @@ No DOM, no Node/server-only APIs.
 ## Main Files
 
 - `src/shared/types.ts` — `FormDefinition`, `ViewDefinition`, `WorkflowDefinition`, `FormField`,
-  `BusinessDocument` (incl. optional `state`/`history`), `TransitionEvent`, etc.
-- `src/shared/access.ts` (M5) — pure helpers for principals, readable docs, editable docs, derived
-  readers, and access selectors.
+  `BusinessDocument` (incl. optional `state`/`history`), `TransitionEvent`, plus M18
+  `PersonDocument`, `GroupDocument`, `SessionDocument`, `SessionState`, and `AccessLevel`.
+- `src/shared/access.ts` (M5/M18) — pure helpers for session-derived principal scopes, readable docs,
+  editable docs, derived readers, app ACL levels, and access selectors.
 - `src/shared/validation.ts` — `validatePayload`, `applyFormDefaults`, `normalizePayload`, `isFieldRequired/Visible/ReadOnly`.
 - `src/shared/definition-validation.ts` (M4) — shared validators for `form:*`, `view:*`, and
   `workflow:*` documents before local definition writes.
@@ -67,7 +68,9 @@ M4 adds shared definition validation: the browser uses it before saving from the
 JSON editor, and the API uses it before writing `form:*`, `view:*`, or `workflow:*` to local CouchDB.
 
 M5 adds shared access policy: the server uses the same `readers`/`authors` helpers for document lists,
-view rows, sourced select options, payload writes, transitions, replication selectors, and purge.
+view rows, sourced select options, payload writes, transitions, replication selectors, and purge. M18
+changes the actor source from fixed config to authenticated `PrincipalScope` values derived from a
+Person and direct Groups, and adds ranked app ACL levels (`reader` through `manager`).
 
 M6 adds shared template helpers so export/diff/apply all compare definition documents consistently
 without carrying source-environment `_rev` values.
@@ -103,11 +106,12 @@ the pair local-first.
 ## Invariants
 
 See `docs/invariants.md`: **Validation parity**, **Expression runtime**, **Definitions-as-data
-contract** all govern this subsystem.
+contract**, **ACL / readers**, and **Identity & sessions** govern this subsystem.
 
 ## Relevant Decisions
 
 - `docs/decisions/0001-definitions-as-data.md`
+- `docs/decisions/0010-directory-and-session-auth.md`
 
 ## Tests
 

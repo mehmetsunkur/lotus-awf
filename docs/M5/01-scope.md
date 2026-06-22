@@ -8,7 +8,8 @@ is revoked on the server, a sync pass removes the now-unauthorized document from
 
 ## In scope
 
-- Shared access helpers over `{ user, roles }` and document `readers`/`authors`.
+- Shared access helpers over actor principals and document `readers`/`authors`. Originally this was
+  `{ user, roles }`; M18 replaces it with session-derived `person:*` and `group:*` principals.
 - Scoped runtime list queries, document queries, and sourced select options.
 - Payload edit/delete checks using `authors`.
 - Workflow transition read checks plus existing transition role/guard checks.
