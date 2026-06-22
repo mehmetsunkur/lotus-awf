@@ -19,9 +19,8 @@
 ```bash
 npm run build
 npm run test:unit
+npm run test:deploy
 ```
-
-`npm run test:deploy` remains the final deploy gate for this milestone.
 
 ## Known Limitations And Risks
 
