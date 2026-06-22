@@ -5,9 +5,9 @@ The built client starts with `GET /api/platform/state`.
 ## Canonical routes
 
 - `/setup.nsf` — first-run setup before setup completes; after setup, the authenticated Directory
-  Console system app.
+  Console system app in the standard NSF workspace.
 - `/login.nsf` — username/password login after setup.
-- `/catalog.nsf` — platform app catalog.
+- `/catalog.nsf` — platform app catalog in the standard NSF workspace.
 - `/expense.nsf` — installed Expense sample runtime.
 - `/` — compatibility entry; client routing replaces it with setup or catalog after platform state
   loads.
@@ -18,12 +18,14 @@ The built client starts with `GET /api/platform/state`.
 2. `setupComplete: true` and `session.authenticated: false` -> navigate/render `/login.nsf`.
 3. `setupComplete: true` and login route requested while authenticated -> navigate/render
    `/catalog.nsf`.
-4. `setupComplete: true` and `/setup.nsf` requested while authenticated -> render Directory Console.
+4. `setupComplete: true` and `/setup.nsf` requested while authenticated -> render Directory Console
+   in the standard NSF workspace.
 5. User opens installed Expense sample -> navigate/render `/expense.nsf`.
 6. Direct `/expense.nsf` before sample install -> return to `/catalog.nsf`.
 
-The current Expense runtime remains single-app and uses the existing `expense_app` APIs. M14 does not
-introduce general multi-app routing.
+M20 supersedes the original one-off M14 system pages by rendering `setup.nsf`, `catalog.nsf`, and
+`expense.nsf` in the standard two-pane NSF workspace. Expense still uses the existing `expense_app`
+metadata APIs.
 
 ## Fresh deploy
 

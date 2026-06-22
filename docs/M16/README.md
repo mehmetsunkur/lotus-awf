@@ -1,7 +1,8 @@
 # M16 - Runtime And Designer Workspace Split
 
-M16 turns an installed `.nsf` app into two explicit workspaces: Runtime for using business
-documents, and Designer for changing app metadata.
+M16 turns the installed Expense `.nsf` app into two explicit workspaces: Runtime for using business
+documents, and Designer for changing app metadata. M20 later generalizes the runtime shell so
+`setup.nsf` and `catalog.nsf` use the same two-pane workspace baseline.
 
 ## Goal
 

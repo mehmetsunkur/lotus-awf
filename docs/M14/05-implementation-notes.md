@@ -26,5 +26,6 @@ npm run test:unit
 
 - Admin password hashing is development-only; there is no login/session enforcement yet.
 - App catalog can install only the Expense sample.
-- The existing Expense runtime is still single-app.
+- The existing Expense runtime was still single-app in M14; M20 later generalizes the client shell for
+  `setup.nsf`, `catalog.nsf`, and `expense.nsf`.
 - `/api/reset` remains a dev/e2e helper for the Expense sample.

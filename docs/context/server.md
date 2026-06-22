@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `bbdadaf`
-- Last reviewed date: `2026-06-16`
+- Last code review baseline: `78e6778`
+- Last reviewed date: `2026-06-22`
 - Code areas:
   - `src/server/**`
   - `scripts/**`
@@ -117,8 +117,9 @@ and (M18) directory-backed session authentication.
   `APP_AUTO_SETUP=1`, so a fresh artifact install creates `setup_app` and `platform_app`; Expense is
   installed only through the sample installer after setup. Setup creates and logs in the admin person;
   unauthenticated app APIs return `401`; `GET /api/platform/state` always advertises `setup.nsf` in
-  `systemApps`. `npm run test:deploy` builds/runs that topology and
-  exercises setup, catalog, runtime, and design operations externally over HTTP.
+  `systemApps`. The client renders `setup.nsf`, `catalog.nsf`, and `expense.nsf` through the M20
+  standard NSF workspace. `npm run test:deploy` builds/runs that topology and exercises setup,
+  catalog, runtime, and design operations externally over HTTP.
 
 ## Existing Patterns
 

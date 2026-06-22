@@ -11,7 +11,8 @@ then lands in an empty app catalog. The Expense app becomes an optional sample t
 - First-run setup captures organization name, domain name, admin username, and admin password.
 - After setup, the catalog starts empty.
 - The Expense sample can be installed explicitly from the catalog.
-- Existing single-app Expense runtime remains available after installing the sample.
+- Existing single-app Expense runtime remains available after installing the sample. M20 later
+  generalizes the shell so system apps and Expense share the standard NSF workspace.
 - The deploy gate verifies the setup -> empty catalog -> sample install -> runtime smoke path.
 
 ## Documents

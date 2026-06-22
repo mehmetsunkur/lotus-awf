@@ -10,6 +10,8 @@
 - Move the existing structured definition editor into Designer.
 - Direct document routes open documents independently of the active/default view.
 
+M20 later generalizes this shell baseline to first-party system apps (`setup.nsf` and `catalog.nsf`).
+
 ## Out Of Scope
 
 - Role-gating the Designer action.
