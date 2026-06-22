@@ -31,14 +31,18 @@ reconciliation, (M6) template export/diff/apply, and (M13) production static-cli
   the M3 `POST /api/documents/:id/transition` + `reconcileStates` in the replicate flow).
 - `src/server/couch.ts` — CouchDB client, `replicateBidirectional`/`replicateOnce`, `createIndex`, `findDocs`.
 - `src/server/config.ts` — local vs server Couch URLs, app db/user.
-- `src/server/seed-data.ts` — seed definitions (incl. `workflow:expense`) + sample documents.
+- `src/server/seed-data.ts` — compatibility helpers for scripts/e2e; loads the packaged Expense
+  sample from the JSON template registry.
+- `src/server/template-registry.ts` — filesystem-backed sample template loader/validator for
+  `templates/expense/template.json` and `templates/expense/sample-data.json`.
 - `src/server/handlers/effects.ts` (M7) — server-only effect registry + `runEffect` (best-effort,
   in-memory log).
 - `src/server/handlers/agents.ts` (M8) — server-only agent-handler registry + `runAgentHandler`
   (fail-closed). The `runAgents()` tick orchestrator lives in `index.ts`.
 - `scripts/*.ts` — `seed`, `reset`, `replicate`, `force-conflict`, `force-state-conflict`,
   `acl-spike`, and `app` (M7 definitions-as-code `extract`/`apply` CLI).
-- `Dockerfile` / `deploy/compose.yml` — M13 deployable artifact topology; no source bind mount.
+- `Dockerfile` / `deploy/compose.yml` — M13 deployable artifact topology; no source bind mount;
+  the image includes `templates/` for JSON-backed app installs.
 
 ## Key Flows
 
@@ -87,6 +91,11 @@ reconciliation, (M6) template export/diff/apply, and (M13) production static-cli
   stale `_rev`, compares by definition id, and applies add/update changes to **local** Couch without
   touching business docs. Runtime `agentrun:*` / `agent:state` / `auditevent:*` / `audit:state` docs
   are NOT packaged.
+- JSON sample templates (M17): the built-in Expense sample is installed from `sample:expense`, backed
+  by `templates/expense/template.json` (design docs) and `templates/expense/sample-data.json`
+  (optional demo business docs). The server validates the template artifact, validates each design
+  doc, rejects runtime/business docs from the design template, and keeps `seedDocuments()` as a
+  compatibility wrapper over the same artifacts.
 - Sync: `POST /api/replicate` → scoped `replicateBidirectional` → local `_purge` of server-revoked
   docs → `reconcileStates` reports concurrent state divergence; conflicts surfaced via
   `/api/conflicts`. Resolve accepts `chosenRev` to elect the winning revision's state.
@@ -122,6 +131,7 @@ this subsystem.
 - `docs/M5/03-replication-purge.md`
 - `docs/M6/02-template-contract.md`
 - `docs/M6/03-promotion-runtime.md`
+- `docs/M17/02-template-artifacts.md`
 
 ## Tests
 
@@ -137,6 +147,8 @@ this subsystem.
 - Letting `PUT /api/definitions/:id` accept a new definition kind without updating shared validation.
 - Letting template apply write stale `_rev` values from the source artifact.
 - Accidentally including `kind: "document"` business docs in template export/apply.
+- Forgetting to copy `templates/` into the Docker image; deploy installs must not depend on a source
+  checkout bind mount.
 - A query path that ignores `readers` filtering and leaks across users/roles.
 - Using normal `DELETE` for revocation cleanup; it can replicate as a global delete. Use local
   `_purge` for M5 revocation shape.

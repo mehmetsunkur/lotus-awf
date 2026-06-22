@@ -28,7 +28,8 @@ catalog. The Expense app is an optional sample installed explicitly from the cat
 ## Alternatives Considered
 
 1. Keep auto-installing Expense (rejected: product reads as an app demo, not a platform).
-2. Build a full app-template registry first (deferred: larger than needed for first-run setup).
+2. Build a full app-template registry first (deferred in M14; M17 adds a filesystem-backed sample
+   registry, while remote registry/version rollback remain future work).
 3. Add setup-first boot plus minimal catalog (chosen).
 
 ## Consequences
@@ -39,6 +40,6 @@ catalog. The Expense app is an optional sample installed explicitly from the cat
 
 ## Follow-Ups
 
-- Replace sample installer with a versioned template registry.
+- M17 replaced the hardcoded sample installer with a JSON-backed `sample:expense` registry entry.
 - Add real identity/session management.
 - Add governed change sets for AI config agents.

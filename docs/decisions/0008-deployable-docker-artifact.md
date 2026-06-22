@@ -41,6 +41,8 @@ stack externally over HTTP.
 
 ## Follow-Ups
 
-- Replace `/api/reset` app install with template-registry install.
+- M17 replaced the packaged Expense sample seed with a JSON template-registry install. `/api/reset`
+  still exists for dev/e2e compatibility, but it now loads the same JSON artifacts through
+  `seedDocuments()`.
 - Consider a multi-stage image if image size matters.
 - Add CI runner support with Docker API access for `npm run test:deploy`.
