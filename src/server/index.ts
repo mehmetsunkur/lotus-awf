@@ -58,6 +58,7 @@ import { applyTransition, currentState } from "../shared/workflow";
 import { agentIsDue, agentIsEnabled, agentMatchesChange, agentRunKey } from "../shared/agents";
 import { searchDocuments } from "../shared/search";
 import { auditAction, eventIsExpired, shouldAudit } from "../shared/audit";
+import { databaseForAppId, scaffoldBlankApp, validateAppId } from "../shared/app-scaffold";
 import { scaffoldDocumentType, validateDocType } from "../shared/scaffold";
 import { HANDLER_MANIFEST } from "../shared/handlers/manifest";
 import { clearEffectLog, readEffectLog, runEffect } from "./handlers/effects";
@@ -113,6 +114,12 @@ const timestamp = () => new Date().toISOString();
 const routeParam = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value ?? "");
 const DEV_PASSWORD = "password123";
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+
+type BusinessAppContext = {
+  appId: string;
+  title: string;
+  database: string;
+};
 
 async function seedTarget(target: "local" | "server", reset = false) {
   if (reset) {
@@ -241,11 +248,11 @@ async function setupDirectoryState(): Promise<SetupDirectoryState> {
   };
 }
 
-async function appAccessLevel(principals: string[]): Promise<AccessLevel> {
+async function appAccessLevel(principals: string[], db = config.appDb): Promise<AccessLevel> {
   const levels: AccessLevel[] = [];
   if (principals.includes("group:admins")) levels.push("manager");
   try {
-    const acl = await getDoc<AclRules>("local", "acl:rules");
+    const acl = await getDoc<AclRules>("local", "acl:rules", "", db);
     for (const entry of acl.entries ?? []) {
       if (principals.includes(entry.principal)) levels.push(entry.level);
     }
@@ -293,6 +300,24 @@ async function requireSession(request: Request, required: AccessLevel = "reader"
     groups: session.groups,
     principals: session.principals,
     accessLevel: session.accessLevel
+  };
+  if (!hasAccessLevel(scope, required)) {
+    throw new CouchError(403, { error: "forbidden", reason: `${required} access is required` });
+  }
+  return scope;
+}
+
+async function requireAppSession(request: Request, db: string, required: AccessLevel = "reader"): Promise<PrincipalScope> {
+  const session = await sessionStateForRequest(request);
+  if (!session.authenticated || !session.person) {
+    throw new CouchError(401, { error: "unauthorized", reason: "Login required" });
+  }
+  const accessLevel = await appAccessLevel(session.principals, db);
+  const scope: PrincipalScope = {
+    person: session.person._id,
+    groups: session.groups,
+    principals: session.principals,
+    accessLevel
   };
   if (!hasAccessLevel(scope, required)) {
     throw new CouchError(403, { error: "forbidden", reason: `${required} access is required` });
@@ -459,10 +484,10 @@ async function seedExpenseSampleDirectory(target: "local" | "server", currentPer
   await upsertGroup(target, "group:sales", "Sales", [bob._id]);
 }
 
-async function ensureIndexes(target: "local" | "server") {
-  await createIndex(target, "m2-kind-docType-updatedAt", ["kind", "docType", "updatedAt"]);
-  await createIndex(target, "m2-readers", ["readers"]);
-  await createIndex(target, "m3-docType-state-updatedAt", ["docType", "state", "updatedAt"]);
+async function ensureIndexes(target: "local" | "server", db = config.appDb) {
+  await createIndex(target, "m2-kind-docType-updatedAt", ["kind", "docType", "updatedAt"], db);
+  await createIndex(target, "m2-readers", ["readers"], db);
+  await createIndex(target, "m3-docType-state-updatedAt", ["docType", "state", "updatedAt"], db);
 }
 
 async function expenseAppInstalled(target: "local" | "server") {
@@ -523,6 +548,26 @@ async function installedApps(): Promise<AppInstall[]> {
   }
 }
 
+async function installedApp(appId: string): Promise<AppInstall | undefined> {
+  return (await installedApps()).find((app) => app.appId === appId);
+}
+
+async function resolveBusinessApp(appId: string): Promise<BusinessAppContext> {
+  if (appId === "expense") {
+    return { appId: "expense", title: "Expense sample", database: config.appDb };
+  }
+  const install = await installedApp(appId);
+  if (!install) {
+    throw new CouchError(404, { error: "app_not_found", reason: `Unknown app: ${appId}` });
+  }
+  return { appId: install.appId, title: install.title, database: install.database };
+}
+
+async function appContextFromRequest(request: Request): Promise<BusinessAppContext> {
+  const appId = routeParam(request.params.appId) || "expense";
+  return resolveBusinessApp(appId);
+}
+
 function systemApps(): SystemApp[] {
   return [
     {
@@ -571,6 +616,19 @@ function expenseInstallRecord(installedAt = timestamp(), installedBy = "person:a
     title: "Expense sample",
     database: config.appDb,
     templateId: "sample:expense",
+    installedAt,
+    installedBy
+  };
+}
+
+function appInstallRecord(appId: string, title: string, database: string, installedAt = timestamp(), installedBy = "person:alice"): AppInstall {
+  return {
+    _id: `appinstall:${appId}`,
+    kind: "appinstall",
+    appId,
+    title,
+    database,
+    templateId: "blank:app",
     installedAt,
     installedBy
   };
@@ -628,8 +686,8 @@ async function replicationTasks() {
   ];
 }
 
-async function conflictDetails(id: string, scope?: PrincipalScope): Promise<ConflictDetails | null> {
-  const winning = await getDoc<CouchDocument & { _conflicts?: string[] }>("local", id, "?conflicts=true");
+async function conflictDetails(id: string, scope?: PrincipalScope, db = config.appDb): Promise<ConflictDetails | null> {
+  const winning = await getDoc<CouchDocument & { _conflicts?: string[] }>("local", id, "?conflicts=true", db);
   if (scope && winning.kind === "document" && !canReadDocument(winning, scope)) {
     throw new CouchError(403, { error: "forbidden", reason: "Document is not readable by current user" });
   }
@@ -637,7 +695,7 @@ async function conflictDetails(id: string, scope?: PrincipalScope): Promise<Conf
 
   const conflicts = await Promise.all(
     winning._conflicts.map((rev: string) =>
-      getDoc<CouchDocument>("local", id, `?rev=${encodeURIComponent(rev)}`)
+        getDoc<CouchDocument>("local", id, `?rev=${encodeURIComponent(rev)}`, db)
     )
   );
 
@@ -656,37 +714,37 @@ function mangoSelector(filters: ViewFilter[] = [], docType?: string) {
   return selector;
 }
 
-async function formForDocType(docType: string) {
-  return getDoc<FormDefinition>("local", `form:${docType}`);
+async function formForDocType(docType: string, db = config.appDb) {
+  return getDoc<FormDefinition>("local", `form:${docType}`, "", db);
 }
 
-async function workflowForDocType(docType: string): Promise<WorkflowDefinition | null> {
+async function workflowForDocType(docType: string, db = config.appDb): Promise<WorkflowDefinition | null> {
   try {
-    return await getDoc<WorkflowDefinition>("local", `workflow:${docType}`);
+    return await getDoc<WorkflowDefinition>("local", `workflow:${docType}`, "", db);
   } catch (error) {
     if (error instanceof CouchError && error.status === 404) return null;
     throw error;
   }
 }
 
-async function loadAuditPolicy(): Promise<AuditPolicy | undefined> {
+async function loadAuditPolicy(db = config.appDb): Promise<AuditPolicy | undefined> {
   try {
-    return await getDoc<AuditPolicy>("local", "audit:policy");
+    return await getDoc<AuditPolicy>("local", "audit:policy", "", db);
   } catch (error) {
     if (error instanceof CouchError && error.status === 404) return undefined;
     throw error;
   }
 }
 
-async function currentDefinitions(): Promise<DesignDocument[]> {
+async function currentDefinitions(db = config.appDb): Promise<DesignDocument[]> {
   const [appConfig, acl, auditPolicy, forms, views, workflows, agents] = await Promise.all([
-    getDoc<AppConfig>("local", "app:config"),
-    getDoc<AclRules>("local", "acl:rules"),
-    loadAuditPolicy(),
-    findDocs<FormDefinition>("local", { selector: { kind: "form" }, limit: 100 }),
-    findDocs<ViewDefinition>("local", { selector: { kind: "view" }, limit: 100 }),
-    findDocs<WorkflowDefinition>("local", { selector: { kind: "workflow" }, limit: 100 }),
-    findDocs<AgentDefinition>("local", { selector: { kind: "agent" }, limit: 100 })
+    getDoc<AppConfig>("local", "app:config", "", db),
+    getDoc<AclRules>("local", "acl:rules", "", db),
+    loadAuditPolicy(db),
+    findDocs<FormDefinition>("local", { selector: { kind: "form" }, limit: 100 }, db),
+    findDocs<ViewDefinition>("local", { selector: { kind: "view" }, limit: 100 }, db),
+    findDocs<WorkflowDefinition>("local", { selector: { kind: "workflow" }, limit: 100 }, db),
+    findDocs<AgentDefinition>("local", { selector: { kind: "agent" }, limit: 100 }, db)
   ]);
 
   const designDocs: DesignDocument[] = [appConfig, acl];
@@ -698,22 +756,22 @@ function generatedTemplateVersion() {
   return `v${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}`;
 }
 
-async function applyDefinition(definition: DesignDocument) {
+async function applyDefinition(definition: DesignDocument, db = config.appDb) {
   let currentRev: string | undefined;
   try {
-    currentRev = (await getDoc<DesignDocument>("local", definition._id))._rev;
+    currentRev = (await getDoc<DesignDocument>("local", definition._id, "", db))._rev;
   } catch (error) {
     if (!(error instanceof CouchError) || error.status !== 404) throw error;
   }
 
   const next = { ...stripDefinitionRev(definition), _rev: currentRev } as DesignDocument;
-  return putDoc("local", next);
+  return putDoc("local", next, db);
 }
 
 /** Whether a design document with this id already exists locally. */
-async function definitionExists(id: string): Promise<boolean> {
+async function definitionExists(id: string, db = config.appDb): Promise<boolean> {
   try {
-    await getDoc("local", id);
+    await getDoc("local", id, "", db);
     return true;
   } catch (error) {
     if (error instanceof CouchError && error.status === 404) return false;
@@ -721,27 +779,27 @@ async function definitionExists(id: string): Promise<boolean> {
   }
 }
 
-async function getReadableDocument(id: string, scope: PrincipalScope): Promise<BusinessDocument> {
-  const doc = await getDoc<BusinessDocument>("local", id);
+async function getReadableDocument(id: string, scope: PrincipalScope, db = config.appDb): Promise<BusinessDocument> {
+  const doc = await getDoc<BusinessDocument>("local", id, "", db);
   if (!canReadDocument(doc, scope)) {
     throw new CouchError(403, { error: "forbidden", reason: "Document is not readable by current user" });
   }
   return doc;
 }
 
-async function purgeUnreadableLocalDocs(scope: PrincipalScope) {
+async function purgeUnreadableLocalDocs(scope: PrincipalScope, db = config.appDb) {
   const [localResult, serverVisible] = await Promise.all([
     allDocs<BusinessDocument & { _conflicts?: string[] }>("local", {
       include_docs: true,
       conflicts: true
-    }),
+    }, db),
     findDocs<BusinessDocument>("server", {
       selector: {
         kind: "document",
         ...accessSelector(scope)
       },
       limit: 1000
-    })
+    }, db)
   ]);
   const serverVisibleIds = new Set(serverVisible.docs.map((doc) => doc._id));
   const result = localResult;
@@ -756,7 +814,7 @@ async function purgeUnreadableLocalDocs(scope: PrincipalScope) {
   }
 
   if (!Object.keys(revisions).length) return { purged: [] };
-  await purgeDocs("local", revisions);
+  await purgeDocs("local", revisions, db);
   return { purged: Object.keys(revisions) };
 }
 
@@ -768,14 +826,14 @@ async function purgeUnreadableLocalDocs(scope: PrincipalScope) {
  * nothing passes silently. The conflicting docs already appear in the conflict
  * queue; this report makes the state divergence explicit.
  */
-async function reconcileStates(): Promise<{
+async function reconcileStates(db = config.appDb): Promise<{
   stateConflicts: Array<{ id: string; states: string[] }>;
   invalidStates: Array<{ id: string; state: string }>;
 }> {
   const result = await allDocs<CouchDocument & { _conflicts?: string[] }>("local", {
     include_docs: true,
     conflicts: true
-  });
+  }, db);
 
   const stateConflicts: Array<{ id: string; states: string[] }> = [];
   const invalidStates: Array<{ id: string; state: string }> = [];
@@ -786,7 +844,7 @@ async function reconcileStates(): Promise<{
     if (!doc || doc.kind !== "document") continue;
 
     if (!workflowCache.has(doc.docType)) {
-      workflowCache.set(doc.docType, await workflowForDocType(doc.docType));
+      workflowCache.set(doc.docType, await workflowForDocType(doc.docType, db));
     }
     const def = workflowCache.get(doc.docType);
     if (!def) continue;
@@ -794,7 +852,7 @@ async function reconcileStates(): Promise<{
     if (doc._conflicts?.length) {
       const revs = await Promise.all(
         doc._conflicts.map((rev) =>
-          getDoc<BusinessDocument>("local", doc._id, `?rev=${encodeURIComponent(rev)}`)
+          getDoc<BusinessDocument>("local", doc._id, `?rev=${encodeURIComponent(rev)}`, db)
         )
       );
       const states = Array.from(new Set([currentState(doc, def), ...revs.map((rev) => currentState(rev, def))]));
@@ -823,17 +881,17 @@ async function reconcileStates(): Promise<{
  * `runAgentHandler` rather than crashing the tick or its siblings. Devices never
  * run agents; results replicate like any other local write.
  */
-async function loadAgentState(appId: string): Promise<AgentState> {
+async function loadAgentState(appId: string, db = config.appDb): Promise<AgentState> {
   try {
-    return await getDoc<AgentState>("local", "agent:state");
+    return await getDoc<AgentState>("local", "agent:state", "", db);
   } catch {
     return { _id: "agent:state", kind: "agentstate", appId, lastSeq: "0", lastRunAt: {} };
   }
 }
 
-async function existingRunKeys(): Promise<Set<string>> {
+async function existingRunKeys(db = config.appDb): Promise<Set<string>> {
   // {kind:"agentrun"} binds the m2 index (kind is its leading field) — no new index.
-  const result = await findDocs<AgentRun>("local", { selector: { kind: "agentrun" }, limit: 2000 });
+  const result = await findDocs<AgentRun>("local", { selector: { kind: "agentrun" }, limit: 2000 }, db);
   return new Set(result.docs.map((run) => agentRunKey(run.agentId, run.sourceRev)));
 }
 
@@ -860,15 +918,15 @@ function buildAgentRun(
   };
 }
 
-async function runAgentsOnce(now = timestamp()): Promise<{ ran: number; runs: AgentRun[] }> {
-  const agents = (await findDocs<AgentDefinition>("local", { selector: { kind: "agent" }, limit: 100 })).docs.filter(
+async function runAgentsOnce(now = timestamp(), db = config.appDb): Promise<{ ran: number; runs: AgentRun[] }> {
+  const agents = (await findDocs<AgentDefinition>("local", { selector: { kind: "agent" }, limit: 100 }, db)).docs.filter(
     agentIsEnabled
   );
   if (!agents.length) return { ran: 0, runs: [] };
 
-  const appConfig = await getDoc<AppConfig>("local", "app:config");
-  const state = await loadAgentState(appConfig.appId);
-  const seenKeys = await existingRunKeys();
+  const appConfig = await getDoc<AppConfig>("local", "app:config", "", db);
+  const state = await loadAgentState(appConfig.appId, db);
+  const seenKeys = await existingRunKeys(db);
   const runs: AgentRun[] = [];
 
   // Scheduled agents that are due (dedupe via the per-agent lastRunAt stamp).
@@ -882,7 +940,7 @@ async function runAgentsOnce(now = timestamp()): Promise<{ ran: number; runs: Ag
   // On-change agents: drain the changes feed since the checkpoint.
   const onChangeAgents = agents.filter((agent) => agent.trigger.type === "on-change");
   if (onChangeAgents.length) {
-    const changes = await changesSince("local", state.lastSeq);
+    const changes = await changesSince("local", state.lastSeq, db);
     for (const change of changes.results) {
       const doc = change.doc;
       if (change.deleted || !doc || doc.kind !== "document") continue;
@@ -900,8 +958,8 @@ async function runAgentsOnce(now = timestamp()): Promise<{ ran: number; runs: Ag
 
   // Write runs first, then advance the checkpoint — a crash in between only
   // causes a (deduped) replay, never a lost run.
-  for (const run of runs) await putDoc("local", run);
-  await putDoc("local", state);
+  for (const run of runs) await putDoc("local", run, db);
+  await putDoc("local", state, db);
   return { ran: runs.length, runs };
 }
 
@@ -910,8 +968,8 @@ async function runAgentsOnce(now = timestamp()): Promise<{ ran: number; runs: Ag
 // two manual POSTs) could double-run or 409 on the checkpoint write. Chaining
 // every tick onto the previous one makes the runtime single-writer in-process.
 let agentTickChain: Promise<unknown> = Promise.resolve();
-function runAgents(now = timestamp()): Promise<{ ran: number; runs: AgentRun[] }> {
-  const next = agentTickChain.catch(() => undefined).then(() => runAgentsOnce(now));
+function runAgents(now = timestamp(), db = config.appDb): Promise<{ ran: number; runs: AgentRun[] }> {
+  const next = agentTickChain.catch(() => undefined).then(() => runAgentsOnce(now, db));
   agentTickChain = next;
   return next;
 }
@@ -925,9 +983,9 @@ function runAgents(now = timestamp()): Promise<{ ran: number; runs: AgentRun[] }
 // but `shouldAudit` skips non-`document` kinds, so the recorder never audits
 // itself. Audit visibility mirrors the source document's `readers`.
 
-async function loadAuditState(appId: string): Promise<AuditState> {
+async function loadAuditState(appId: string, db = config.appDb): Promise<AuditState> {
   try {
-    return await getDoc<AuditState>("local", "audit:state");
+    return await getDoc<AuditState>("local", "audit:state", "", db);
   } catch {
     return { _id: "audit:state", kind: "auditstate", appId, lastSeq: "0" };
   }
@@ -954,17 +1012,17 @@ function buildAuditEvent(
   };
 }
 
-async function runAuditOnce(now = timestamp()): Promise<{ recorded: number; pruned: number }> {
-  const appConfig = await getDoc<AppConfig>("local", "app:config");
-  const policy = await loadAuditPolicy();
-  const state = await loadAuditState(appConfig.appId);
+async function runAuditOnce(now = timestamp(), db = config.appDb): Promise<{ recorded: number; pruned: number }> {
+  const appConfig = await getDoc<AppConfig>("local", "app:config", "", db);
+  const policy = await loadAuditPolicy(db);
+  const state = await loadAuditState(appConfig.appId, db);
 
   // One read serves both dedupe (docId@rev) and retention. {kind:"auditevent"}
   // binds the kind-leading m2 index — no new index.
-  const existing = await findDocs<AuditEvent>("local", { selector: { kind: "auditevent" }, limit: 2000 });
+  const existing = await findDocs<AuditEvent>("local", { selector: { kind: "auditevent" }, limit: 2000 }, db);
   const seen = new Set(existing.docs.map((event) => `${event.docId}@${event.rev}`));
 
-  const changes = await changesSince("local", state.lastSeq);
+  const changes = await changesSince("local", state.lastSeq, db);
   const events: AuditEvent[] = [];
   for (const change of changes.results) {
     const doc = change.doc as BusinessDocument | undefined;
@@ -977,14 +1035,14 @@ async function runAuditOnce(now = timestamp()): Promise<{ recorded: number; prun
 
   // Write events first, then advance the checkpoint — a crash in between only
   // re-drains the same (deduped) change, never loses one.
-  for (const event of events) await putDoc("local", event);
+  for (const event of events) await putDoc("local", event, db);
   state.lastSeq = String(changes.last_seq);
-  await putDoc("local", state);
+  await putDoc("local", state, db);
 
   // Retention: tombstone-DELETE expired events (replicates the prune to devices),
   // distinct from M5 `_purge` revocation. New events use `now`, never expired.
   const expired = existing.docs.filter((event) => eventIsExpired(event, now, policy));
-  for (const event of expired) await deleteDoc("local", event._id, event._rev ?? "");
+  for (const event of expired) await deleteDoc("local", event._id, event._rev ?? "", db);
   return { recorded: events.length, pruned: expired.length };
 }
 
@@ -992,30 +1050,30 @@ async function runAuditOnce(now = timestamp()): Promise<{ recorded: number; prun
 // at the start and written at the end, so overlapping ticks could double-record
 // or 409 the checkpoint write.
 let auditTickChain: Promise<unknown> = Promise.resolve();
-function runAudit(now = timestamp()): Promise<{ recorded: number; pruned: number }> {
-  const next = auditTickChain.catch(() => undefined).then(() => runAuditOnce(now));
+function runAudit(now = timestamp(), db = config.appDb): Promise<{ recorded: number; pruned: number }> {
+  const next = auditTickChain.catch(() => undefined).then(() => runAuditOnce(now, db));
   auditTickChain = next;
   return next;
 }
 
 /** Best-effort delete audit at the API delete path; never blocks the delete. */
-async function recordDeleteAudit(doc: BusinessDocument, actor: string, now = timestamp()): Promise<void> {
+async function recordDeleteAudit(doc: BusinessDocument, actor: string, now = timestamp(), db = config.appDb): Promise<void> {
   try {
-    const policy = await loadAuditPolicy();
+    const policy = await loadAuditPolicy(db);
     if (!shouldAudit(doc, policy)) return;
-    const appConfig = await getDoc<AppConfig>("local", "app:config");
-    await putDoc("local", buildAuditEvent(appConfig.appId, doc, "deleted", now, actor));
+    const appConfig = await getDoc<AppConfig>("local", "app:config", "", db);
+    await putDoc("local", buildAuditEvent(appConfig.appId, doc, "deleted", now, actor), db);
   } catch (error) {
     console.error("delete audit failed", error);
   }
 }
 
-async function selectOptionsForForm(form: FormDefinition, scope: PrincipalScope): Promise<SelectOptionsByField> {
+async function selectOptionsForForm(form: FormDefinition, scope: PrincipalScope, db = config.appDb): Promise<SelectOptionsByField> {
   const entries = await Promise.all(
     form.fields
       .filter((field) => field.type === "select" && field.source)
       .map(async (field) => {
-        const docs = await getBusinessDocs("local", field.source!.docType, scope);
+        const docs = await getBusinessDocs("local", field.source!.docType, scope, db);
         return [
           field.name,
           docs.map((doc) => ({
@@ -1044,15 +1102,16 @@ app.get(
 );
 
 app.get(
-  "/api/status",
+  ["/api/status", "/api/apps/:appId/status"],
   asyncRoute(async (request, response) => {
-    await requireSession(request);
+    const appContext = await appContextFromRequest(request);
+    await requireAppSession(request, appContext.database);
     const [localReachable, serverReachable, localDbExists, serverDbExists, replications] =
       await Promise.all([
         ping("local"),
         ping("server"),
-        dbExists("local"),
-        dbExists("server"),
+        dbExists("local", appContext.database),
+        dbExists("server", appContext.database),
         replicationTasks()
       ]);
 
@@ -1403,25 +1462,94 @@ app.post(
 );
 
 app.post(
-  "/api/replicate",
+  "/api/platform/apps",
   asyncRoute(async (request, response) => {
-    const scope = await requireSession(request);
-    const replication = await replicateBidirectional(scope);
-    const purge = await purgeUnreadableLocalDocs(scope);
-    const reconcile = await reconcileStates();
+    const scope = await requireSession(request, "manager");
+    const state = await platformState(request);
+    if (!state.setupComplete) {
+      response.status(409).json({ error: "setup_required", reason: "Complete setup before creating apps" });
+      return;
+    }
+
+    const appId = (typeof request.body.appId === "string" ? request.body.appId : "").trim();
+    const title = (typeof request.body.title === "string" ? request.body.title : "").trim();
+    const docType = (typeof request.body.docType === "string" ? request.body.docType : "").trim();
+    const docTypeTitle = (typeof request.body.docTypeTitle === "string" ? request.body.docTypeTitle : "").trim();
+    const errors = [
+      ...validateAppId(appId),
+      ...validateDocType(docType).map((error) => ({ ...error, field: error.field === "docType" ? "docType" : error.field }))
+    ];
+    if (!title) errors.push({ field: "title", message: "App title is required" });
+    if (!docTypeTitle) errors.push({ field: "docTypeTitle", message: "Document type title is required" });
+    if (errors.length) {
+      response.status(422).json({ error: "app_validation_failed", errors });
+      return;
+    }
+
+    const database = databaseForAppId(appId);
+    const install = appInstallRecord(appId, title, database, timestamp(), scopeUser(scope));
+    const [installExists, localDbExists, serverDbExists] = await Promise.all([
+      docExistsInDb("local", config.platformDb, install._id),
+      dbExists("local", database),
+      dbExists("server", database)
+    ]);
+    if (installExists || localDbExists || serverDbExists) {
+      response.status(409).json({ error: "conflict", reason: `App "${appId}" already exists` });
+      return;
+    }
+
+    const definitions = scaffoldBlankApp(appId, title, docType, docTypeTitle, scopeUser(scope), database);
+    const definitionErrors = validateTemplateDefinitions({
+      kind: "template",
+      templateId: `blank:${appId}`,
+      appId,
+      version: "created",
+      createdAt: timestamp(),
+      createdBy: scopeUser(scope),
+      source: "catalog",
+      definitions
+    });
+    if (definitionErrors.length) {
+      response.status(422).json({ error: "definition_validation_failed", errors: definitionErrors });
+      return;
+    }
+
+    await Promise.all([ensureNamedDb("local", database), ensureNamedDb("server", database)]);
+    await Promise.all([ensureIndexes("local", database), ensureIndexes("server", database)]);
+    await Promise.all([
+      bulkDocs("local", definitions, database),
+      bulkDocs("server", definitions, database)
+    ]);
+    await Promise.all([
+      upsertDocInDb("local", config.platformDb, install),
+      upsertDocInDb("server", config.platformDb, install)
+    ]);
+    response.status(201).json(await platformState(request));
+  })
+);
+
+app.post(
+  ["/api/replicate", "/api/apps/:appId/replicate"],
+  asyncRoute(async (request, response) => {
+    const appContext = await appContextFromRequest(request);
+    const scope = await requireAppSession(request, appContext.database);
+    const replication = await replicateBidirectional(scope, appContext.database);
+    const purge = await purgeUnreadableLocalDocs(scope, appContext.database);
+    const reconcile = await reconcileStates(appContext.database);
     response.json({ ...replication, purge, reconcile });
   })
 );
 
 app.get(
-  "/api/definitions",
+  ["/api/definitions", "/api/apps/:appId/definitions"],
   asyncRoute(async (request, response) => {
-    const scope = await requireSession(request);
+    const appContext = await appContextFromRequest(request);
+    const scope = await requireAppSession(request, appContext.database);
     const [appConfig, forms, views, workflows] = await Promise.all([
-      getDesignDoc("local", "app:config"),
-      findDocs<FormDefinition>("local", { selector: { kind: "form" }, limit: 100 }),
-      findDocs<ViewDefinition>("local", { selector: { kind: "view" }, limit: 100 }),
-      findDocs<WorkflowDefinition>("local", { selector: { kind: "workflow" }, limit: 100 })
+      getDesignDoc("local", "app:config", appContext.database),
+      findDocs<FormDefinition>("local", { selector: { kind: "form" }, limit: 100 }, appContext.database),
+      findDocs<ViewDefinition>("local", { selector: { kind: "view" }, limit: 100 }, appContext.database),
+      findDocs<WorkflowDefinition>("local", { selector: { kind: "workflow" }, limit: 100 }, appContext.database)
     ]);
     response.json({
       appConfig,
@@ -1438,10 +1566,11 @@ app.get(
 );
 
 app.post(
-  "/api/templates/export",
+  ["/api/templates/export", "/api/apps/:appId/templates/export"],
   asyncRoute(async (request, response) => {
-    const scope = await requireSession(request, "designer");
-    const appConfig = await getDoc<AppConfig>("local", "app:config");
+    const appContext = await appContextFromRequest(request);
+    const scope = await requireAppSession(request, appContext.database, "designer");
+    const appConfig = await getDoc<AppConfig>("local", "app:config", "", appContext.database);
     const version = String(request.body.version || generatedTemplateVersion());
     const source = String(request.body.source || "local");
     const template: TemplateArtifact = {
@@ -1452,39 +1581,41 @@ app.post(
       createdAt: timestamp(),
       createdBy: scopeUser(scope),
       source,
-      definitions: await currentDefinitions()
+      definitions: await currentDefinitions(appContext.database)
     };
     response.json(template);
   })
 );
 
 app.post(
-  "/api/templates/diff",
+  ["/api/templates/diff", "/api/apps/:appId/templates/diff"],
   asyncRoute(async (request, response) => {
-    await requireSession(request, "designer");
+    const appContext = await appContextFromRequest(request);
+    await requireAppSession(request, appContext.database, "designer");
     const template = request.body.template as TemplateArtifact;
     const errors = validateTemplateDefinitions(template);
     if (errors.length) {
       response.status(422).json({ error: "template_validation_failed", errors });
       return;
     }
-    response.json(diffTemplateDefinitions(await currentDefinitions(), template.definitions));
+    response.json(diffTemplateDefinitions(await currentDefinitions(appContext.database), template.definitions));
   })
 );
 
 app.post(
-  "/api/templates/apply",
+  ["/api/templates/apply", "/api/apps/:appId/templates/apply"],
   asyncRoute(async (request, response) => {
-    await requireSession(request, "designer");
+    const appContext = await appContextFromRequest(request);
+    await requireAppSession(request, appContext.database, "designer");
     const template = request.body.template as TemplateArtifact;
     const errors = validateTemplateDefinitions(template);
     if (errors.length) {
       response.status(422).json({ error: "template_validation_failed", errors });
       return;
     }
-    const before = await currentDefinitions();
+    const before = await currentDefinitions(appContext.database);
     const diff = diffTemplateDefinitions(before, template.definitions);
-    const results = await Promise.all(normalizeDefinitions(template.definitions).map(applyDefinition));
+    const results = await Promise.all(normalizeDefinitions(template.definitions).map((definition) => applyDefinition(definition, appContext.database)));
     response.json({
       ok: true,
       templateId: template.templateId,
@@ -1495,20 +1626,22 @@ app.post(
 );
 
 app.get(
-  "/api/documents",
+  ["/api/documents", "/api/apps/:appId/documents"],
   asyncRoute(async (request, response) => {
-    const scope = await requireSession(request);
+    const appContext = await appContextFromRequest(request);
+    const scope = await requireAppSession(request, appContext.database);
     const docType = typeof request.query.docType === "string" ? request.query.docType : "expense";
-    const docs = await getBusinessDocs("local", docType, scope);
+    const docs = await getBusinessDocs("local", docType, scope, appContext.database);
     response.json(docs);
   })
 );
 
 app.get(
-  "/api/views/:id/documents",
+  ["/api/views/:id/documents", "/api/apps/:appId/views/:id/documents"],
   asyncRoute(async (request, response) => {
-    const scope = await requireSession(request);
-    const view = await getDoc<ViewDefinition>("local", routeParam(request.params.id));
+    const appContext = await appContextFromRequest(request);
+    const scope = await requireAppSession(request, appContext.database);
+    const view = await getDoc<ViewDefinition>("local", routeParam(request.params.id), "", appContext.database);
     const sort = view.sort?.[0];
     const body: Record<string, unknown> = {
       selector: { ...mangoSelector(view.filters, view.docType), ...accessSelector(scope) },
@@ -1522,13 +1655,13 @@ app.get(
       const filtersByState = view.filters?.some((filter) => filter.field === "state");
       body.use_index = filtersByState ? "m3-docType-state-updatedAt" : "m2-kind-docType-updatedAt";
     }
-    const result = await findDocs<BusinessDocument>("local", body);
+    const result = await findDocs<BusinessDocument>("local", body, appContext.database);
     const readable = result.docs.filter((doc) => canReadDocument(doc, scope));
     // M9: free-text search narrows the ACL-scoped set with the shared matcher,
     // so it never widens visibility. Form (local) supplies the searchable fields.
     const query = typeof request.query.q === "string" ? request.query.q : "";
     if (query.trim()) {
-      const form = await formForDocType(view.docType);
+      const form = await formForDocType(view.docType, appContext.database);
       response.json(searchDocuments(readable, form, query));
       return;
     }
@@ -1537,28 +1670,31 @@ app.get(
 );
 
 app.get(
-  "/api/documents/:id",
+  ["/api/documents/:id", "/api/apps/:appId/documents/:id"],
   asyncRoute(async (request, response) => {
-    response.json(await getReadableDocument(routeParam(request.params.id), await requireSession(request)));
+    const appContext = await appContextFromRequest(request);
+    response.json(await getReadableDocument(routeParam(request.params.id), await requireAppSession(request, appContext.database), appContext.database));
   })
 );
 
 app.get(
-  "/api/forms/:docType/options",
+  ["/api/forms/:docType/options", "/api/apps/:appId/forms/:docType/options"],
   asyncRoute(async (request, response) => {
-    const scope = await requireSession(request);
-    const form = await formForDocType(routeParam(request.params.docType));
-    response.json(await selectOptionsForForm(form, scope));
+    const appContext = await appContextFromRequest(request);
+    const scope = await requireAppSession(request, appContext.database);
+    const form = await formForDocType(routeParam(request.params.docType), appContext.database);
+    response.json(await selectOptionsForForm(form, scope, appContext.database));
   })
 );
 
 app.post(
-  "/api/documents",
+  ["/api/documents", "/api/apps/:appId/documents"],
   asyncRoute(async (request, response) => {
-    const scope = await requireSession(request, "author");
+    const appContext = await appContextFromRequest(request);
+    const scope = await requireAppSession(request, appContext.database, "author");
     const docType = request.body.docType ?? "expense";
-    const form = await formForDocType(docType);
-    const optionsByField = await selectOptionsForForm(form, scope);
+    const form = await formForDocType(docType, appContext.database);
+    const optionsByField = await selectOptionsForForm(form, scope, appContext.database);
     const payload = applyComputedFields(form, normalizePayload(form, request.body.payload ?? {}));
     const errors = validatePayload(form, payload, undefined, optionsByField);
     if (errors.length) {
@@ -1569,23 +1705,24 @@ app.post(
     // M12: stamp the document generically so any scaffolded docType is correct
     // (was hardcoded to expense/vendor); readers come from the access policy.
     const doc = createDocument(docType, payload, scopeUser(scope), readers);
-    const result = await putDoc("local", doc);
-    response.status(201).json({ ...doc, _rev: result.rev });
+    const result = await putDoc("local", { ...doc, appId: appContext.appId }, appContext.database);
+    response.status(201).json({ ...doc, appId: appContext.appId, _rev: result.rev });
   })
 );
 
 app.put(
-  "/api/documents/:id",
+  ["/api/documents/:id", "/api/apps/:appId/documents/:id"],
   asyncRoute(async (request, response) => {
-    const scope = await requireSession(request);
-    const existing = await getReadableDocument(routeParam(request.params.id), scope);
+    const appContext = await appContextFromRequest(request);
+    const scope = await requireAppSession(request, appContext.database);
+    const existing = await getReadableDocument(routeParam(request.params.id), scope, appContext.database);
     if (!canEditDocument(existing, scope)) {
       response.status(403).json({ error: "forbidden", reason: "Document is not editable by current user" });
       return;
     }
-    const form = await formForDocType(existing.docType);
+    const form = await formForDocType(existing.docType, appContext.database);
     const payload = applyComputedFields(form, normalizePayload(form, request.body.payload ?? existing.payload), existing);
-    const errors = validatePayload(form, payload, existing, await selectOptionsForForm(form, scope));
+    const errors = validatePayload(form, payload, existing, await selectOptionsForForm(form, scope, appContext.database));
     if (errors.length) {
       response.status(422).json({ error: "validation_failed", errors });
       return;
@@ -1596,34 +1733,36 @@ app.put(
       updatedBy: scopeUser(scope),
       payload
     };
-    const result = await putDoc("local", updated);
+    const result = await putDoc("local", updated, appContext.database);
     response.json({ ...updated, _rev: result.rev });
   })
 );
 
 app.delete(
-  "/api/documents/:id",
+  ["/api/documents/:id", "/api/apps/:appId/documents/:id"],
   asyncRoute(async (request, response) => {
-    const scope = await requireSession(request);
-    const existing = await getReadableDocument(routeParam(request.params.id), scope);
+    const appContext = await appContextFromRequest(request);
+    const scope = await requireAppSession(request, appContext.database);
+    const existing = await getReadableDocument(routeParam(request.params.id), scope, appContext.database);
     if (!canEditDocument(existing, scope)) {
       response.status(403).json({ error: "forbidden", reason: "Document is not editable by current user" });
       return;
     }
     // Record the delete before removing the doc — the envelope (readers/actor) is
     // gone afterward, and the CDC drain can't see a deleted body. Best-effort.
-    await recordDeleteAudit(existing, scopeUser(scope));
-    await deleteDoc("local", existing._id, existing._rev ?? "");
+    await recordDeleteAudit(existing, scopeUser(scope), timestamp(), appContext.database);
+    await deleteDoc("local", existing._id, existing._rev ?? "", appContext.database);
     response.status(204).end();
   })
 );
 
 app.post(
-  "/api/documents/:id/transition",
+  ["/api/documents/:id/transition", "/api/apps/:appId/documents/:id/transition"],
   asyncRoute(async (request, response) => {
-    const scope = await requireSession(request);
-    const existing = await getReadableDocument(routeParam(request.params.id), scope);
-    const def = await workflowForDocType(existing.docType);
+    const appContext = await appContextFromRequest(request);
+    const scope = await requireAppSession(request, appContext.database);
+    const existing = await getReadableDocument(routeParam(request.params.id), scope, appContext.database);
+    const def = await workflowForDocType(existing.docType, appContext.database);
     if (!def) {
       response.status(404).json({ error: "not_found", reason: `No workflow for ${existing.docType}` });
       return;
@@ -1635,7 +1774,7 @@ app.post(
       return;
     }
     const updated: BusinessDocument = { ...result.document, updatedAt: timestamp(), updatedBy: scopeUser(scope) };
-    const put = await putDoc("local", updated);
+    const put = await putDoc("local", updated, appContext.database);
     // M7: the state change is now committed and authoritative. The transition's
     // effect handler (if any) runs best-effort AFTER the write — server-only,
     // never throwing, never reverting — so a failing effect cannot block or
@@ -1668,48 +1807,53 @@ app.get(
 );
 
 app.post(
-  "/api/agents/run",
+  ["/api/agents/run", "/api/apps/:appId/agents/run"],
   asyncRoute(async (request, response) => {
-    await requireSession(request, "designer");
-    const result = await runAgents();
+    const appContext = await appContextFromRequest(request);
+    await requireAppSession(request, appContext.database, "designer");
+    const result = await runAgents(timestamp(), appContext.database);
     response.json({ ok: true, ran: result.ran, runs: result.runs });
   })
 );
 
 app.get(
-  "/api/agents",
+  ["/api/agents", "/api/apps/:appId/agents"],
   asyncRoute(async (request, response) => {
-    await requireSession(request, "designer");
-    const result = await findDocs<AgentDefinition>("local", { selector: { kind: "agent" }, limit: 100 });
+    const appContext = await appContextFromRequest(request);
+    await requireAppSession(request, appContext.database, "designer");
+    const result = await findDocs<AgentDefinition>("local", { selector: { kind: "agent" }, limit: 100 }, appContext.database);
     response.json(result.docs.sort((left, right) => left._id.localeCompare(right._id)));
   })
 );
 
 app.get(
-  "/api/agents/runs",
+  ["/api/agents/runs", "/api/apps/:appId/agents/runs"],
   asyncRoute(async (request, response) => {
-    await requireSession(request, "designer");
-    const result = await findDocs<AgentRun>("local", { selector: { kind: "agentrun" }, limit: 200 });
+    const appContext = await appContextFromRequest(request);
+    await requireAppSession(request, appContext.database, "designer");
+    const result = await findDocs<AgentRun>("local", { selector: { kind: "agentrun" }, limit: 200 }, appContext.database);
     response.json(result.docs.sort((left, right) => right.startedAt.localeCompare(left.startedAt)));
   })
 );
 
 app.post(
-  "/api/audit/run",
+  ["/api/audit/run", "/api/apps/:appId/audit/run"],
   asyncRoute(async (request, response) => {
-    await requireSession(request, "designer");
-    const result = await runAudit();
+    const appContext = await appContextFromRequest(request);
+    await requireAppSession(request, appContext.database, "designer");
+    const result = await runAudit(timestamp(), appContext.database);
     response.json({ ok: true, ...result });
   })
 );
 
 app.get(
-  "/api/audit",
+  ["/api/audit", "/api/apps/:appId/audit"],
   asyncRoute(async (request, response) => {
-    const principals = principalsFor(await requireSession(request));
+    const appContext = await appContextFromRequest(request);
+    const principals = principalsFor(await requireAppSession(request, appContext.database));
     const docId = typeof request.query.docId === "string" ? request.query.docId : undefined;
     const docType = typeof request.query.docType === "string" ? request.query.docType : undefined;
-    const result = await findDocs<AuditEvent>("local", { selector: { kind: "auditevent" }, limit: 500 });
+    const result = await findDocs<AuditEvent>("local", { selector: { kind: "auditevent" }, limit: 500 }, appContext.database);
     // ACL: audit visibility mirrors the source document's readers (A5).
     const events = result.docs
       .filter((event) => event.readers.some((reader) => principals.includes(reader)))
@@ -1721,13 +1865,14 @@ app.get(
 );
 
 app.get(
-  "/api/conflicts",
+  ["/api/conflicts", "/api/apps/:appId/conflicts"],
   asyncRoute(async (request, response) => {
-    const scope = await requireSession(request);
+    const appContext = await appContextFromRequest(request);
+    const scope = await requireAppSession(request, appContext.database);
     const result = await allDocs<CouchDocument>("local", {
       include_docs: true,
       conflicts: true
-    });
+    }, appContext.database);
     const docs = result.rows
       .map((row) => row.doc)
       .filter((doc): doc is CouchDocument => Boolean((doc as (CouchDocument & { _conflicts?: string[] }) | undefined)?._conflicts?.length))
@@ -1737,22 +1882,23 @@ app.get(
 );
 
 app.put(
-  "/api/definitions/:id",
+  ["/api/definitions/:id", "/api/apps/:appId/definitions/:id"],
   asyncRoute(async (request, response) => {
-    await requireSession(request, "designer");
+    const appContext = await appContextFromRequest(request);
+    await requireAppSession(request, appContext.database, "designer");
     const id = routeParam(request.params.id);
     if (!id.startsWith("form:") && !id.startsWith("view:") && !id.startsWith("workflow:") && !id.startsWith("agent:")) {
       response.status(400).json({ error: "bad_request", reason: "Only form:*, view:*, workflow:*, and agent:* docs are editable" });
       return;
     }
-    const existing = await getDoc<CouchDocument>("local", id);
+    const existing = await getDoc<CouchDocument>("local", id, "", appContext.database);
     const next = { ...request.body, _id: id, _rev: existing._rev } as CouchDocument;
     const errors = validateDesignDefinition(next);
     if (errors.length) {
       response.status(422).json({ error: "definition_validation_failed", errors });
       return;
     }
-    const result = await putDoc("local", next);
+    const result = await putDoc("local", next, appContext.database);
     response.json({ ...next, _rev: result.rev });
   })
 );
@@ -1762,9 +1908,10 @@ app.put(
 // validated by the shared validators, and written local-first (upsert), exactly
 // like any other definition.
 app.post(
-  "/api/document-types",
+  ["/api/document-types", "/api/apps/:appId/document-types"],
   asyncRoute(async (request, response) => {
-    await requireSession(request, "designer");
+    const appContext = await appContextFromRequest(request);
+    await requireAppSession(request, appContext.database, "designer");
     const docType = (typeof request.body.docType === "string" ? request.body.docType : "").trim();
     const title = typeof request.body.title === "string" ? request.body.title : "";
 
@@ -1773,28 +1920,29 @@ app.post(
       response.status(422).json({ error: "document_type_validation_failed", errors: slugErrors });
       return;
     }
-    if ((await definitionExists(`form:${docType}`)) || (await definitionExists(`view:${docType}`))) {
+    if ((await definitionExists(`form:${docType}`, appContext.database)) || (await definitionExists(`view:${docType}`, appContext.database))) {
       response.status(409).json({ error: "conflict", reason: `Document type "${docType}" already exists` });
       return;
     }
 
-    const appConfig = await getDoc<AppConfig>("local", "app:config");
+    const appConfig = await getDoc<AppConfig>("local", "app:config", "", appContext.database);
     const { form, view } = scaffoldDocumentType(appConfig.appId, docType, title);
     const errors = [...validateDesignDefinition(form), ...validateDesignDefinition(view)];
     if (errors.length) {
       response.status(422).json({ error: "definition_validation_failed", errors });
       return;
     }
-    await applyDefinition(form);
-    await applyDefinition(view);
+    await applyDefinition(form, appContext.database);
+    await applyDefinition(view, appContext.database);
     response.status(201).json({ form, view });
   })
 );
 
 app.get(
-  "/api/conflicts/:id",
+  ["/api/conflicts/:id", "/api/apps/:appId/conflicts/:id"],
   asyncRoute(async (request, response) => {
-    const details = await conflictDetails(routeParam(request.params.id), await requireSession(request));
+    const appContext = await appContextFromRequest(request);
+    const details = await conflictDetails(routeParam(request.params.id), await requireAppSession(request, appContext.database), appContext.database);
     if (!details) {
       response.status(404).json({ error: "not_found", reason: "Document has no local conflicts" });
       return;
@@ -1804,10 +1952,11 @@ app.get(
 );
 
 app.post(
-  "/api/conflicts/:id/resolve",
+  ["/api/conflicts/:id/resolve", "/api/apps/:appId/conflicts/:id/resolve"],
   asyncRoute(async (request, response) => {
-    const scope = await requireSession(request);
-    const details = await conflictDetails(routeParam(request.params.id), scope);
+    const appContext = await appContextFromRequest(request);
+    const scope = await requireAppSession(request, appContext.database);
+    const details = await conflictDetails(routeParam(request.params.id), scope, appContext.database);
     if (!details) {
       response.status(404).json({ error: "not_found", reason: "Document has no local conflicts" });
       return;
@@ -1841,9 +1990,9 @@ app.post(
             _conflicts: undefined,
             ...(request.body.document ?? {})
           };
-    const result = await putDoc("local", resolved);
+    const result = await putDoc("local", resolved, appContext.database);
 
-    await Promise.all(details.conflicts.map((conflict) => deleteDoc("local", conflict._id, conflict._rev ?? "")));
+    await Promise.all(details.conflicts.map((conflict) => deleteDoc("local", conflict._id, conflict._rev ?? "", appContext.database)));
 
     response.json({ ...resolved, _rev: result.rev });
   })

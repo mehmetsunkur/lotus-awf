@@ -112,8 +112,8 @@ export async function deleteDb(target: CouchTarget, db = config.appDb) {
   }
 }
 
-export async function getDoc<T>(target: CouchTarget, id: string, query = ""): Promise<T> {
-  return couchRequest<T>(target, `/${config.appDb}/${encodeURIComponent(id)}${query}`);
+export async function getDoc<T>(target: CouchTarget, id: string, query = "", db = config.appDb): Promise<T> {
+  return couchRequest<T>(target, `/${db}/${encodeURIComponent(id)}${query}`);
 }
 
 export async function getDocFromDb<T>(target: CouchTarget, db: string, id: string, query = ""): Promise<T> {
@@ -122,53 +122,54 @@ export async function getDocFromDb<T>(target: CouchTarget, db: string, id: strin
 
 export async function putDoc<T extends { _id: string; _rev?: string }>(
   target: CouchTarget,
-  doc: T
+  doc: T,
+  db = config.appDb
 ): Promise<{ ok: boolean; id: string; rev: string }> {
-  return couchRequest(target, `/${config.appDb}/${encodeURIComponent(doc._id)}`, {
+  return couchRequest(target, `/${db}/${encodeURIComponent(doc._id)}`, {
     method: "PUT",
     body: JSON.stringify(doc)
   });
 }
 
-export async function deleteDoc(target: CouchTarget, id: string, rev: string) {
-  return couchRequest(target, `/${config.appDb}/${encodeURIComponent(id)}?rev=${encodeURIComponent(rev)}`, {
+export async function deleteDoc(target: CouchTarget, id: string, rev: string, db = config.appDb) {
+  return couchRequest(target, `/${db}/${encodeURIComponent(id)}?rev=${encodeURIComponent(rev)}`, {
     method: "DELETE"
   });
 }
 
-export async function purgeDocs(target: CouchTarget, revisions: Record<string, string[]>) {
-  return couchRequest(target, `/${config.appDb}/_purge`, {
+export async function purgeDocs(target: CouchTarget, revisions: Record<string, string[]>, db = config.appDb) {
+  return couchRequest(target, `/${db}/_purge`, {
     method: "POST",
     body: JSON.stringify(revisions)
   });
 }
 
-export async function bulkDocs(target: CouchTarget, docs: object[]) {
-  return couchRequest(target, `/${config.appDb}/_bulk_docs`, {
+export async function bulkDocs(target: CouchTarget, docs: object[], db = config.appDb) {
+  return couchRequest(target, `/${db}/_bulk_docs`, {
     method: "POST",
     body: JSON.stringify({ docs })
   });
 }
 
-export async function createIndex(target: CouchTarget, name: string, fields: string[]) {
+export async function createIndex(target: CouchTarget, name: string, fields: string[], db = config.appDb) {
   // Pin the design-doc id to the index name (ddoc === name). Without this CouchDB
   // auto-generates a hashed ddoc id, and a `use_index: "<name>"` hint — which
   // CouchDB resolves as a ddoc id — never binds, silently falling back to
   // auto-selection. With an explicit ddoc the name resolves and hints bind.
-  return couchRequest(target, `/${config.appDb}/_index`, {
+  return couchRequest(target, `/${db}/_index`, {
     method: "POST",
     body: JSON.stringify({ index: { fields }, name, ddoc: name, type: "json" })
   });
 }
 
-export async function allDocs<T>(target: CouchTarget, options: Record<string, unknown> = {}) {
+export async function allDocs<T>(target: CouchTarget, options: Record<string, unknown> = {}, db = config.appDb) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(options)) {
     params.set(key, typeof value === "string" ? value : JSON.stringify(value));
   }
   return couchRequest<{ rows: Array<CouchRow<T>> }>(
     target,
-    `/${config.appDb}/_all_docs?${params.toString()}`
+    `/${db}/_all_docs?${params.toString()}`
   );
 }
 
@@ -178,43 +179,43 @@ export type ChangesResponse = {
 };
 
 /** Drain the CouchDB `_changes` feed since a checkpoint sequence (M8 agent CDC). */
-export async function changesSince(target: CouchTarget, since: string): Promise<ChangesResponse> {
+export async function changesSince(target: CouchTarget, since: string, db = config.appDb): Promise<ChangesResponse> {
   const params = new URLSearchParams({ since, include_docs: "true" });
-  return couchRequest<ChangesResponse>(target, `/${config.appDb}/_changes?${params.toString()}`);
+  return couchRequest<ChangesResponse>(target, `/${db}/_changes?${params.toString()}`);
 }
 
-export async function findDocs<T>(target: CouchTarget, body: Record<string, unknown>) {
-  return couchRequest<{ docs: T[] }>(target, `/${config.appDb}/_find`, {
+export async function findDocs<T>(target: CouchTarget, body: Record<string, unknown>, db = config.appDb) {
+  return couchRequest<{ docs: T[] }>(target, `/${db}/_find`, {
     method: "POST",
     body: JSON.stringify(body)
   });
 }
 
-export async function docsByKind<T>(target: CouchTarget, kind: string): Promise<T[]> {
+export async function docsByKind<T>(target: CouchTarget, kind: string, db = config.appDb): Promise<T[]> {
   const result = await allDocs<T & { kind?: string }>(target, {
     include_docs: true,
     conflicts: true
-  });
+  }, db);
   return result.rows
     .map((row) => row.doc)
     .filter((doc): doc is T & { kind?: string } => Boolean(doc && doc.kind === kind)) as T[];
 }
 
-export async function allRuntimeDocs(target: CouchTarget) {
+export async function allRuntimeDocs(target: CouchTarget, db = config.appDb) {
   const result = await allDocs<CouchDocument>(target, {
     include_docs: true,
     conflicts: true
-  });
+  }, db);
   return result.rows
     .map((row) => row.doc)
     .filter((doc): doc is CouchDocument => Boolean(doc && !("_deleted" in doc)));
 }
 
-export async function getDesignDoc(target: CouchTarget, id: string) {
-  return getDoc(target, id);
+export async function getDesignDoc(target: CouchTarget, id: string, db = config.appDb) {
+  return getDoc(target, id, "", db);
 }
 
-export async function getBusinessDocs(target: CouchTarget, docType = "expense", scope?: PrincipalScope) {
+export async function getBusinessDocs(target: CouchTarget, docType = "expense", scope?: PrincipalScope, db = config.appDb) {
   const result = await findDocs<BusinessDocument>(target, {
     selector: {
       kind: "document",
@@ -224,15 +225,15 @@ export async function getBusinessDocs(target: CouchTarget, docType = "expense", 
     sort: [{ updatedAt: "desc" }],
     use_index: "m2-kind-docType-updatedAt",
     limit: 200
-  });
+  }, db);
   return result.docs.filter((doc) => !("_deleted" in doc));
 }
 
-export async function replicateOnce(direction: "push" | "pull", selector?: Record<string, unknown>) {
+export async function replicateOnce(direction: "push" | "pull", selector?: Record<string, unknown>, db = config.appDb) {
   const body =
     direction === "push"
-      ? { source: replicationDbUrl("local"), target: replicationDbUrl("server"), create_target: true, selector }
-      : { source: replicationDbUrl("server"), target: replicationDbUrl("local"), create_target: true, selector };
+      ? { source: replicationDbUrl("local", db), target: replicationDbUrl("server", db), create_target: true, selector }
+      : { source: replicationDbUrl("server", db), target: replicationDbUrl("local", db), create_target: true, selector };
 
   return couchRequest("local", "/_replicate", {
     method: "POST",
@@ -240,21 +241,21 @@ export async function replicateOnce(direction: "push" | "pull", selector?: Recor
   });
 }
 
-export async function replicateBidirectional(scope?: PrincipalScope) {
-  const push = await replicateOnce("push");
+export async function replicateBidirectional(scope?: PrincipalScope, db = config.appDb) {
+  const push = await replicateOnce("push", undefined, db);
   if (!scope) {
-    const pull = await replicateOnce("pull");
+    const pull = await replicateOnce("pull", undefined, db);
     return { push, pull };
   }
 
   const pullDesign = await replicateOnce("pull", {
     kind: {
-      $in: ["app", "form", "view", "workflow", "acl"]
+      $in: ["app", "form", "view", "workflow", "acl", "auditpolicy", "agent"]
     }
-  });
+  }, db);
   const pullBusiness = await replicateOnce("pull", {
     kind: "document",
     ...accessSelector(scope)
-  });
+  }, db);
   return { push, pull: { design: pullDesign, business: pullBusiness } };
 }

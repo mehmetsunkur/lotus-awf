@@ -141,6 +141,8 @@ async function runAssertions() {
     "/login.nsf",
     "/catalog.nsf",
     "/catalog.nsf/views/system-apps",
+    "/field-reports.nsf",
+    "/field-reports.nsf/views/report",
     "/expense.nsf",
     "/expense.nsf/views/vendors",
     "/expense.nsf/designer/forms/expense"
@@ -189,6 +191,39 @@ async function runAssertions() {
   assert.equal(configured.domainName, "deploy.test", "domain name should persist");
   assert.equal(configured.adminUser, "admin", "admin username should persist");
   assert.equal(configured.installedApps.length, 0, "setup should still land on an empty app catalog");
+
+  const appCreated = await request<{
+    installedApps: Array<{ appId: string; database: string }>;
+  }>("/api/platform/apps", {
+    method: "POST",
+    ok: 201,
+    body: { appId: "field-reports", title: "Field Reports", docType: "report", docTypeTitle: "Report" }
+  });
+  assert.ok(appCreated.installedApps.some((app) => app.appId === "field-reports" && app.database === "field-reports_app"), "catalog app creation should install a business app");
+
+  const appDefinitions = await request<{ appConfig: { appId: string }; forms: Array<{ _id: string }>; views: Array<{ _id: string }> }>(
+    "/api/apps/field-reports/definitions"
+  );
+  assert.equal(appDefinitions.appConfig.appId, "field-reports", "app-scoped definitions should load the created app");
+  assert.ok(appDefinitions.forms.some((form) => form._id === "form:report"), "created app should have a starter form");
+  assert.ok(appDefinitions.views.some((view) => view._id === "view:report"), "created app should have a starter view");
+
+  const report = await request<{ _id: string; appId: string; docType: string }>("/api/apps/field-reports/documents", {
+    ok: 201,
+    body: { docType: "report", payload: { title: "Deploy field report" } }
+  });
+  assert.equal(report.appId, "field-reports", "created app documents should be stamped with the app id");
+  assert.equal(report.docType, "report", "created app starter document type should be usable");
+
+  const reports = await request<Array<{ _id: string }>>("/api/apps/field-reports/views/view%3Areport/documents");
+  assert.ok(reports.some((doc) => doc._id === report._id), "created app starter view should list documents");
+
+  const appTemplate = await request<{ appId: string; definitions: Array<{ _id: string; kind: string }> }>("/api/apps/field-reports/templates/export", {
+    body: { version: "deploy-test", source: "deploy-test" }
+  });
+  assert.equal(appTemplate.appId, "field-reports", "created app template export should be app-scoped");
+  assert.ok(appTemplate.definitions.some((definition) => definition._id === "form:report"), "created app template should include starter design");
+  assert.equal(appTemplate.definitions.some((definition) => definition.kind === "document"), false, "created app template should exclude business docs");
 
   const installed = await request<{
     installedApps: Array<{ appId: string }>;

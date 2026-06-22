@@ -81,8 +81,7 @@ type Definitions = {
 
 type Draft = Record<string, unknown>;
 type EditableDefinition = FormDefinition | ViewDefinition | WorkflowDefinition;
-type NsfAppRoute = "setup" | "catalog" | "expense";
-type PlatformRoute = NsfAppRoute | "login";
+type PlatformRoute = string | "login";
 type NsfRoute =
   | { kind: "home" }
   | { kind: "view"; viewId: string }
@@ -99,20 +98,20 @@ type RouteState = {
 const DEFAULT_EXPENSE_VIEW_ID = "view:my-expenses";
 const DEFAULT_SETUP_VIEW_ID = "view:people";
 const DEFAULT_CATALOG_VIEW_ID = "view:system-apps";
-const NSF_APP_ROUTES: NsfAppRoute[] = ["setup", "catalog", "expense"];
+const SYSTEM_APP_ROUTES = new Set(["setup", "catalog"]);
 const SETUP_VIEW_IDS = [DEFAULT_SETUP_VIEW_ID, "view:groups", "view:installed-apps"];
 const CATALOG_VIEW_IDS = [DEFAULT_CATALOG_VIEW_ID, "view:installed-apps", "view:sample-templates"];
 
 const routeForPath = (path: string): PlatformRoute => {
   if (path === "/login.nsf") return "login";
   const match = path.match(/^\/([a-z0-9-]+)\.nsf(?:\/|$)/);
-  const slug = match?.[1] as NsfAppRoute | undefined;
-  if (slug && NSF_APP_ROUTES.includes(slug)) return slug;
+  const slug = match?.[1];
+  if (slug) return slug;
   return "catalog";
 };
 
 const pathForRoute = (route: PlatformRoute) =>
-  route === "setup" ? "/setup.nsf" : route === "login" ? "/login.nsf" : route === "expense" ? "/expense.nsf" : "/catalog.nsf";
+  route === "login" ? "/login.nsf" : `/${route}.nsf`;
 
 const viewIdFromSlug = (slug: string) => `view:${slug}`;
 const viewSlugFromId = (id: string) => id.replace(/^view:/, "");
@@ -120,7 +119,7 @@ const formIdFromDocType = (docType: string) => `form:${docType}`;
 const workflowIdFromDocType = (docType: string) => `workflow:${docType}`;
 const docTypeFromDefinitionId = (id: string) => id.replace(/^(form|workflow):/, "");
 
-const defaultViewForApp = (app: NsfAppRoute) => {
+const defaultViewForApp = (app: PlatformRoute) => {
   if (app === "setup") return DEFAULT_SETUP_VIEW_ID;
   if (app === "catalog") return DEFAULT_CATALOG_VIEW_ID;
   return DEFAULT_EXPENSE_VIEW_ID;
@@ -146,8 +145,9 @@ const routeStateForPath = (path: string): RouteState => {
   return { app, nsf: nsfRouteForPath(path, app) };
 };
 
-const pathForNsfRoute = (app: NsfAppRoute, route: NsfRoute) => {
+const pathForNsfRoute = (app: Exclude<PlatformRoute, "login">, route: NsfRoute) => {
   const prefix = `/${app}.nsf`;
+  if (route.kind === "home") return prefix;
   if (route.kind === "view") return `${prefix}/views/${encodeURIComponent(viewSlugFromId(route.viewId))}`;
   if (route.kind === "document") return `${prefix}/documents/${encodeURIComponent(route.docId)}`;
   if (route.kind === "new") return `${prefix}/new/${encodeURIComponent(route.docType)}`;
@@ -162,6 +162,8 @@ const pathForNsfRoute = (app: NsfAppRoute, route: NsfRoute) => {
 
 const pathForRouteState = (route: RouteState) =>
   route.app === "login" ? pathForRoute(route.app) : pathForNsfRoute(route.app, route.nsf);
+
+const isBusinessApp = (app: PlatformRoute): app is Exclude<PlatformRoute, "login"> => app !== "login" && !SYSTEM_APP_ROUTES.has(app);
 
 const nsfRouteKey = (route: NsfRoute) => {
   if (route.kind === "view") return `view:${route.viewId}`;
@@ -1430,6 +1432,8 @@ function AppCatalog({
   onOpenSetup,
   onInstallExpense,
   onOpenExpense,
+  onOpenApp,
+  onCreateApp,
   onRefresh,
   onLogout
 }: {
@@ -1441,9 +1445,15 @@ function AppCatalog({
   onOpenSetup: () => void;
   onInstallExpense: () => void;
   onOpenExpense: () => void;
+  onOpenApp: (appId: string) => void;
+  onCreateApp: (payload: { appId: string; title: string; docType: string; docTypeTitle: string }) => void;
   onRefresh: () => void;
   onLogout: () => void;
 }) {
+  const [appId, setAppId] = React.useState("");
+  const [title, setTitle] = React.useState("");
+  const [docType, setDocType] = React.useState("");
+  const [docTypeTitle, setDocTypeTitle] = React.useState("");
   const expenseInstalled =
     state.installedApps.some((app) => app.appId === "expense") ||
     state.samples.some((sample) => sample.appId === "expense" && sample.installed);
@@ -1508,17 +1518,43 @@ function AppCatalog({
                   <h2>Installed apps</h2>
                 </div>
               </div>
+              <form
+                className="editorGrid compactForm"
+                data-testid="create-app-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  onCreateApp({ appId, title, docType, docTypeTitle });
+                }}
+              >
+                <label>
+                  App id
+                  <input value={appId} data-testid="create-app-id" onChange={(event) => setAppId(event.target.value)} placeholder="field-reports" />
+                </label>
+                <label>
+                  App title
+                  <input value={title} data-testid="create-app-title" onChange={(event) => setTitle(event.target.value)} placeholder="Field Reports" />
+                </label>
+                <label>
+                  First document type
+                  <input value={docType} data-testid="create-app-doc-type" onChange={(event) => setDocType(event.target.value)} placeholder="report" />
+                </label>
+                <label>
+                  Document type title
+                  <input value={docTypeTitle} data-testid="create-app-doc-title" onChange={(event) => setDocTypeTitle(event.target.value)} placeholder="Report" />
+                </label>
+                <button className="primary" type="submit" disabled={busy} data-testid="create-app-submit">
+                  <FilePlus2 size={16} /> Create app
+                </button>
+              </form>
               {state.installedApps.length ? (
                 <div className="definitionList">
                   {state.installedApps.map((app) => (
                     <article className="definitionCard" key={app._id} data-testid={`installed-app-${app.appId}`}>
                       <strong>{app.title}</strong>
                       <span>{app.database}</span>
-                      {app.appId === "expense" && (
-                        <button className="primary" onClick={onOpenExpense} disabled={busy} data-testid="open-expense">
-                          <List size={16} /> Open
-                        </button>
-                      )}
+                      <button className="primary" onClick={() => onOpenApp(app.appId)} disabled={busy} data-testid={`open-app-${app.appId}`}>
+                        <List size={16} /> Open
+                      </button>
                     </article>
                   ))}
                 </div>
@@ -1816,6 +1852,7 @@ function App() {
   const activeDocType = routeDocType ?? selected?.docType ?? selectedView?.docType;
   const selectedForm = definitions?.forms.find((form) => form.docType === activeDocType) ?? definitions?.form;
   const selectedWorkflow = definitions?.workflows.find((workflow) => workflow.docType === selectedForm?.docType);
+  const businessApiBase = isBusinessApp(route.app) ? `/api/apps/${encodeURIComponent(route.app)}` : "/api";
   const editableDefinitions = React.useMemo(
     () => [...(definitions?.forms ?? []), ...(definitions?.views ?? []), ...(definitions?.workflows ?? [])],
     [definitions]
@@ -1826,19 +1863,20 @@ function App() {
   }, [selectedId]);
 
   const refresh = React.useCallback(async (viewId = selectedViewId, options: { autoSelectFirst?: boolean } = {}) => {
+    const base = isBusinessApp(route.app) ? `/api/apps/${encodeURIComponent(route.app)}` : "/api";
     const [nextStatus, nextDefinitions, nextConflicts] = await Promise.all([
-      api<ReplicationStatus>("/api/status"),
-      api<Definitions>("/api/definitions"),
-      api<CouchDocument[]>("/api/conflicts")
+      api<ReplicationStatus>(`${base}/status`),
+      api<Definitions>(`${base}/definitions`),
+      api<CouchDocument[]>(`${base}/conflicts`)
     ]);
     const view = nextDefinitions.views.find((item) => item._id === viewId) ?? nextDefinitions.views[0];
     const query = searchQueryRef.current.trim();
-    const documentsUrl = view
-      ? `/api/views/${encodeURIComponent(view._id)}/documents${query ? `?q=${encodeURIComponent(query)}` : ""}`
+    const appDocumentsUrl = view
+      ? `${base}/views/${encodeURIComponent(view._id)}/documents${query ? `?q=${encodeURIComponent(query)}` : ""}`
       : "";
-    const nextDocuments = view ? await api<BusinessDocument[]>(documentsUrl) : [];
+    const nextDocuments = view ? await api<BusinessDocument[]>(appDocumentsUrl) : [];
     const form = nextDefinitions.forms.find((item) => item.docType === view?.docType) ?? nextDefinitions.forms[0];
-    const nextOptions = form ? await api<SelectOptionsByField>(`/api/forms/${encodeURIComponent(form.docType)}/options`) : {};
+    const nextOptions = form ? await api<SelectOptionsByField>(`${base}/forms/${encodeURIComponent(form.docType)}/options`) : {};
 
     setStatus(nextStatus);
     setDefinitions(nextDefinitions);
@@ -1847,7 +1885,7 @@ function App() {
     setOptionsByField(nextOptions);
     if (!nextDefinitions.views.some((viewDef) => viewDef._id === viewId) && view) setSelectedViewId(view._id);
     if ((options.autoSelectFirst ?? true) && !selectedIdRef.current && nextDocuments[0]) setSelectedId(nextDocuments[0]._id);
-  }, [selectedViewId]);
+  }, [route.app, selectedViewId]);
 
   const refreshPlatform = React.useCallback(async () => {
     setPlatformState(await api<PlatformState>("/api/platform/state"));
@@ -1869,8 +1907,8 @@ function App() {
     navigate({ app, nsf: { kind: "home" } }, replace);
   }, [navigate]);
 
-  const navigateNsf = React.useCallback((nsf: NsfRoute, replace = false, appOverride?: NsfAppRoute) => {
-    const app: NsfAppRoute = appOverride ?? (route.app === "login" ? "catalog" : route.app);
+  const navigateNsf = React.useCallback((nsf: NsfRoute, replace = false, appOverride?: Exclude<PlatformRoute, "login">) => {
+    const app: Exclude<PlatformRoute, "login"> = appOverride ?? (route.app === "login" ? "catalog" : route.app);
     navigate({ app, nsf }, replace);
   }, [navigate, route.app]);
 
@@ -1956,16 +1994,20 @@ function App() {
   }, [platformState?.session.authenticated, platformState?.setupComplete, route.app]);
 
   React.useEffect(() => {
-    if (!platformState || route.app !== "expense" || !platformState.session.authenticated) return;
-    const expenseInstalled =
-      platformState.installedApps.some((app) => app.appId === "expense") ||
-      platformState.samples.some((sample) => sample.appId === "expense" && sample.installed);
-    if (!expenseInstalled) {
+    if (!platformState || !isBusinessApp(route.app) || !platformState.session.authenticated) return;
+    const appInstalled =
+      platformState.installedApps.some((app) => app.appId === route.app) ||
+      platformState.samples.some((sample) => sample.appId === route.app && sample.installed);
+    if (!appInstalled) {
       navigateApp("catalog", true);
       return;
     }
     if (route.nsf.kind === "home") {
-      navigateNsf({ kind: "view", viewId: selectedViewId || DEFAULT_EXPENSE_VIEW_ID }, true, "expense");
+      if (window.location.pathname !== `/${route.app}.nsf`) {
+        navigateNsf({ kind: "view", viewId: route.app === "expense" ? DEFAULT_EXPENSE_VIEW_ID : selectedViewId }, true, route.app);
+        return;
+      }
+      run(route.app === "expense" ? "Open Expense" : "Open app", () => refresh(selectedViewId, { autoSelectFirst: true }), { refreshAfter: false });
       return;
     }
 
@@ -1990,11 +2032,11 @@ function App() {
       selectedIdRef.current = route.nsf.docId;
       setSelectedId(route.nsf.docId);
     }
-    run("Open Expense", () => refresh(targetViewId, { autoSelectFirst: route.nsf.kind !== "document" }), { refreshAfter: false });
+    run(route.app === "expense" ? "Open Expense" : "Open app", () => refresh(targetViewId, { autoSelectFirst: route.nsf.kind !== "document" }), { refreshAfter: false });
   }, [navigateApp, navigateNsf, platformState, refresh, route.app, route.nsf, selectedViewId]);
 
   React.useEffect(() => {
-    if (!definitions || route.app !== "expense") return;
+    if (!definitions || !isBusinessApp(route.app)) return;
     const nsfRoute = route.nsf;
     if (nsfRoute.kind === "view") {
       if (definitions.views.some((view) => view._id === nsfRoute.viewId)) {
@@ -2005,7 +2047,7 @@ function App() {
           setSelectedViewId(nsfRoute.viewId);
         }
       } else {
-        navigateNsf({ kind: "view", viewId: DEFAULT_EXPENSE_VIEW_ID }, true, "expense");
+        navigateNsf({ kind: "view", viewId: definitions.views[0]?._id ?? DEFAULT_EXPENSE_VIEW_ID }, true, route.app);
       }
       return;
     }
@@ -2015,13 +2057,13 @@ function App() {
         setFocusedDocument(undefined);
         setDocumentRouteError("");
       } else {
-        navigateNsf({ kind: "view", viewId: DEFAULT_EXPENSE_VIEW_ID }, true, "expense");
+        navigateNsf({ kind: "view", viewId: definitions.views[0]?._id ?? DEFAULT_EXPENSE_VIEW_ID }, true, route.app);
       }
       return;
     }
     if (nsfRoute.kind === "designerHome") {
       const firstDefinition = editableDefinitions[0];
-      if (firstDefinition) navigateNsf({ kind: "designer", definitionId: firstDefinition._id }, true, "expense");
+      if (firstDefinition) navigateNsf({ kind: "designer", definitionId: firstDefinition._id }, true, route.app);
       return;
     }
     if (nsfRoute.kind === "designer") {
@@ -2029,14 +2071,14 @@ function App() {
         setSelectedDefinitionId(nsfRoute.definitionId);
       } else {
         const firstDefinition = editableDefinitions[0];
-        navigateNsf(firstDefinition ? { kind: "designer", definitionId: firstDefinition._id } : { kind: "view", viewId: DEFAULT_EXPENSE_VIEW_ID }, true, "expense");
+        navigateNsf(firstDefinition ? { kind: "designer", definitionId: firstDefinition._id } : { kind: "view", viewId: definitions.views[0]?._id ?? DEFAULT_EXPENSE_VIEW_ID }, true, route.app);
       }
     }
   }, [definitions, editableDefinitions, navigateNsf, route.app, route.nsf, selectedViewId]);
 
   React.useEffect(() => {
     const nsfRoute = route.nsf;
-    if (route.app !== "expense" || nsfRoute.kind !== "document") {
+    if (!isBusinessApp(route.app) || nsfRoute.kind !== "document") {
       setFocusedDocument(undefined);
       setDocumentRouteError("");
       return;
@@ -2046,13 +2088,13 @@ function App() {
     setSelectedId(nsfRoute.docId);
     selectedIdRef.current = nsfRoute.docId;
     setDocumentRouteError("");
-    api<BusinessDocument>(`/api/documents/${encodeURIComponent(nsfRoute.docId)}`)
+    api<BusinessDocument>(`${businessApiBase}/documents/${encodeURIComponent(nsfRoute.docId)}`)
       .then(async (doc) => {
         if (cancelled) return;
         setFocusedDocument(doc);
         const form = definitions?.forms.find((item) => item.docType === doc.docType);
         if (form) {
-          setOptionsByField(await api<SelectOptionsByField>(`/api/forms/${encodeURIComponent(form.docType)}/options`));
+          setOptionsByField(await api<SelectOptionsByField>(`${businessApiBase}/forms/${encodeURIComponent(form.docType)}/options`));
         }
       })
       .catch((error) => {
@@ -2063,7 +2105,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [definitions?.forms, route.app, route.nsf]);
+  }, [businessApiBase, definitions?.forms, route.app, route.nsf]);
 
   // Load the selected document's audit trail (read-only; recorded server-side).
   React.useEffect(() => {
@@ -2072,7 +2114,7 @@ function App() {
       return;
     }
     let cancelled = false;
-    api<AuditEvent[]>(`/api/audit?docId=${encodeURIComponent(selectedId)}`)
+    api<AuditEvent[]>(`${businessApiBase}/audit?docId=${encodeURIComponent(selectedId)}`)
       .then((events) => {
         if (!cancelled) setAuditEvents(events);
       })
@@ -2082,14 +2124,14 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [selectedId, documents]);
+  }, [businessApiBase, selectedId, documents]);
 
   const shellActions = {
     status,
     busy,
     onSetup: () => run("Setup", () => api("/api/setup", { method: "POST" })),
     onReset: () => run("Reset", () => api("/api/reset", { method: "POST" })),
-    onReplicate: () => run("Sync", () => api("/api/replicate", { method: "POST" })),
+    onReplicate: () => run("Sync", () => api(`${businessApiBase}/replicate`, { method: "POST" })),
     onConflictDemo: () => run("Data conflict demo", () => api("/api/demo/conflict", { method: "POST" })),
     onDefinitionConflictDemo: () =>
       run("Definition conflict demo", () => api("/api/demo/definition-conflict", { method: "POST" })),
@@ -2147,7 +2189,7 @@ function App() {
     );
   }
 
-  if (route.app !== "expense") {
+  if (!isBusinessApp(route.app)) {
     if (route.app === "setup") {
       const runDirectory = (label: string, task: () => Promise<void>) => run(label, task, { refreshAfter: false });
       const setupViewId = route.nsf.kind === "view" && SETUP_VIEW_IDS.includes(route.nsf.viewId) ? route.nsf.viewId : DEFAULT_SETUP_VIEW_ID;
@@ -2243,6 +2285,21 @@ function App() {
           )
         }
         onOpenExpense={() => navigateNsf({ kind: "home" }, false, "expense")}
+        onOpenApp={(appId) => navigateNsf({ kind: "home" }, false, appId)}
+        onCreateApp={(payload) =>
+          run(
+            "Create app",
+            async () => {
+              const nextState = await api<PlatformState>("/api/platform/apps", {
+                method: "POST",
+                body: JSON.stringify(payload)
+              });
+              setPlatformState(nextState);
+              navigateNsf({ kind: "home" }, false, payload.appId);
+            },
+            { refreshAfter: false }
+          )
+        }
       />
     );
   }
@@ -2276,14 +2333,14 @@ function App() {
   };
   const saveDefinition = (id: string, doc: EditableDefinition) =>
     run("Save local definition", () =>
-      api(`/api/definitions/${encodeURIComponent(id)}`, {
+      api(`${businessApiBase}/definitions/${encodeURIComponent(id)}`, {
         method: "PUT",
         body: JSON.stringify(doc)
       })
     );
   const createType = (docType: string, title: string) =>
     run("Create document type", async () => {
-      await api("/api/document-types", { method: "POST", body: JSON.stringify({ docType, title }) });
+      await api(`${businessApiBase}/document-types`, { method: "POST", body: JSON.stringify({ docType, title }) });
       // The subsequent refresh reloads definitions; point the designer at the
       // new type so it is immediately editable.
       setSelectedDefinitionId(`form:${docType}`);
@@ -2293,13 +2350,13 @@ function App() {
   const saveDocument = (payload: Record<string, unknown>) =>
     run("Save local document", async () => {
       if (selected) {
-        const updated = await api<BusinessDocument>(`/api/documents/${encodeURIComponent(selected._id)}`, {
+        const updated = await api<BusinessDocument>(`${businessApiBase}/documents/${encodeURIComponent(selected._id)}`, {
           method: "PUT",
           body: JSON.stringify({ payload })
         });
         if (focusedDocument?._id === updated._id) setFocusedDocument(updated);
       } else {
-        const created = await api<BusinessDocument>("/api/documents", {
+        const created = await api<BusinessDocument>(`${businessApiBase}/documents`, {
           method: "POST",
           body: JSON.stringify({ docType: selectedForm.docType, payload })
         });
@@ -2346,7 +2403,7 @@ function App() {
             activeDocType={isCreateRoute ? routeDocType : undefined}
             onSelectView={selectView}
             onNewDocument={startNewDocument}
-            onOpenDesigner={() => window.open(pathForNsfRoute("expense", { kind: "designerHome" }), "_blank", "noopener,noreferrer")}
+            onOpenDesigner={() => window.open(pathForNsfRoute(route.app, { kind: "designerHome" }), "_blank", "noopener,noreferrer")}
           />
           <div className="workspaceMain">
             {isDocumentRoute || isCreateRoute ? (
@@ -2367,14 +2424,14 @@ function App() {
                     auditEvents={isCreateRoute ? [] : auditEvents}
                     onTransition={(doc, transitionId) =>
                       run("Transition", () =>
-                        api(`/api/documents/${encodeURIComponent(doc._id)}/transition`, {
+                        api(`${businessApiBase}/documents/${encodeURIComponent(doc._id)}/transition`, {
                           method: "POST",
                           body: JSON.stringify({ transition: transitionId })
                         })
                       )
                     }
                     onDelete={(doc) =>
-                      run("Delete local document", () => api(`/api/documents/${encodeURIComponent(doc._id)}`, { method: "DELETE" }))
+                      run("Delete local document", () => api(`${businessApiBase}/documents/${encodeURIComponent(doc._id)}`, { method: "DELETE" }))
                     }
                     onSave={saveDocument}
                   />
@@ -2428,7 +2485,7 @@ function App() {
                     documents={documents}
                     selectedId={selectedId}
                     onSelect={(doc) => navigateNsf({ kind: "document", docId: doc._id })}
-                    documentHref={(doc) => pathForNsfRoute("expense", { kind: "document", docId: doc._id })}
+                    documentHref={(doc) => pathForNsfRoute(route.app, { kind: "document", docId: doc._id })}
                   />
                   <DocumentForm
                     form={selectedForm}
@@ -2440,14 +2497,14 @@ function App() {
                     auditEvents={auditEvents}
                     onTransition={(doc, transitionId) =>
                       run("Transition", () =>
-                        api(`/api/documents/${encodeURIComponent(doc._id)}/transition`, {
+                        api(`${businessApiBase}/documents/${encodeURIComponent(doc._id)}/transition`, {
                           method: "POST",
                           body: JSON.stringify({ transition: transitionId })
                         })
                       )
                     }
                     onDelete={(doc) =>
-                      run("Delete local document", () => api(`/api/documents/${encodeURIComponent(doc._id)}`, { method: "DELETE" }))
+                      run("Delete local document", () => api(`${businessApiBase}/documents/${encodeURIComponent(doc._id)}`, { method: "DELETE" }))
                     }
                     onSave={saveDocument}
                   />
@@ -2462,13 +2519,13 @@ function App() {
         selectedConflict={selectedConflict}
         onInspect={(doc) =>
           run("Load conflict", async () => {
-            setSelectedConflict(await api<ConflictDetails>(`/api/conflicts/${encodeURIComponent(doc._id)}`));
+            setSelectedConflict(await api<ConflictDetails>(`${businessApiBase}/conflicts/${encodeURIComponent(doc._id)}`));
           })
         }
         onResolve={(doc) =>
           selectedConflict
             ? run("Resolve conflict", () =>
-                api(`/api/conflicts/${encodeURIComponent(selectedConflict.document._id)}/resolve`, {
+                api(`${businessApiBase}/conflicts/${encodeURIComponent(selectedConflict.document._id)}/resolve`, {
                   method: "POST",
                   // chosenRev elects which revision (and its state/history) wins.
                   body: JSON.stringify(
