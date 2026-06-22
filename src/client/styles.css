@@ -217,8 +217,7 @@ button:disabled {
   margin-bottom: 16px;
 }
 
-.setupShell,
-.catalogShell {
+.setupShell {
   max-width: 980px;
 }
 

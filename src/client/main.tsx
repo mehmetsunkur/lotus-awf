@@ -81,7 +81,8 @@ type Definitions = {
 
 type Draft = Record<string, unknown>;
 type EditableDefinition = FormDefinition | ViewDefinition | WorkflowDefinition;
-type PlatformRoute = "setup" | "login" | "catalog" | "expense";
+type NsfAppRoute = "setup" | "catalog" | "expense";
+type PlatformRoute = NsfAppRoute | "login";
 type NsfRoute =
   | { kind: "home" }
   | { kind: "view"; viewId: string }
@@ -96,12 +97,17 @@ type RouteState = {
 };
 
 const DEFAULT_EXPENSE_VIEW_ID = "view:my-expenses";
+const DEFAULT_SETUP_VIEW_ID = "view:people";
+const DEFAULT_CATALOG_VIEW_ID = "view:system-apps";
+const NSF_APP_ROUTES: NsfAppRoute[] = ["setup", "catalog", "expense"];
+const SETUP_VIEW_IDS = [DEFAULT_SETUP_VIEW_ID, "view:groups", "view:installed-apps"];
+const CATALOG_VIEW_IDS = [DEFAULT_CATALOG_VIEW_ID, "view:installed-apps", "view:sample-templates"];
 
 const routeForPath = (path: string): PlatformRoute => {
-  if (path === "/setup.nsf") return "setup";
   if (path === "/login.nsf") return "login";
-  if (path === "/expense.nsf") return "expense";
-  if (path.startsWith("/expense.nsf/")) return "expense";
+  const match = path.match(/^\/([a-z0-9-]+)\.nsf(?:\/|$)/);
+  const slug = match?.[1] as NsfAppRoute | undefined;
+  if (slug && NSF_APP_ROUTES.includes(slug)) return slug;
   return "catalog";
 };
 
@@ -114,8 +120,15 @@ const formIdFromDocType = (docType: string) => `form:${docType}`;
 const workflowIdFromDocType = (docType: string) => `workflow:${docType}`;
 const docTypeFromDefinitionId = (id: string) => id.replace(/^(form|workflow):/, "");
 
-const nsfRouteForPath = (path: string): NsfRoute => {
-  const prefix = "/expense.nsf";
+const defaultViewForApp = (app: NsfAppRoute) => {
+  if (app === "setup") return DEFAULT_SETUP_VIEW_ID;
+  if (app === "catalog") return DEFAULT_CATALOG_VIEW_ID;
+  return DEFAULT_EXPENSE_VIEW_ID;
+};
+
+const nsfRouteForPath = (path: string, app: PlatformRoute): NsfRoute => {
+  if (app === "login") return { kind: "home" };
+  const prefix = `/${app}.nsf`;
   if (path === prefix || !path.startsWith(`${prefix}/`)) return { kind: "home" };
   const parts = path.slice(prefix.length + 1).split("/").filter(Boolean).map(decodeURIComponent);
   if (parts[0] === "views" && parts[1]) return { kind: "view", viewId: viewIdFromSlug(parts[1]) };
@@ -128,26 +141,27 @@ const nsfRouteForPath = (path: string): NsfRoute => {
   return { kind: "home" };
 };
 
-const routeStateForPath = (path: string): RouteState => ({
-  app: routeForPath(path),
-  nsf: nsfRouteForPath(path)
-});
+const routeStateForPath = (path: string): RouteState => {
+  const app = routeForPath(path);
+  return { app, nsf: nsfRouteForPath(path, app) };
+};
 
-const pathForNsfRoute = (route: NsfRoute) => {
-  if (route.kind === "view") return `/expense.nsf/views/${encodeURIComponent(viewSlugFromId(route.viewId))}`;
-  if (route.kind === "document") return `/expense.nsf/documents/${encodeURIComponent(route.docId)}`;
-  if (route.kind === "new") return `/expense.nsf/new/${encodeURIComponent(route.docType)}`;
-  if (route.kind === "designerHome") return "/expense.nsf/designer";
+const pathForNsfRoute = (app: NsfAppRoute, route: NsfRoute) => {
+  const prefix = `/${app}.nsf`;
+  if (route.kind === "view") return `${prefix}/views/${encodeURIComponent(viewSlugFromId(route.viewId))}`;
+  if (route.kind === "document") return `${prefix}/documents/${encodeURIComponent(route.docId)}`;
+  if (route.kind === "new") return `${prefix}/new/${encodeURIComponent(route.docType)}`;
+  if (route.kind === "designerHome") return `${prefix}/designer`;
   if (route.kind === "designer") {
-    if (route.definitionId.startsWith("form:")) return `/expense.nsf/designer/forms/${encodeURIComponent(docTypeFromDefinitionId(route.definitionId))}`;
-    if (route.definitionId.startsWith("view:")) return `/expense.nsf/designer/views/${encodeURIComponent(viewSlugFromId(route.definitionId))}`;
-    if (route.definitionId.startsWith("workflow:")) return `/expense.nsf/designer/workflows/${encodeURIComponent(docTypeFromDefinitionId(route.definitionId))}`;
+    if (route.definitionId.startsWith("form:")) return `${prefix}/designer/forms/${encodeURIComponent(docTypeFromDefinitionId(route.definitionId))}`;
+    if (route.definitionId.startsWith("view:")) return `${prefix}/designer/views/${encodeURIComponent(viewSlugFromId(route.definitionId))}`;
+    if (route.definitionId.startsWith("workflow:")) return `${prefix}/designer/workflows/${encodeURIComponent(docTypeFromDefinitionId(route.definitionId))}`;
   }
-  return `/expense.nsf/views/${encodeURIComponent(viewSlugFromId(DEFAULT_EXPENSE_VIEW_ID))}`;
+  return `${prefix}/views/${encodeURIComponent(viewSlugFromId(defaultViewForApp(app)))}`;
 };
 
 const pathForRouteState = (route: RouteState) =>
-  route.app === "expense" ? pathForNsfRoute(route.nsf) : pathForRoute(route.app);
+  route.app === "login" ? pathForRoute(route.app) : pathForNsfRoute(route.app, route.nsf);
 
 const nsfRouteKey = (route: NsfRoute) => {
   if (route.kind === "view") return `view:${route.viewId}`;
@@ -383,6 +397,37 @@ function DesignerSidebar({
           </nav>
         </div>
       ))}
+    </aside>
+  );
+}
+
+function SystemAppSidebar({
+  sections,
+  selectedViewId,
+  onSelectView
+}: {
+  sections: Array<{ id: string; title: string }>;
+  selectedViewId: string;
+  onSelectView: (id: string) => void;
+}) {
+  return (
+    <aside className="appSidebar" data-testid="runtime-sidebar">
+      <div className="sidebarSection">
+        <p className="kicker">Views</p>
+        <nav className="sidebarNav" data-testid="view-picker">
+          {sections.map((section) => (
+            <button
+              key={section.id}
+              className={section.id === selectedViewId ? "active" : ""}
+              onClick={() => onSelectView(section.id)}
+              data-testid={`view-tab-${section.id}`}
+              data-active={section.id === selectedViewId ? "true" : "false"}
+            >
+              <List size={16} /> {section.title}
+            </button>
+          ))}
+        </nav>
+      </div>
     </aside>
   );
 }
@@ -1380,6 +1425,8 @@ function AppCatalog({
   state,
   busy,
   message,
+  selectedViewId,
+  onSelectView,
   onOpenSetup,
   onInstallExpense,
   onOpenExpense,
@@ -1389,6 +1436,8 @@ function AppCatalog({
   state: PlatformState;
   busy: boolean;
   message: string;
+  selectedViewId: string;
+  onSelectView: (viewId: string) => void;
   onOpenSetup: () => void;
   onInstallExpense: () => void;
   onOpenExpense: () => void;
@@ -1398,6 +1447,11 @@ function AppCatalog({
   const expenseInstalled =
     state.installedApps.some((app) => app.appId === "expense") ||
     state.samples.some((sample) => sample.appId === "expense" && sample.installed);
+  const sections = [
+    { id: "view:system-apps", title: "System Apps" },
+    { id: "view:installed-apps", title: "Installed Apps" },
+    { id: "view:sample-templates", title: "Sample Templates" }
+  ];
 
   return (
     <main className="shell catalogShell" data-testid="catalog-shell">
@@ -1419,74 +1473,85 @@ function AppCatalog({
         </div>
       </header>
       <p className="message" data-testid="message">{message}</p>
-      <section className="band" data-testid="system-apps">
-        <div className="sectionHeader">
-          <div>
-            <p className="kicker">System apps</p>
-            <h2>Platform administration</h2>
-          </div>
-        </div>
-        <div className="definitionList">
-          {state.systemApps.map((app) => (
-            <article className="definitionCard" key={app.appId} data-testid={`system-app-${app.appId}`}>
-              <strong>{app.title}</strong>
-              <span>{app.database}</span>
-              <span>{app.description}</span>
-              {app.appId === "setup" && (
-                <button className="primary" onClick={onOpenSetup} disabled={busy} data-testid="open-setup">
-                  <Database size={16} /> Open setup.nsf
-                </button>
+      <div className="appWorkspace runtimeWorkspace" data-testid="runtime-workspace">
+        <SystemAppSidebar sections={sections} selectedViewId={selectedViewId} onSelectView={onSelectView} />
+        <div className="workspaceMain">
+          {selectedViewId === "view:system-apps" && (
+            <section className="band" data-testid="system-apps">
+              <div className="sectionHeader">
+                <div>
+                  <p className="kicker">System apps</p>
+                  <h2>Platform administration</h2>
+                </div>
+              </div>
+              <div className="definitionList">
+                {state.systemApps.map((app) => (
+                  <article className="definitionCard" key={app.appId} data-testid={`system-app-${app.appId}`}>
+                    <strong>{app.title}</strong>
+                    <span>{app.database}</span>
+                    <span>{app.description}</span>
+                    {app.appId === "setup" && (
+                      <button className="primary" onClick={onOpenSetup} disabled={busy} data-testid="open-setup">
+                        <Database size={16} /> Open setup.nsf
+                      </button>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
+          {selectedViewId === "view:installed-apps" && (
+            <section className="band" data-testid="installed-apps">
+              <div className="sectionHeader">
+                <div>
+                  <p className="kicker">App Catalog</p>
+                  <h2>Installed apps</h2>
+                </div>
+              </div>
+              {state.installedApps.length ? (
+                <div className="definitionList">
+                  {state.installedApps.map((app) => (
+                    <article className="definitionCard" key={app._id} data-testid={`installed-app-${app.appId}`}>
+                      <strong>{app.title}</strong>
+                      <span>{app.database}</span>
+                      {app.appId === "expense" && (
+                        <button className="primary" onClick={onOpenExpense} disabled={busy} data-testid="open-expense">
+                          <List size={16} /> Open
+                        </button>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p data-testid="empty-catalog">No business apps installed.</p>
               )}
-            </article>
-          ))}
-        </div>
-      </section>
-      <section className="band" data-testid="installed-apps">
-        <div className="sectionHeader">
-          <div>
-            <p className="kicker">App Catalog</p>
-            <h2>Installed apps</h2>
-          </div>
-        </div>
-        {state.installedApps.length ? (
-          <div className="definitionList">
-            {state.installedApps.map((app) => (
-              <article className="definitionCard" key={app._id} data-testid={`installed-app-${app.appId}`}>
-                <strong>{app.title}</strong>
-                <span>{app.database}</span>
-                {app.appId === "expense" && (
-                  <button className="primary" onClick={onOpenExpense} disabled={busy} data-testid="open-expense">
-                    <List size={16} /> Open
+            </section>
+          )}
+          {selectedViewId === "view:sample-templates" && (
+            <section className="band" data-testid="sample-apps">
+              <div className="sectionHeader">
+                <div>
+                  <p className="kicker">Samples</p>
+                  <h2>Available templates</h2>
+                </div>
+              </div>
+              <article className="definitionCard" data-testid="sample-expense">
+                <strong>Expense sample</strong>
+                <span>Approval workflow, metadata forms, views, agents, search, and audit.</span>
+                {expenseInstalled ? (
+                  <button className="primary" onClick={onOpenExpense} disabled={busy} data-testid="open-expense-sample">
+                    <List size={16} /> Open Expense
+                  </button>
+                ) : (
+                  <button className="primary" onClick={onInstallExpense} disabled={busy} data-testid="install-expense-sample">
+                    <Database size={16} /> Install
                   </button>
                 )}
               </article>
-            ))}
-          </div>
-        ) : (
-          <p data-testid="empty-catalog">No business apps installed.</p>
-        )}
-      </section>
-      <section className="band" data-testid="sample-apps">
-        <div className="sectionHeader">
-          <div>
-            <p className="kicker">Samples</p>
-            <h2>Available templates</h2>
-          </div>
-        </div>
-        <article className="definitionCard" data-testid="sample-expense">
-          <strong>Expense sample</strong>
-          <span>Approval workflow, metadata forms, views, agents, search, and audit.</span>
-          {expenseInstalled ? (
-            <button className="primary" onClick={onOpenExpense} disabled={busy} data-testid="open-expense-sample">
-              <List size={16} /> Open Expense
-            </button>
-          ) : (
-            <button className="primary" onClick={onInstallExpense} disabled={busy} data-testid="install-expense-sample">
-              <Database size={16} /> Install
-            </button>
+            </section>
           )}
-        </article>
-      </section>
+        </div>
+      </div>
     </main>
   );
 }
@@ -1499,6 +1564,8 @@ function DirectoryConsole({
   directory,
   busy,
   message,
+  selectedViewId,
+  onSelectView,
   onBack,
   onRefresh,
   onCreatePerson,
@@ -1510,6 +1577,8 @@ function DirectoryConsole({
   directory?: SetupDirectoryState;
   busy: boolean;
   message: string;
+  selectedViewId: string;
+  onSelectView: (viewId: string) => void;
   onBack: () => void;
   onRefresh: () => void;
   onCreatePerson: (payload: { username: string; displayName: string; password: string }) => void;
@@ -1532,6 +1601,11 @@ function DirectoryConsole({
 
   const people = directory?.people ?? [];
   const groups = directory?.groups ?? [];
+  const sections = [
+    { id: "view:people", title: "People" },
+    { id: "view:groups", title: "Groups" },
+    { id: "view:installed-apps", title: "Installed Apps" }
+  ];
 
   const toggleMember = (group: PublicGroup, personId: string, checked: boolean) => {
     const edit = groupEdits[group._id] ?? { name: group.name, members: group.members };
@@ -1558,142 +1632,153 @@ function DirectoryConsole({
         </div>
       </header>
       <p className="message" data-testid="message">{message}</p>
-      {!directory ? (
-        <section className="emptyState" data-testid="directory-empty">
-          <h2>Directory unavailable</h2>
-        </section>
-      ) : (
-        <>
-          <section className="band" data-testid="directory-people">
-            <div className="sectionHeader">
-              <div>
-                <p className="kicker">People</p>
-                <h2>Directory people</h2>
-              </div>
-            </div>
-            <form
-              className="inlineForm"
-              data-testid="person-create-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                onCreatePerson(newPerson);
-                setNewPerson({ username: "", displayName: "", password: "" });
-              }}
-            >
-              <input placeholder="username" value={newPerson.username} data-testid="person-new-username" onChange={(event) => setNewPerson({ ...newPerson, username: event.target.value })} />
-              <input placeholder="display name" value={newPerson.displayName} data-testid="person-new-display" onChange={(event) => setNewPerson({ ...newPerson, displayName: event.target.value })} />
-              <input placeholder="password" type="password" value={newPerson.password} data-testid="person-new-password" onChange={(event) => setNewPerson({ ...newPerson, password: event.target.value })} />
-              <button className="primary" disabled={busy} data-testid="person-create">
-                <User size={16} /> Create person
-              </button>
-            </form>
-            <div className="definitionList">
-              {people.map((person) => {
-                const edit = personEdits[person._id] ?? { displayName: person.displayName, active: person.active };
-                return (
-                  <article className="definitionCard directoryCard" key={person._id} data-testid={`person-row-${person.username}`}>
-                    <strong>{personLabel(person)}</strong>
-                    <label>
-                      Display
-                      <input value={edit.displayName} data-testid={`person-display-${person.username}`} onChange={(event) => setPersonEdits((current) => ({ ...current, [person._id]: { ...edit, displayName: event.target.value } }))} />
-                    </label>
-                    <label className="checkLabel">
-                      <input type="checkbox" checked={edit.active} data-testid={`person-active-${person.username}`} onChange={(event) => setPersonEdits((current) => ({ ...current, [person._id]: { ...edit, active: event.target.checked } }))} />
-                      Active
-                    </label>
-                    <button onClick={() => onUpdatePerson(person, personEdits[person._id] ?? edit)} disabled={busy} data-testid={`person-save-${person.username}`}>
-                      <Save size={16} /> Save
+      <div className="appWorkspace runtimeWorkspace" data-testid="runtime-workspace">
+        <SystemAppSidebar sections={sections} selectedViewId={selectedViewId} onSelectView={onSelectView} />
+        <div className="workspaceMain">
+          {!directory ? (
+            <section className="emptyState" data-testid="directory-empty">
+              <h2>Directory unavailable</h2>
+            </section>
+          ) : (
+            <>
+              {selectedViewId === "view:people" && (
+                <section className="band" data-testid="directory-people">
+                  <div className="sectionHeader">
+                    <div>
+                      <p className="kicker">People</p>
+                      <h2>Directory people</h2>
+                    </div>
+                  </div>
+                  <form
+                    className="inlineForm"
+                    data-testid="person-create-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      onCreatePerson(newPerson);
+                      setNewPerson({ username: "", displayName: "", password: "" });
+                    }}
+                  >
+                    <input placeholder="username" value={newPerson.username} data-testid="person-new-username" onChange={(event) => setNewPerson({ ...newPerson, username: event.target.value })} />
+                    <input placeholder="display name" value={newPerson.displayName} data-testid="person-new-display" onChange={(event) => setNewPerson({ ...newPerson, displayName: event.target.value })} />
+                    <input placeholder="password" type="password" value={newPerson.password} data-testid="person-new-password" onChange={(event) => setNewPerson({ ...newPerson, password: event.target.value })} />
+                    <button className="primary" disabled={busy} data-testid="person-create">
+                      <User size={16} /> Create person
                     </button>
-                    {edit.active ? (
-                      <button onClick={() => onUpdatePerson(person, { ...(personEdits[person._id] ?? edit), active: false })} disabled={busy} data-testid={`person-deactivate-${person.username}`}>
-                        Deactivate
-                      </button>
-                    ) : (
-                      <button onClick={() => onUpdatePerson(person, { ...(personEdits[person._id] ?? edit), active: true })} disabled={busy} data-testid={`person-activate-${person.username}`}>
-                        Activate
-                      </button>
-                    )}
-                    <input placeholder="new password" type="password" value={passwords[person._id] ?? ""} data-testid={`person-password-${person.username}`} onChange={(event) => setPasswords((current) => ({ ...current, [person._id]: event.target.value }))} />
-                    <button onClick={() => onResetPassword(person, passwords[person._id] ?? "")} disabled={busy} data-testid={`person-reset-${person.username}`}>
-                      <RotateCcw size={16} /> Reset password
+                  </form>
+                  <div className="definitionList">
+                    {people.map((person) => {
+                      const edit = personEdits[person._id] ?? { displayName: person.displayName, active: person.active };
+                      return (
+                        <article className="definitionCard directoryCard" key={person._id} data-testid={`person-row-${person.username}`}>
+                          <strong>{personLabel(person)}</strong>
+                          <label>
+                            Display
+                            <input value={edit.displayName} data-testid={`person-display-${person.username}`} onChange={(event) => setPersonEdits((current) => ({ ...current, [person._id]: { ...edit, displayName: event.target.value } }))} />
+                          </label>
+                          <label className="checkLabel">
+                            <input type="checkbox" checked={edit.active} data-testid={`person-active-${person.username}`} onChange={(event) => setPersonEdits((current) => ({ ...current, [person._id]: { ...edit, active: event.target.checked } }))} />
+                            Active
+                          </label>
+                          <button onClick={() => onUpdatePerson(person, personEdits[person._id] ?? edit)} disabled={busy} data-testid={`person-save-${person.username}`}>
+                            <Save size={16} /> Save
+                          </button>
+                          {edit.active ? (
+                            <button onClick={() => onUpdatePerson(person, { ...(personEdits[person._id] ?? edit), active: false })} disabled={busy} data-testid={`person-deactivate-${person.username}`}>
+                              Deactivate
+                            </button>
+                          ) : (
+                            <button onClick={() => onUpdatePerson(person, { ...(personEdits[person._id] ?? edit), active: true })} disabled={busy} data-testid={`person-activate-${person.username}`}>
+                              Activate
+                            </button>
+                          )}
+                          <input placeholder="new password" type="password" value={passwords[person._id] ?? ""} data-testid={`person-password-${person.username}`} onChange={(event) => setPasswords((current) => ({ ...current, [person._id]: event.target.value }))} />
+                          <button onClick={() => onResetPassword(person, passwords[person._id] ?? "")} disabled={busy} data-testid={`person-reset-${person.username}`}>
+                            <RotateCcw size={16} /> Reset password
+                          </button>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+              {selectedViewId === "view:groups" && (
+                <section className="band" data-testid="directory-groups">
+                  <div className="sectionHeader">
+                    <div>
+                      <p className="kicker">Groups</p>
+                      <h2>Direct memberships</h2>
+                    </div>
+                  </div>
+                  <form
+                    className="inlineForm"
+                    data-testid="group-create-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      onCreateGroup(newGroup);
+                      setNewGroup({ slug: "", name: "", members: [] });
+                    }}
+                  >
+                    <input placeholder="slug" value={newGroup.slug} data-testid="group-new-slug" onChange={(event) => setNewGroup({ ...newGroup, slug: event.target.value })} />
+                    <input placeholder="name" value={newGroup.name} data-testid="group-new-name" onChange={(event) => setNewGroup({ ...newGroup, name: event.target.value })} />
+                    <button className="primary" disabled={busy} data-testid="group-create">
+                      <Database size={16} /> Create group
                     </button>
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-          <section className="band" data-testid="directory-groups">
-            <div className="sectionHeader">
-              <div>
-                <p className="kicker">Groups</p>
-                <h2>Direct memberships</h2>
-              </div>
-            </div>
-            <form
-              className="inlineForm"
-              data-testid="group-create-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                onCreateGroup(newGroup);
-                setNewGroup({ slug: "", name: "", members: [] });
-              }}
-            >
-              <input placeholder="slug" value={newGroup.slug} data-testid="group-new-slug" onChange={(event) => setNewGroup({ ...newGroup, slug: event.target.value })} />
-              <input placeholder="name" value={newGroup.name} data-testid="group-new-name" onChange={(event) => setNewGroup({ ...newGroup, name: event.target.value })} />
-              <button className="primary" disabled={busy} data-testid="group-create">
-                <Database size={16} /> Create group
-              </button>
-            </form>
-            <div className="definitionList">
-              {groups.map((group) => {
-                const slug = group._id.replace(/^group:/, "");
-                const edit = groupEdits[group._id] ?? { name: group.name, members: group.members };
-                return (
-                  <article className="definitionCard directoryCard" key={group._id} data-testid={`group-row-${slug}`}>
-                    <strong>{group.name}</strong>
-                    <label>
-                      Name
-                      <input value={edit.name} data-testid={`group-name-${slug}`} onChange={(event) => setGroupEdits((current) => ({ ...current, [group._id]: { ...edit, name: event.target.value } }))} />
-                    </label>
-                    <div className="memberGrid">
-                      {people.map((person) => (
-                        <label className="checkLabel" key={person._id}>
-                          <input type="checkbox" checked={edit.members.includes(person._id)} data-testid={`group-member-${slug}-${person.username}`} onChange={(event) => toggleMember(group, person._id, event.target.checked)} />
-                          {person.displayName}
-                        </label>
+                  </form>
+                  <div className="definitionList">
+                    {groups.map((group) => {
+                      const slug = group._id.replace(/^group:/, "");
+                      const edit = groupEdits[group._id] ?? { name: group.name, members: group.members };
+                      return (
+                        <article className="definitionCard directoryCard" key={group._id} data-testid={`group-row-${slug}`}>
+                          <strong>{group.name}</strong>
+                          <label>
+                            Name
+                            <input value={edit.name} data-testid={`group-name-${slug}`} onChange={(event) => setGroupEdits((current) => ({ ...current, [group._id]: { ...edit, name: event.target.value } }))} />
+                          </label>
+                          <div className="memberGrid">
+                            {people.map((person) => (
+                              <label className="checkLabel" key={person._id}>
+                                <input type="checkbox" checked={edit.members.includes(person._id)} data-testid={`group-member-${slug}-${person.username}`} onChange={(event) => toggleMember(group, person._id, event.target.checked)} />
+                                {person.displayName}
+                              </label>
+                            ))}
+                          </div>
+                          <button onClick={() => onUpdateGroup(group, groupEdits[group._id] ?? edit)} disabled={busy} data-testid={`group-save-${slug}`}>
+                            <Save size={16} /> Save group
+                          </button>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+              {selectedViewId === "view:installed-apps" && (
+                <section className="band" data-testid="directory-installed-apps">
+                  <div className="sectionHeader">
+                    <div>
+                      <p className="kicker">Installed apps</p>
+                      <h2>Platform catalog summary</h2>
+                    </div>
+                  </div>
+                  {directory.installedApps.length ? (
+                    <div className="definitionList">
+                      {directory.installedApps.map((app) => (
+                        <article className="definitionCard" key={app._id}>
+                          <strong>{app.title}</strong>
+                          <span>{app.database}</span>
+                          <span>{app.templateId ?? "custom"}</span>
+                        </article>
                       ))}
                     </div>
-                    <button onClick={() => onUpdateGroup(group, groupEdits[group._id] ?? edit)} disabled={busy} data-testid={`group-save-${slug}`}>
-                      <Save size={16} /> Save group
-                    </button>
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-          <section className="band" data-testid="directory-installed-apps">
-            <div className="sectionHeader">
-              <div>
-                <p className="kicker">Installed apps</p>
-                <h2>Platform catalog summary</h2>
-              </div>
-            </div>
-            {directory.installedApps.length ? (
-              <div className="definitionList">
-                {directory.installedApps.map((app) => (
-                  <article className="definitionCard" key={app._id}>
-                    <strong>{app.title}</strong>
-                    <span>{app.database}</span>
-                    <span>{app.templateId ?? "custom"}</span>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <p>No business apps installed.</p>
-            )}
-          </section>
-        </>
-      )}
+                  ) : (
+                    <p>No business apps installed.</p>
+                  )}
+                </section>
+              )}
+            </>
+          )}
+        </div>
+      </div>
     </main>
   );
 }
@@ -1784,9 +1869,10 @@ function App() {
     navigate({ app, nsf: { kind: "home" } }, replace);
   }, [navigate]);
 
-  const navigateNsf = React.useCallback((nsf: NsfRoute, replace = false) => {
-    navigate({ app: "expense", nsf }, replace);
-  }, [navigate]);
+  const navigateNsf = React.useCallback((nsf: NsfRoute, replace = false, appOverride?: NsfAppRoute) => {
+    const app: NsfAppRoute = appOverride ?? (route.app === "login" ? "catalog" : route.app);
+    navigate({ app, nsf }, replace);
+  }, [navigate, route.app]);
 
   const run = async (label: string, task: () => Promise<void>, options: { refreshAfter?: boolean } = {}) => {
     setBusy(true);
@@ -1828,6 +1914,28 @@ function App() {
   }, [navigateApp, platformState, route.app]);
 
   React.useEffect(() => {
+    if (!platformState?.setupComplete || !platformState.session.authenticated) return;
+    if (route.app === "setup") {
+      if (route.nsf.kind === "home") {
+        navigateNsf({ kind: "view", viewId: DEFAULT_SETUP_VIEW_ID }, true, "setup");
+        return;
+      }
+      if (route.nsf.kind !== "view" || !SETUP_VIEW_IDS.includes(route.nsf.viewId)) {
+        navigateNsf({ kind: "view", viewId: DEFAULT_SETUP_VIEW_ID }, true, "setup");
+      }
+    }
+    if (route.app === "catalog") {
+      if (route.nsf.kind === "home") {
+        navigateNsf({ kind: "view", viewId: DEFAULT_CATALOG_VIEW_ID }, true, "catalog");
+        return;
+      }
+      if (route.nsf.kind !== "view" || !CATALOG_VIEW_IDS.includes(route.nsf.viewId)) {
+        navigateNsf({ kind: "view", viewId: DEFAULT_CATALOG_VIEW_ID }, true, "catalog");
+      }
+    }
+  }, [navigateNsf, platformState?.session.authenticated, platformState?.setupComplete, route.app, route.nsf]);
+
+  React.useEffect(() => {
     if (!platformState?.setupComplete || !platformState.session.authenticated || route.app !== "setup") return;
     let cancelled = false;
     setMessage("Open setup.nsf...");
@@ -1857,7 +1965,7 @@ function App() {
       return;
     }
     if (route.nsf.kind === "home") {
-      navigateNsf({ kind: "view", viewId: selectedViewId || DEFAULT_EXPENSE_VIEW_ID }, true);
+      navigateNsf({ kind: "view", viewId: selectedViewId || DEFAULT_EXPENSE_VIEW_ID }, true, "expense");
       return;
     }
 
@@ -1897,7 +2005,7 @@ function App() {
           setSelectedViewId(nsfRoute.viewId);
         }
       } else {
-        navigateNsf({ kind: "view", viewId: DEFAULT_EXPENSE_VIEW_ID }, true);
+        navigateNsf({ kind: "view", viewId: DEFAULT_EXPENSE_VIEW_ID }, true, "expense");
       }
       return;
     }
@@ -1907,13 +2015,13 @@ function App() {
         setFocusedDocument(undefined);
         setDocumentRouteError("");
       } else {
-        navigateNsf({ kind: "view", viewId: DEFAULT_EXPENSE_VIEW_ID }, true);
+        navigateNsf({ kind: "view", viewId: DEFAULT_EXPENSE_VIEW_ID }, true, "expense");
       }
       return;
     }
     if (nsfRoute.kind === "designerHome") {
       const firstDefinition = editableDefinitions[0];
-      if (firstDefinition) navigateNsf({ kind: "designer", definitionId: firstDefinition._id }, true);
+      if (firstDefinition) navigateNsf({ kind: "designer", definitionId: firstDefinition._id }, true, "expense");
       return;
     }
     if (nsfRoute.kind === "designer") {
@@ -1921,7 +2029,7 @@ function App() {
         setSelectedDefinitionId(nsfRoute.definitionId);
       } else {
         const firstDefinition = editableDefinitions[0];
-        navigateNsf(firstDefinition ? { kind: "designer", definitionId: firstDefinition._id } : { kind: "view", viewId: DEFAULT_EXPENSE_VIEW_ID }, true);
+        navigateNsf(firstDefinition ? { kind: "designer", definitionId: firstDefinition._id } : { kind: "view", viewId: DEFAULT_EXPENSE_VIEW_ID }, true, "expense");
       }
     }
   }, [definitions, editableDefinitions, navigateNsf, route.app, route.nsf, selectedViewId]);
@@ -2042,11 +2150,14 @@ function App() {
   if (route.app !== "expense") {
     if (route.app === "setup") {
       const runDirectory = (label: string, task: () => Promise<void>) => run(label, task, { refreshAfter: false });
+      const setupViewId = route.nsf.kind === "view" && SETUP_VIEW_IDS.includes(route.nsf.viewId) ? route.nsf.viewId : DEFAULT_SETUP_VIEW_ID;
       return (
         <DirectoryConsole
           directory={directory}
           busy={busy}
           message={message}
+          selectedViewId={setupViewId}
+          onSelectView={(viewId) => navigateNsf({ kind: "view", viewId }, false, "setup")}
           onBack={() => navigateApp("catalog")}
           onRefresh={() => runDirectory("Refresh directory", refreshDirectory)}
           onCreatePerson={(payload) =>
@@ -2097,11 +2208,14 @@ function App() {
         />
       );
     }
+    const catalogViewId = route.nsf.kind === "view" && CATALOG_VIEW_IDS.includes(route.nsf.viewId) ? route.nsf.viewId : DEFAULT_CATALOG_VIEW_ID;
     return (
       <AppCatalog
         state={platformState}
         busy={busy}
         message={message}
+        selectedViewId={catalogViewId}
+        onSelectView={(viewId) => navigateNsf({ kind: "view", viewId }, false, "catalog")}
         onOpenSetup={() => navigateApp("setup")}
         onRefresh={() => run("Refresh catalog", refreshPlatform, { refreshAfter: false })}
         onLogout={() =>
@@ -2128,7 +2242,7 @@ function App() {
             { refreshAfter: false }
           )
         }
-        onOpenExpense={() => navigateNsf({ kind: "home" })}
+        onOpenExpense={() => navigateNsf({ kind: "home" }, false, "expense")}
       />
     );
   }
@@ -2232,7 +2346,7 @@ function App() {
             activeDocType={isCreateRoute ? routeDocType : undefined}
             onSelectView={selectView}
             onNewDocument={startNewDocument}
-            onOpenDesigner={() => window.open(pathForNsfRoute({ kind: "designerHome" }), "_blank", "noopener,noreferrer")}
+            onOpenDesigner={() => window.open(pathForNsfRoute("expense", { kind: "designerHome" }), "_blank", "noopener,noreferrer")}
           />
           <div className="workspaceMain">
             {isDocumentRoute || isCreateRoute ? (
@@ -2314,7 +2428,7 @@ function App() {
                     documents={documents}
                     selectedId={selectedId}
                     onSelect={(doc) => navigateNsf({ kind: "document", docId: doc._id })}
-                    documentHref={(doc) => pathForNsfRoute({ kind: "document", docId: doc._id })}
+                    documentHref={(doc) => pathForNsfRoute("expense", { kind: "document", docId: doc._id })}
                   />
                   <DocumentForm
                     form={selectedForm}
