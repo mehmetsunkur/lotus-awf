@@ -31,7 +31,7 @@ export function createDocument(
 export function createExpenseDoc(
   payload: Record<string, unknown>,
   user = config.appUser,
-  readers = ["user:alice", "role:finance"]
+  readers = ["person:alice", "group:finance"]
 ): BusinessDocument {
   return createDocument("expense", payload, user, readers);
 }
@@ -39,7 +39,7 @@ export function createExpenseDoc(
 export function createVendorDoc(
   payload: Record<string, unknown>,
   user = config.appUser,
-  readers = ["user:alice", "role:finance"]
+  readers = ["person:alice", "group:finance"]
 ): BusinessDocument {
   return createDocument("vendor", payload, user, readers);
 }

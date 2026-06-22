@@ -5,7 +5,7 @@ export const config = {
   appDb: process.env.APP_DB ?? "expense_app",
   platformDb: process.env.PLATFORM_DB ?? "platform_app",
   setupDb: process.env.SETUP_DB ?? "setup_app",
-  appUser: process.env.APP_USER ?? "user:alice",
+  appUser: process.env.APP_USER ?? "person:alice",
   localCouchUrl,
   serverCouchUrl,
   localReplicationUrl:

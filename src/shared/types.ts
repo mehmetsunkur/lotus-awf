@@ -128,7 +128,7 @@ export type WorkflowTransition = {
   to: string;
   /** M2 expression over { payload, doc, user, now }; must be truthy to allow. */
   guard?: string;
-  /** Role (as in acl:rules) required to perform this transition. */
+  /** Principal (such as group:finance) required to perform this transition. */
   requiredRole?: string;
   /**
    * M7: name of a registered `effect` handler run after the authoritative state
@@ -239,7 +239,63 @@ export type AclRules = {
   kind: "acl";
   appId: string;
   policy: string;
-  users: Array<{ user: string; roles: string[] }>;
+  entries: Array<{ principal: string; level: AccessLevel }>;
+};
+
+export type AccessLevel = "none" | "reader" | "author" | "editor" | "designer" | "manager";
+
+export type PasswordParams = {
+  algorithm: "scrypt";
+  keyLength: number;
+};
+
+export type PersonDocument = {
+  _id: `person:${string}`;
+  _rev?: string;
+  kind: "person";
+  username: string;
+  displayName: string;
+  active: boolean;
+  passwordHash: string;
+  passwordSalt: string;
+  passwordParams: PasswordParams;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PublicPerson = {
+  _id: `person:${string}`;
+  kind: "person";
+  username: string;
+  displayName: string;
+  active: boolean;
+};
+
+export type GroupDocument = {
+  _id: `group:${string}`;
+  _rev?: string;
+  kind: "group";
+  name: string;
+  members: Array<`person:${string}`>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SessionDocument = {
+  _id: `session:${string}`;
+  _rev?: string;
+  kind: "session";
+  personId: `person:${string}`;
+  createdAt: string;
+  expiresAt: string;
+};
+
+export type SessionState = {
+  authenticated: boolean;
+  person?: PublicPerson;
+  groups: Array<`group:${string}`>;
+  principals: string[];
+  accessLevel?: AccessLevel;
 };
 
 /**
@@ -296,8 +352,6 @@ export type PlatformConfig = {
   orgName?: string;
   domainName?: string;
   adminUser?: string;
-  /** Development-only placeholder until a real auth subsystem lands. */
-  adminPasswordHash?: string;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -327,6 +381,7 @@ export type PlatformState = {
   orgName?: string;
   domainName?: string;
   adminUser?: string;
+  session: SessionState;
   installedApps: AppInstall[];
   samples: SampleApp[];
 };

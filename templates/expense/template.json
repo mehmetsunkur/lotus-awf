@@ -11,19 +11,15 @@
       "_id": "acl:rules",
       "kind": "acl",
       "appId": "expense",
-      "policy": "M1 spike: filtered replication uses document readers entries matching user id or role.",
-      "users": [
+      "policy": "M18: app ACL grants access levels to directory person/group principals.",
+      "entries": [
         {
-          "user": "user:alice",
-          "roles": [
-            "role:finance"
-          ]
+          "principal": "group:finance",
+          "level": "manager"
         },
         {
-          "user": "user:bob",
-          "roles": [
-            "role:sales"
-          ]
+          "principal": "person:bob",
+          "level": "author"
         }
       ]
     },
@@ -315,8 +311,8 @@
           "field": "readers",
           "op": "in",
           "value": [
-            "user:alice",
-            "role:finance"
+            "person:alice",
+            "group:finance"
           ]
         }
       ],
@@ -459,14 +455,14 @@
           "label": "Approve",
           "from": "submitted",
           "to": "approved",
-          "requiredRole": "role:finance"
+          "requiredRole": "group:finance"
         },
         {
           "id": "reject",
           "label": "Reject",
           "from": "submitted",
           "to": "rejected",
-          "requiredRole": "role:finance"
+          "requiredRole": "group:finance"
         }
       ]
     }

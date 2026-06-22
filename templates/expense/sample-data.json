@@ -6,14 +6,14 @@
     "docType": "expense",
     "createdAt": "2026-06-18T00:00:00.000Z",
     "updatedAt": "2026-06-18T00:00:00.000Z",
-    "createdBy": "user:alice",
-    "updatedBy": "user:alice",
+    "createdBy": "person:alice",
+    "updatedBy": "person:alice",
     "readers": [
-      "user:alice",
-      "role:finance"
+      "person:alice",
+      "group:finance"
     ],
     "authors": [
-      "user:alice"
+      "person:alice"
     ],
     "payload": {
       "amount": 42.5,
@@ -29,14 +29,14 @@
     "docType": "expense",
     "createdAt": "2026-06-18T00:00:00.000Z",
     "updatedAt": "2026-06-18T00:00:00.000Z",
-    "createdBy": "user:alice",
-    "updatedBy": "user:alice",
+    "createdBy": "person:alice",
+    "updatedBy": "person:alice",
     "readers": [
-      "user:alice",
-      "role:finance"
+      "person:alice",
+      "group:finance"
     ],
     "authors": [
-      "user:alice"
+      "person:alice"
     ],
     "payload": {
       "amount": 125.5,
@@ -47,14 +47,14 @@
     },
     "state": "submitted",
     "stateUpdatedAt": "2026-06-18T00:00:00.000Z",
-    "stateUpdatedBy": "user:alice",
+    "stateUpdatedBy": "person:alice",
     "history": [
       {
         "transition": "submit",
         "from": "draft",
         "to": "submitted",
         "at": "2026-06-18T00:00:00.000Z",
-        "by": "user:alice"
+        "by": "person:alice"
       }
     ]
   },
@@ -65,14 +65,14 @@
     "docType": "expense",
     "createdAt": "2026-06-18T00:00:00.000Z",
     "updatedAt": "2026-06-18T00:00:00.000Z",
-    "createdBy": "user:bob",
-    "updatedBy": "user:bob",
+    "createdBy": "person:bob",
+    "updatedBy": "person:bob",
     "readers": [
-      "user:bob",
-      "role:finance"
+      "person:bob",
+      "group:finance"
     ],
     "authors": [
-      "user:bob"
+      "person:bob"
     ],
     "payload": {
       "amount": 220,
@@ -83,21 +83,21 @@
     },
     "state": "approved",
     "stateUpdatedAt": "2026-06-18T00:00:00.000Z",
-    "stateUpdatedBy": "user:alice",
+    "stateUpdatedBy": "person:alice",
     "history": [
       {
         "transition": "submit",
         "from": "draft",
         "to": "submitted",
         "at": "2026-06-18T00:00:00.000Z",
-        "by": "user:bob"
+        "by": "person:bob"
       },
       {
         "transition": "approve",
         "from": "submitted",
         "to": "approved",
         "at": "2026-06-18T00:00:00.000Z",
-        "by": "user:alice"
+        "by": "person:alice"
       }
     ]
   },
@@ -108,14 +108,14 @@
     "docType": "vendor",
     "createdAt": "2026-06-18T00:00:00.000Z",
     "updatedAt": "2026-06-18T00:00:00.000Z",
-    "createdBy": "user:alice",
-    "updatedBy": "user:alice",
+    "createdBy": "person:alice",
+    "updatedBy": "person:alice",
     "readers": [
-      "user:alice",
-      "role:finance"
+      "person:alice",
+      "group:finance"
     ],
     "authors": [
-      "user:alice"
+      "person:alice"
     ],
     "payload": {
       "name": "National Rail",
@@ -131,14 +131,14 @@
     "docType": "vendor",
     "createdAt": "2026-06-18T00:00:00.000Z",
     "updatedAt": "2026-06-18T00:00:00.000Z",
-    "createdBy": "user:alice",
-    "updatedBy": "user:alice",
+    "createdBy": "person:alice",
+    "updatedBy": "person:alice",
     "readers": [
-      "user:alice",
-      "role:finance"
+      "person:alice",
+      "group:finance"
     ],
     "authors": [
-      "user:alice"
+      "person:alice"
     ],
     "payload": {
       "name": "Paper Market",

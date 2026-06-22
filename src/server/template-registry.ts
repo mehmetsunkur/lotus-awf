@@ -53,10 +53,10 @@ function validateAclDefinition(definition: AclRules): string[] {
   const messages: string[] = [];
   if (definition._id !== "acl:rules") messages.push("acl definition id must be acl:rules");
   if (!definition.appId?.trim()) messages.push("acl:rules appId is required");
-  if (!Array.isArray(definition.users)) messages.push("acl:rules users must be an array");
-  for (const [index, user] of (definition.users ?? []).entries()) {
-    if (!user.user?.trim()) messages.push(`acl:rules users.${index}.user is required`);
-    if (!Array.isArray(user.roles)) messages.push(`acl:rules users.${index}.roles must be an array`);
+  if (!Array.isArray(definition.entries)) messages.push("acl:rules entries must be an array");
+  for (const [index, entry] of (definition.entries ?? []).entries()) {
+    if (!entry.principal?.trim()) messages.push(`acl:rules entries.${index}.principal is required`);
+    if (!entry.level?.trim()) messages.push(`acl:rules entries.${index}.level is required`);
   }
   return messages;
 }

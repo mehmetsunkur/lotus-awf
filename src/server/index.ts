@@ -1,10 +1,10 @@
 import cors from "cors";
-import express from "express";
-import { createHash } from "node:crypto";
+import express, { type Request, type Response } from "express";
 import fs from "node:fs";
 import path from "node:path";
 import { ulid } from "ulid";
 import type {
+  AccessLevel,
   AclRules,
   AgentDefinition,
   AgentRun,
@@ -20,9 +20,13 @@ import type {
   CouchDocument,
   DesignDocument,
   FormDefinition,
+  GroupDocument,
+  PersonDocument,
   PlatformConfig,
   PlatformState,
   SampleApp,
+  SessionDocument,
+  SessionState,
   SelectOptionsByField,
   TemplateArtifact,
   ViewDefinition,
@@ -33,6 +37,8 @@ import {
   accessSelector,
   canEditDocument,
   canReadDocument,
+  accessRank,
+  hasAccessLevel,
   principalsFor,
   readersForNewDocument,
   type PrincipalScope
@@ -76,6 +82,18 @@ import {
 import { config } from "./config";
 import { createDocument, createExpenseDoc, seedDocuments } from "./seed-data";
 import { validateTemplateDefinitions } from "./template-registry";
+import {
+  clearSessionCookie,
+  createSessionToken,
+  hashPassword,
+  hashSessionToken,
+  normalizeUsername,
+  personIdForUsername,
+  publicPerson,
+  sessionTokenFromRequest,
+  setSessionCookie,
+  verifyPassword
+} from "./auth";
 
 const app = express();
 
@@ -89,6 +107,8 @@ const asyncRoute =
 
 const timestamp = () => new Date().toISOString();
 const routeParam = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value ?? "");
+const DEV_PASSWORD = "password123";
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
 async function seedTarget(target: "local" | "server", reset = false) {
   if (reset) {
@@ -147,6 +167,187 @@ async function docExistsInDb(target: "local" | "server", db: string, id: string)
     if (error instanceof CouchError && error.status === 404) return false;
     return false;
   }
+}
+
+async function deleteDocInDb(target: "local" | "server", db: string, id: string, rev: string): Promise<void> {
+  await couchRequest(target, `/${db}/${encodeURIComponent(id)}?rev=${encodeURIComponent(rev)}`, { method: "DELETE" });
+}
+
+function emptySession(): SessionState {
+  return { authenticated: false, groups: [], principals: [] };
+}
+
+function bestAccessLevel(levels: Array<AccessLevel | undefined>): AccessLevel {
+  return levels.reduce<AccessLevel>((best, level) => (accessRank(level) > accessRank(best) ? level! : best), "none");
+}
+
+async function groupsForPerson(target: "local" | "server", personId: `person:${string}`): Promise<GroupDocument[]> {
+  try {
+    const rows = await allDocsFromDb<GroupDocument>(target, config.setupDb);
+    return rows.rows
+      .map((row) => row.doc)
+      .filter((doc): doc is GroupDocument => Boolean(doc && doc.kind === "group" && doc.members.includes(personId)));
+  } catch (error) {
+    if (error instanceof CouchError && error.status === 404) return [];
+    throw error;
+  }
+}
+
+async function appAccessLevel(principals: string[]): Promise<AccessLevel> {
+  const levels: AccessLevel[] = [];
+  if (principals.includes("group:admins")) levels.push("manager");
+  try {
+    const acl = await getDoc<AclRules>("local", "acl:rules");
+    for (const entry of acl.entries ?? []) {
+      if (principals.includes(entry.principal)) levels.push(entry.level);
+    }
+  } catch (error) {
+    if (!(error instanceof CouchError) || error.status !== 404) throw error;
+  }
+  return bestAccessLevel(levels);
+}
+
+async function sessionStateForPerson(person: PersonDocument): Promise<SessionState> {
+  const groups = (await groupsForPerson("local", person._id)).map((group) => group._id);
+  const principals = Array.from(new Set([person._id, ...groups]));
+  return {
+    authenticated: true,
+    person: publicPerson(person),
+    groups,
+    principals,
+    accessLevel: await appAccessLevel(principals)
+  };
+}
+
+async function sessionStateForRequest(request?: Request): Promise<SessionState> {
+  if (!request) return emptySession();
+  const token = sessionTokenFromRequest(request);
+  if (!token) return emptySession();
+  try {
+    const session = await getDocFromNamedDb<SessionDocument>("local", config.platformDb, `session:${hashSessionToken(token)}`);
+    if (session.expiresAt <= timestamp()) return emptySession();
+    const person = await getDocFromNamedDb<PersonDocument>("local", config.setupDb, session.personId);
+    if (!person.active) return emptySession();
+    return sessionStateForPerson(person);
+  } catch (error) {
+    if (error instanceof CouchError && error.status === 404) return emptySession();
+    throw error;
+  }
+}
+
+async function requireSession(request: Request, required: AccessLevel = "reader"): Promise<PrincipalScope> {
+  const session = await sessionStateForRequest(request);
+  if (!session.authenticated || !session.person) {
+    throw new CouchError(401, { error: "unauthorized", reason: "Login required" });
+  }
+  const scope: PrincipalScope = {
+    person: session.person._id,
+    groups: session.groups,
+    principals: session.principals,
+    accessLevel: session.accessLevel
+  };
+  if (!hasAccessLevel(scope, required)) {
+    throw new CouchError(403, { error: "forbidden", reason: `${required} access is required` });
+  }
+  return scope;
+}
+
+function scopeUser(scope: PrincipalScope): string {
+  return scope.person;
+}
+
+async function createSession(response: Response, person: PersonDocument): Promise<SessionState> {
+  const token = createSessionToken();
+  const now = timestamp();
+  const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
+  const session: SessionDocument = {
+    _id: `session:${hashSessionToken(token)}`,
+    kind: "session",
+    personId: person._id,
+    createdAt: now,
+    expiresAt
+  };
+  await Promise.all([
+    upsertDocInDb("local", config.platformDb, session),
+    upsertDocInDb("server", config.platformDb, session)
+  ]);
+  setSessionCookie(response, token, expiresAt);
+  return sessionStateForPerson(person);
+}
+
+async function logoutSession(request: Request, response: Response): Promise<void> {
+  const token = sessionTokenFromRequest(request);
+  if (token) {
+    const id = `session:${hashSessionToken(token)}`;
+    await Promise.all(
+      (["local", "server"] as const).map(async (target) => {
+        try {
+          const existing = await getDocFromNamedDb<SessionDocument>(target, config.platformDb, id);
+          await deleteDocInDb(target, config.platformDb, id, existing._rev ?? "");
+        } catch (error) {
+          if (!(error instanceof CouchError) || error.status !== 404) throw error;
+        }
+      })
+    );
+  }
+  clearSessionCookie(response);
+}
+
+async function upsertPerson(target: "local" | "server", username: string, displayName: string, password: string): Promise<PersonDocument> {
+  const normalized = normalizeUsername(username);
+  const now = timestamp();
+  const passwordFields = await hashPassword(password);
+  const existing = await docExistsInDb(target, config.setupDb, personIdForUsername(normalized));
+  const current = existing ? await getDocFromNamedDb<PersonDocument>(target, config.setupDb, personIdForUsername(normalized)) : undefined;
+  const person: PersonDocument = {
+    _id: personIdForUsername(normalized),
+    kind: "person",
+    username: normalized,
+    displayName,
+    active: true,
+    ...passwordFields,
+    createdAt: current?.createdAt ?? now,
+    updatedAt: now
+  };
+  await upsertDocInDb(target, config.setupDb, person);
+  return person;
+}
+
+async function upsertGroup(target: "local" | "server", id: `group:${string}`, name: string, members: Array<`person:${string}`>) {
+  const now = timestamp();
+  let createdAt = now;
+  try {
+    createdAt = (await getDocFromNamedDb<GroupDocument>(target, config.setupDb, id)).createdAt;
+  } catch (error) {
+    if (!(error instanceof CouchError) || error.status !== 404) throw error;
+  }
+  await upsertDocInDb<GroupDocument>(target, config.setupDb, {
+    _id: id,
+    kind: "group",
+    name,
+    members,
+    createdAt,
+    updatedAt: now
+  });
+}
+
+async function seedDevDirectory(target: "local" | "server", adminUser = "alice", adminPassword = DEV_PASSWORD) {
+  await seedSetupTarget(target);
+  const alice = await upsertPerson(target, "alice", "Alice Finance", adminUser === "alice" ? adminPassword : DEV_PASSWORD);
+  const bob = await upsertPerson(target, "bob", "Bob Sales", DEV_PASSWORD);
+  if (adminUser !== "alice") await upsertPerson(target, adminUser, adminUser, adminPassword);
+  await upsertGroup(target, "group:admins", "Admins", [personIdForUsername(adminUser)]);
+  await upsertGroup(target, "group:finance", "Finance", [alice._id]);
+  await upsertGroup(target, "group:sales", "Sales", [bob._id]);
+}
+
+async function seedExpenseSampleDirectory(target: "local" | "server", currentPerson?: `person:${string}`) {
+  await seedSetupTarget(target);
+  const alice = await upsertPerson(target, "alice", "Alice Finance", DEV_PASSWORD);
+  const bob = await upsertPerson(target, "bob", "Bob Sales", DEV_PASSWORD);
+  const financeMembers = Array.from(new Set([alice._id, currentPerson].filter(Boolean))) as Array<`person:${string}`>;
+  await upsertGroup(target, "group:finance", "Finance", financeMembers);
+  await upsertGroup(target, "group:sales", "Sales", [bob._id]);
 }
 
 async function ensureIndexes(target: "local" | "server") {
@@ -213,11 +414,12 @@ async function installedApps(): Promise<AppInstall[]> {
   }
 }
 
-async function platformState(): Promise<PlatformState> {
-  const [platform, apps, expenseInstalled] = await Promise.all([
+async function platformState(request?: Request): Promise<PlatformState> {
+  const [platform, apps, expenseInstalled, session] = await Promise.all([
     platformConfig(),
     installedApps(),
-    expenseAppInstalled("local")
+    expenseAppInstalled("local"),
+    sessionStateForRequest(request)
   ]);
   const samples: SampleApp[] = [
     {
@@ -233,12 +435,13 @@ async function platformState(): Promise<PlatformState> {
     orgName: platform.orgName,
     domainName: platform.domainName,
     adminUser: platform.adminUser,
+    session,
     installedApps: apps,
     samples
   };
 }
 
-function expenseInstallRecord(installedAt = timestamp()): AppInstall {
+function expenseInstallRecord(installedAt = timestamp(), installedBy = "person:alice"): AppInstall {
   return {
     _id: "appinstall:expense",
     kind: "appinstall",
@@ -247,7 +450,7 @@ function expenseInstallRecord(installedAt = timestamp()): AppInstall {
     database: config.appDb,
     templateId: "sample:expense",
     installedAt,
-    installedBy: config.appUser
+    installedBy
   };
 }
 
@@ -259,14 +462,14 @@ async function completeDevPlatformSetup(target: "local" | "server") {
   const now = timestamp();
   await seedSetupTarget(target);
   await seedPlatformTarget(target);
+  await seedDevDirectory(target);
   await upsertDocInDb<PlatformConfig>(target, config.platformDb, {
     _id: "platform:config",
     kind: "platformconfig",
     setupComplete: true,
     orgName: "Development Org",
     domainName: "dev.local",
-    adminUser: config.appUser,
-    adminPasswordHash: createHash("sha256").update("password").digest("hex"),
+    adminUser: "alice",
     createdAt: now,
     updatedAt: now
   });
@@ -394,21 +597,6 @@ async function definitionExists(id: string): Promise<boolean> {
     if (error instanceof CouchError && error.status === 404) return false;
     throw error;
   }
-}
-
-/** Roles held by a user according to acl:rules; [] if the doc or user is absent. */
-async function rolesForUser(user: string): Promise<string[]> {
-  try {
-    const acl = await getDoc<AclRules>("local", "acl:rules");
-    return acl.users.find((entry) => entry.user === user)?.roles ?? [];
-  } catch (error) {
-    if (error instanceof CouchError && error.status === 404) return [];
-    throw error;
-  }
-}
-
-async function currentScope(): Promise<PrincipalScope> {
-  return { user: config.appUser, roles: await rolesForUser(config.appUser) };
 }
 
 async function getReadableDocument(id: string, scope: PrincipalScope): Promise<BusinessDocument> {
@@ -546,7 +734,7 @@ function buildAgentRun(
     startedAt: now,
     ok: result.ok,
     detail: result.detail,
-    readers: document?.readers ?? [config.appUser]
+    readers: document?.readers ?? ["group:admins"]
   };
 }
 
@@ -700,8 +888,7 @@ async function recordDeleteAudit(doc: BusinessDocument, actor: string, now = tim
   }
 }
 
-async function selectOptionsForForm(form: FormDefinition): Promise<SelectOptionsByField> {
-  const scope = await currentScope();
+async function selectOptionsForForm(form: FormDefinition, scope: PrincipalScope): Promise<SelectOptionsByField> {
   const entries = await Promise.all(
     form.fields
       .filter((field) => field.type === "select" && field.source)
@@ -730,13 +917,14 @@ function getPath(source: Record<string, unknown>, path: string): unknown {
 app.get(
   "/api/health",
   asyncRoute(async (_request, response) => {
-    response.json({ ok: true, appDb: config.appDb, appUser: config.appUser });
+    response.json({ ok: true, appDb: config.appDb });
   })
 );
 
 app.get(
   "/api/status",
-  asyncRoute(async (_request, response) => {
+  asyncRoute(async (request, response) => {
+    await requireSession(request);
     const [localReachable, serverReachable, localDbExists, serverDbExists, replications] =
       await Promise.all([
         ping("local"),
@@ -776,7 +964,7 @@ app.get(
       docExistsInDb("server", config.setupDb, "app:config"),
       docExistsInDb("local", config.platformDb, "platform:config"),
       docExistsInDb("server", config.platformDb, "platform:config"),
-      platformState()
+      platformState(_request)
     ]);
     const ready =
       localReachable &&
@@ -810,7 +998,8 @@ app.get(
 
 app.post(
   "/api/setup",
-  asyncRoute(async (_request, response) => {
+  asyncRoute(async (request, response) => {
+    await requireSession(request, "manager");
     await Promise.all([seedTarget("local"), seedTarget("server")]);
     response.json({ ok: true });
   })
@@ -819,6 +1008,10 @@ app.post(
 app.post(
   "/api/reset",
   asyncRoute(async (_request, response) => {
+    if (process.env.NODE_ENV === "production" && process.env.E2E !== "1") {
+      response.status(404).json({ error: "not_found" });
+      return;
+    }
     await Promise.all([seedTarget("local", true), seedTarget("server", true)]);
     await Promise.all([completeDevPlatformSetup("local"), completeDevPlatformSetup("server")]);
     clearEffectLog();
@@ -828,17 +1021,22 @@ app.post(
 
 app.get(
   "/api/platform/state",
-  asyncRoute(async (_request, response) => {
-    response.json(await platformState());
+  asyncRoute(async (request, response) => {
+    response.json(await platformState(request));
   })
 );
 
 app.post(
   "/api/platform/setup",
   asyncRoute(async (request, response) => {
+    const existingPlatform = await platformConfig();
+    if (existingPlatform.setupComplete) {
+      response.status(409).json({ error: "setup_complete", reason: "Setup is already complete" });
+      return;
+    }
     const orgName = String(request.body.orgName ?? "").trim();
     const domainName = String(request.body.domainName ?? "").trim();
-    const adminUser = String(request.body.adminUser ?? "").trim();
+    const adminUser = normalizeUsername(String(request.body.adminUser ?? ""));
     const adminPassword = String(request.body.adminPassword ?? "");
     const confirmPassword = String(request.body.confirmPassword ?? "");
     const errors: Array<{ field: string; message: string }> = [];
@@ -853,51 +1051,105 @@ app.post(
     }
 
     const now = timestamp();
-    const existing = await platformConfig();
+    const [localPerson] = await Promise.all([
+      upsertPerson("local", adminUser, adminUser, adminPassword),
+      upsertPerson("server", adminUser, adminUser, adminPassword)
+    ]);
+    await Promise.all([
+      upsertGroup("local", "group:admins", "Admins", [localPerson._id]),
+      upsertGroup("server", "group:admins", "Admins", [localPerson._id])
+    ]);
+    const existing = existingPlatform;
     const next: PlatformConfig = {
       ...existing,
       setupComplete: true,
       orgName,
       domainName,
       adminUser,
-      // Development-only until a real auth/session subsystem replaces this.
-      adminPasswordHash: createHash("sha256").update(adminPassword).digest("hex"),
       createdAt: existing.createdAt ?? now,
       updatedAt: now
     };
     const localResult = await upsertDocInDb("local", config.platformDb, next);
     await upsertDocInDb("server", config.platformDb, next);
-    response.json({ ...(await platformState()), rev: localResult.rev });
+    const session = await createSession(response, localPerson);
+    response.json({ ...(await platformState()), session, rev: localResult.rev });
+  })
+);
+
+app.get(
+  "/api/session",
+  asyncRoute(async (request, response) => {
+    response.json(await sessionStateForRequest(request));
+  })
+);
+
+app.post(
+  "/api/session/login",
+  asyncRoute(async (request, response) => {
+    const username = normalizeUsername(String(request.body.username ?? ""));
+    const password = String(request.body.password ?? "");
+    if (!username || !password) {
+      response.status(422).json({ error: "login_validation_failed", reason: "Username and password are required" });
+      return;
+    }
+    try {
+      const person = await getDocFromNamedDb<PersonDocument>("local", config.setupDb, personIdForUsername(username));
+      if (!person.active || !(await verifyPassword(password, person))) {
+        response.status(401).json({ error: "invalid_login", reason: "Invalid username or password" });
+        return;
+      }
+      const session = await createSession(response, person);
+      response.json(session);
+    } catch (error) {
+      if (error instanceof CouchError && error.status === 404) {
+        response.status(401).json({ error: "invalid_login", reason: "Invalid username or password" });
+        return;
+      }
+      throw error;
+    }
+  })
+);
+
+app.post(
+  "/api/session/logout",
+  asyncRoute(async (request, response) => {
+    await logoutSession(request, response);
+    response.json(emptySession());
   })
 );
 
 app.post(
   "/api/platform/install-sample/expense",
-  asyncRoute(async (_request, response) => {
-    const state = await platformState();
+  asyncRoute(async (request, response) => {
+    const scope = await requireSession(request, "manager");
+    const state = await platformState(request);
     if (!state.setupComplete) {
       response.status(409).json({ error: "setup_required", reason: "Complete setup before installing sample apps" });
       return;
     }
 
     const [localInstalled, serverInstalled] = await Promise.all([expenseAppInstalled("local"), expenseAppInstalled("server")]);
+    await Promise.all([
+      seedExpenseSampleDirectory("local", scope.person as `person:${string}`),
+      seedExpenseSampleDirectory("server", scope.person as `person:${string}`)
+    ]);
     // M17: seedTarget installs the packaged `sample:expense` JSON template plus sample data.
     if (!localInstalled) await seedTarget("local");
     if (!serverInstalled) await seedTarget("server");
 
     const installedAt = timestamp();
-    const install = expenseInstallRecord(installedAt);
+    const install = expenseInstallRecord(installedAt, scopeUser(scope));
     const existing = await docExistsInDb("local", config.platformDb, install._id);
     const localResult = await upsertDocInDb("local", config.platformDb, install);
     await upsertDocInDb("server", config.platformDb, install);
-    response.status(existing ? 200 : 201).json({ ...(await platformState()), rev: localResult.rev });
+    response.status(existing ? 200 : 201).json({ ...(await platformState(request)), rev: localResult.rev });
   })
 );
 
 app.post(
   "/api/replicate",
-  asyncRoute(async (_request, response) => {
-    const scope = await currentScope();
+  asyncRoute(async (request, response) => {
+    const scope = await requireSession(request);
     const replication = await replicateBidirectional(scope);
     const purge = await purgeUnreadableLocalDocs(scope);
     const reconcile = await reconcileStates();
@@ -907,7 +1159,8 @@ app.post(
 
 app.get(
   "/api/definitions",
-  asyncRoute(async (_request, response) => {
+  asyncRoute(async (request, response) => {
+    const scope = await requireSession(request);
     const [appConfig, forms, views, workflows] = await Promise.all([
       getDesignDoc("local", "app:config"),
       findDocs<FormDefinition>("local", { selector: { kind: "form" }, limit: 100 }),
@@ -919,10 +1172,9 @@ app.get(
       forms: forms.docs.sort((left, right) => left.title.localeCompare(right.title)),
       views: views.docs.sort((left, right) => left.title.localeCompare(right.title)),
       workflows: workflows.docs.sort((left, right) => left.title.localeCompare(right.title)),
-      user: config.appUser,
-      // Roles are surfaced so the client offers only the actions the server would
-      // accept; the transition endpoint re-checks them authoritatively (A5).
-      roles: await rolesForUser(config.appUser),
+      user: scope.person,
+      roles: principalsFor(scope),
+      accessLevel: scope.accessLevel,
       form: forms.docs.find((form) => form._id === "form:expense"),
       view: views.docs.find((view) => view._id === "view:my-expenses")
     });
@@ -932,6 +1184,7 @@ app.get(
 app.post(
   "/api/templates/export",
   asyncRoute(async (request, response) => {
+    const scope = await requireSession(request, "designer");
     const appConfig = await getDoc<AppConfig>("local", "app:config");
     const version = String(request.body.version || generatedTemplateVersion());
     const source = String(request.body.source || "local");
@@ -941,7 +1194,7 @@ app.post(
       appId: appConfig.appId,
       version,
       createdAt: timestamp(),
-      createdBy: config.appUser,
+      createdBy: scopeUser(scope),
       source,
       definitions: await currentDefinitions()
     };
@@ -952,6 +1205,7 @@ app.post(
 app.post(
   "/api/templates/diff",
   asyncRoute(async (request, response) => {
+    await requireSession(request, "designer");
     const template = request.body.template as TemplateArtifact;
     const errors = validateTemplateDefinitions(template);
     if (errors.length) {
@@ -965,6 +1219,7 @@ app.post(
 app.post(
   "/api/templates/apply",
   asyncRoute(async (request, response) => {
+    await requireSession(request, "designer");
     const template = request.body.template as TemplateArtifact;
     const errors = validateTemplateDefinitions(template);
     if (errors.length) {
@@ -985,9 +1240,10 @@ app.post(
 
 app.get(
   "/api/documents",
-  asyncRoute(async (_request, response) => {
-    const docType = typeof _request.query.docType === "string" ? _request.query.docType : "expense";
-    const docs = await getBusinessDocs("local", docType, await currentScope());
+  asyncRoute(async (request, response) => {
+    const scope = await requireSession(request);
+    const docType = typeof request.query.docType === "string" ? request.query.docType : "expense";
+    const docs = await getBusinessDocs("local", docType, scope);
     response.json(docs);
   })
 );
@@ -995,7 +1251,7 @@ app.get(
 app.get(
   "/api/views/:id/documents",
   asyncRoute(async (request, response) => {
-    const scope = await currentScope();
+    const scope = await requireSession(request);
     const view = await getDoc<ViewDefinition>("local", routeParam(request.params.id));
     const sort = view.sort?.[0];
     const body: Record<string, unknown> = {
@@ -1027,35 +1283,36 @@ app.get(
 app.get(
   "/api/documents/:id",
   asyncRoute(async (request, response) => {
-    response.json(await getReadableDocument(routeParam(request.params.id), await currentScope()));
+    response.json(await getReadableDocument(routeParam(request.params.id), await requireSession(request)));
   })
 );
 
 app.get(
   "/api/forms/:docType/options",
   asyncRoute(async (request, response) => {
+    const scope = await requireSession(request);
     const form = await formForDocType(routeParam(request.params.docType));
-    response.json(await selectOptionsForForm(form));
+    response.json(await selectOptionsForForm(form, scope));
   })
 );
 
 app.post(
   "/api/documents",
   asyncRoute(async (request, response) => {
+    const scope = await requireSession(request, "author");
     const docType = request.body.docType ?? "expense";
     const form = await formForDocType(docType);
-    const optionsByField = await selectOptionsForForm(form);
+    const optionsByField = await selectOptionsForForm(form, scope);
     const payload = applyComputedFields(form, normalizePayload(form, request.body.payload ?? {}));
     const errors = validatePayload(form, payload, undefined, optionsByField);
     if (errors.length) {
       response.status(422).json({ error: "validation_failed", errors });
       return;
     }
-    const scope = await currentScope();
     const readers = readersForNewDocument(scope, docType);
     // M12: stamp the document generically so any scaffolded docType is correct
     // (was hardcoded to expense/vendor); readers come from the access policy.
-    const doc = createDocument(docType, payload, config.appUser, readers);
+    const doc = createDocument(docType, payload, scopeUser(scope), readers);
     const result = await putDoc("local", doc);
     response.status(201).json({ ...doc, _rev: result.rev });
   })
@@ -1064,7 +1321,7 @@ app.post(
 app.put(
   "/api/documents/:id",
   asyncRoute(async (request, response) => {
-    const scope = await currentScope();
+    const scope = await requireSession(request);
     const existing = await getReadableDocument(routeParam(request.params.id), scope);
     if (!canEditDocument(existing, scope)) {
       response.status(403).json({ error: "forbidden", reason: "Document is not editable by current user" });
@@ -1072,7 +1329,7 @@ app.put(
     }
     const form = await formForDocType(existing.docType);
     const payload = applyComputedFields(form, normalizePayload(form, request.body.payload ?? existing.payload), existing);
-    const errors = validatePayload(form, payload, existing, await selectOptionsForForm(form));
+    const errors = validatePayload(form, payload, existing, await selectOptionsForForm(form, scope));
     if (errors.length) {
       response.status(422).json({ error: "validation_failed", errors });
       return;
@@ -1080,7 +1337,7 @@ app.put(
     const updated: BusinessDocument = {
       ...existing,
       updatedAt: timestamp(),
-      updatedBy: config.appUser,
+      updatedBy: scopeUser(scope),
       payload
     };
     const result = await putDoc("local", updated);
@@ -1091,7 +1348,7 @@ app.put(
 app.delete(
   "/api/documents/:id",
   asyncRoute(async (request, response) => {
-    const scope = await currentScope();
+    const scope = await requireSession(request);
     const existing = await getReadableDocument(routeParam(request.params.id), scope);
     if (!canEditDocument(existing, scope)) {
       response.status(403).json({ error: "forbidden", reason: "Document is not editable by current user" });
@@ -1099,7 +1356,7 @@ app.delete(
     }
     // Record the delete before removing the doc — the envelope (readers/actor) is
     // gone afterward, and the CDC drain can't see a deleted body. Best-effort.
-    await recordDeleteAudit(existing, scope.user);
+    await recordDeleteAudit(existing, scopeUser(scope));
     await deleteDoc("local", existing._id, existing._rev ?? "");
     response.status(204).end();
   })
@@ -1108,7 +1365,7 @@ app.delete(
 app.post(
   "/api/documents/:id/transition",
   asyncRoute(async (request, response) => {
-    const scope = await currentScope();
+    const scope = await requireSession(request);
     const existing = await getReadableDocument(routeParam(request.params.id), scope);
     const def = await workflowForDocType(existing.docType);
     if (!def) {
@@ -1116,12 +1373,12 @@ app.post(
       return;
     }
     // Same shared engine the client uses to offer the action — authoritative here (A2/A3).
-    const result = applyTransition(existing, def, request.body.transition, config.appUser, scope.roles, timestamp());
+    const result = applyTransition(existing, def, request.body.transition, scopeUser(scope), principalsFor(scope), timestamp());
     if (!result.ok) {
       response.status(422).json({ error: "transition_failed", errors: result.errors });
       return;
     }
-    const updated: BusinessDocument = { ...result.document, updatedAt: timestamp(), updatedBy: config.appUser };
+    const updated: BusinessDocument = { ...result.document, updatedAt: timestamp(), updatedBy: scopeUser(scope) };
     const put = await putDoc("local", updated);
     // M7: the state change is now committed and authoritative. The transition's
     // effect handler (if any) runs best-effort AFTER the write — server-only,
@@ -1131,7 +1388,7 @@ app.post(
     const effect = runEffect(transition.action, {
       document: { ...updated, _rev: put.rev },
       transition,
-      user: config.appUser,
+      user: scopeUser(scope),
       now: timestamp()
     });
     response.json({ ...updated, _rev: put.rev, effects: effect ? [effect] : [] });
@@ -1140,21 +1397,24 @@ app.post(
 
 app.get(
   "/api/plugins/manifest",
-  asyncRoute(async (_request, response) => {
+  asyncRoute(async (request, response) => {
+    await requireSession(request);
     response.json(HANDLER_MANIFEST);
   })
 );
 
 app.get(
   "/api/plugins/log",
-  asyncRoute(async (_request, response) => {
+  asyncRoute(async (request, response) => {
+    await requireSession(request, "designer");
     response.json(readEffectLog());
   })
 );
 
 app.post(
   "/api/agents/run",
-  asyncRoute(async (_request, response) => {
+  asyncRoute(async (request, response) => {
+    await requireSession(request, "designer");
     const result = await runAgents();
     response.json({ ok: true, ran: result.ran, runs: result.runs });
   })
@@ -1162,7 +1422,8 @@ app.post(
 
 app.get(
   "/api/agents",
-  asyncRoute(async (_request, response) => {
+  asyncRoute(async (request, response) => {
+    await requireSession(request, "designer");
     const result = await findDocs<AgentDefinition>("local", { selector: { kind: "agent" }, limit: 100 });
     response.json(result.docs.sort((left, right) => left._id.localeCompare(right._id)));
   })
@@ -1170,7 +1431,8 @@ app.get(
 
 app.get(
   "/api/agents/runs",
-  asyncRoute(async (_request, response) => {
+  asyncRoute(async (request, response) => {
+    await requireSession(request, "designer");
     const result = await findDocs<AgentRun>("local", { selector: { kind: "agentrun" }, limit: 200 });
     response.json(result.docs.sort((left, right) => right.startedAt.localeCompare(left.startedAt)));
   })
@@ -1178,7 +1440,8 @@ app.get(
 
 app.post(
   "/api/audit/run",
-  asyncRoute(async (_request, response) => {
+  asyncRoute(async (request, response) => {
+    await requireSession(request, "designer");
     const result = await runAudit();
     response.json({ ok: true, ...result });
   })
@@ -1187,7 +1450,7 @@ app.post(
 app.get(
   "/api/audit",
   asyncRoute(async (request, response) => {
-    const principals = principalsFor(await currentScope());
+    const principals = principalsFor(await requireSession(request));
     const docId = typeof request.query.docId === "string" ? request.query.docId : undefined;
     const docType = typeof request.query.docType === "string" ? request.query.docType : undefined;
     const result = await findDocs<AuditEvent>("local", { selector: { kind: "auditevent" }, limit: 500 });
@@ -1203,8 +1466,8 @@ app.get(
 
 app.get(
   "/api/conflicts",
-  asyncRoute(async (_request, response) => {
-    const scope = await currentScope();
+  asyncRoute(async (request, response) => {
+    const scope = await requireSession(request);
     const result = await allDocs<CouchDocument>("local", {
       include_docs: true,
       conflicts: true
@@ -1220,6 +1483,7 @@ app.get(
 app.put(
   "/api/definitions/:id",
   asyncRoute(async (request, response) => {
+    await requireSession(request, "designer");
     const id = routeParam(request.params.id);
     if (!id.startsWith("form:") && !id.startsWith("view:") && !id.startsWith("workflow:") && !id.startsWith("agent:")) {
       response.status(400).json({ error: "bad_request", reason: "Only form:*, view:*, workflow:*, and agent:* docs are editable" });
@@ -1244,6 +1508,7 @@ app.put(
 app.post(
   "/api/document-types",
   asyncRoute(async (request, response) => {
+    await requireSession(request, "designer");
     const docType = (typeof request.body.docType === "string" ? request.body.docType : "").trim();
     const title = typeof request.body.title === "string" ? request.body.title : "";
 
@@ -1273,7 +1538,7 @@ app.post(
 app.get(
   "/api/conflicts/:id",
   asyncRoute(async (request, response) => {
-    const details = await conflictDetails(routeParam(request.params.id), await currentScope());
+    const details = await conflictDetails(routeParam(request.params.id), await requireSession(request));
     if (!details) {
       response.status(404).json({ error: "not_found", reason: "Document has no local conflicts" });
       return;
@@ -1285,7 +1550,7 @@ app.get(
 app.post(
   "/api/conflicts/:id/resolve",
   asyncRoute(async (request, response) => {
-    const scope = await currentScope();
+    const scope = await requireSession(request);
     const details = await conflictDetails(routeParam(request.params.id), scope);
     if (!details) {
       response.status(404).json({ error: "not_found", reason: "Document has no local conflicts" });
@@ -1311,7 +1576,7 @@ app.post(
             _rev: details.winning._rev,
             _conflicts: undefined,
             updatedAt: timestamp(),
-            updatedBy: config.appUser,
+            updatedBy: scopeUser(scope),
             payload: request.body.payload ?? chosen.payload
           }
         : {
@@ -1330,7 +1595,8 @@ app.post(
 
 app.post(
   "/api/demo/conflict",
-  asyncRoute(async (_request, response) => {
+  asyncRoute(async (request, response) => {
+    await requireSession(request, "manager");
     await ensureDb("local");
     await ensureDb("server");
     const doc = createExpenseDoc({ amount: 77, description: "Conflict seed", spentAt: "2026-06-12" });
@@ -1358,7 +1624,8 @@ app.post(
 
 app.post(
   "/api/demo/definition-conflict",
-  asyncRoute(async (_request, response) => {
+  asyncRoute(async (request, response) => {
+    await requireSession(request, "manager");
     await ensureDb("local");
     await ensureDb("server");
     await replicateBidirectional();
@@ -1382,15 +1649,17 @@ app.post(
 
 app.post(
   "/api/demo/state-conflict",
-  asyncRoute(async (_request, response) => {
+  asyncRoute(async (request, response) => {
+    await requireSession(request, "manager");
     await ensureDb("local");
     await ensureDb("server");
     const def = await getDoc<WorkflowDefinition>("local", "workflow:expense");
-    const roles = ["role:finance"];
+    const user = "person:alice";
+    const roles = ["person:alice", "group:finance"];
 
     // Submit a fresh expense and replicate it to both replicas.
     const base = createExpenseDoc({ amount: 88, description: `State conflict ${ulid()}`, spentAt: "2026-06-13" });
-    const submitted = applyTransition(base, def, "submit", config.appUser, roles, timestamp());
+    const submitted = applyTransition(base, def, "submit", user, roles, timestamp());
     if (!submitted.ok) throw new Error(submitted.errors[0]?.message ?? "submit failed");
     await putDoc("local", submitted.document);
     await replicateBidirectional();
@@ -1398,8 +1667,8 @@ app.post(
     // Diverge: approve on local, reject on server — both from `submitted`.
     const localBase = await getDoc<BusinessDocument>("local", base._id);
     const serverBase = await getDoc<BusinessDocument>("server", base._id);
-    const approved = applyTransition(localBase, def, "approve", config.appUser, roles, timestamp());
-    const rejected = applyTransition(serverBase, def, "reject", config.appUser, roles, timestamp());
+    const approved = applyTransition(localBase, def, "approve", user, roles, timestamp());
+    const rejected = applyTransition(serverBase, def, "reject", user, roles, timestamp());
     if (!approved.ok || !rejected.ok) throw new Error("divergent transitions failed");
     await putDoc("local", { ...approved.document, updatedAt: timestamp() });
     await putDoc("server", { ...rejected.document, updatedAt: timestamp() });
@@ -1412,6 +1681,7 @@ app.post(
 app.post(
   "/api/admin/revoke-reader",
   asyncRoute(async (request, response) => {
+    await requireSession(request, "manager");
     const id = String(request.body.id ?? "");
     const readers = Array.isArray(request.body.readers) ? request.body.readers.map(String) : [];
     if (!id || !readers.length) {
@@ -1431,7 +1701,8 @@ app.post(
 
 app.get(
   "/api/admin/server-definitions",
-  asyncRoute(async (_request, response) => {
+  asyncRoute(async (request, response) => {
+    await requireSession(request, "manager");
     const [form, view] = await Promise.all([
       getDoc<FormDefinition>("server", "form:expense"),
       getDoc<ViewDefinition>("server", "view:my-expenses")
@@ -1442,7 +1713,8 @@ app.get(
 
 app.post(
   "/api/admin/server-definition-demo",
-  asyncRoute(async (_request, response) => {
+  asyncRoute(async (request, response) => {
+    await requireSession(request, "manager");
     const [form, view] = await Promise.all([
       getDoc<FormDefinition>("server", "form:expense"),
       getDoc<ViewDefinition>("server", "view:my-expenses")
