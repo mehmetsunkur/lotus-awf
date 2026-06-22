@@ -182,6 +182,12 @@ async function runAssertions() {
   assert.ok(definitions.forms.some((form) => form._id === "form:expense"), "expense form should be installed");
   assert.ok(definitions.views.some((view) => view._id === "view:my-expenses"), "expense view should be installed");
 
+  const seededExpenses = await request<Array<{ _id: string; payload: Record<string, unknown> }>>("/api/documents?docType=expense");
+  assert.ok(
+    seededExpenses.some((doc) => doc._id === "doc:expense:stationery" && doc.payload.description === "Stationery"),
+    "expense sample data should be installed from the JSON artifact"
+  );
+
   const created = await request<{ _id: string; _rev: string; payload: Record<string, unknown>; state?: string }>("/api/documents", {
     ok: 201,
     body: {

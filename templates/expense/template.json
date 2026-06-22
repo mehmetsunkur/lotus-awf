@@ -1,0 +1,474 @@
+{
+  "kind": "template",
+  "templateId": "sample:expense",
+  "appId": "expense",
+  "version": "sample",
+  "createdAt": "2026-06-18T00:00:00.000Z",
+  "createdBy": "system:seed",
+  "source": "templates/expense/template.json",
+  "definitions": [
+    {
+      "_id": "acl:rules",
+      "kind": "acl",
+      "appId": "expense",
+      "policy": "M1 spike: filtered replication uses document readers entries matching user id or role.",
+      "users": [
+        {
+          "user": "user:alice",
+          "roles": [
+            "role:finance"
+          ]
+        },
+        {
+          "user": "user:bob",
+          "roles": [
+            "role:sales"
+          ]
+        }
+      ]
+    },
+    {
+      "_id": "agent:daily-digest",
+      "kind": "agent",
+      "appId": "expense",
+      "title": "Daily digest",
+      "handler": "record-activity",
+      "trigger": {
+        "type": "schedule",
+        "everyMs": 60000
+      }
+    },
+    {
+      "_id": "agent:on-expense-change",
+      "kind": "agent",
+      "appId": "expense",
+      "title": "On expense change",
+      "handler": "record-activity",
+      "trigger": {
+        "type": "on-change",
+        "docType": "expense"
+      }
+    },
+    {
+      "_id": "app:config",
+      "kind": "app",
+      "appId": "expense",
+      "title": "Expense Replica",
+      "database": "expense_app"
+    },
+    {
+      "_id": "audit:policy",
+      "kind": "auditpolicy",
+      "appId": "expense",
+      "retentionDays": 365
+    },
+    {
+      "_id": "form:expense",
+      "kind": "form",
+      "appId": "expense",
+      "docType": "expense",
+      "title": "Expense",
+      "sections": [
+        {
+          "title": "Spend",
+          "fields": [
+            "amount",
+            "gross",
+            "description",
+            "category",
+            "vendorId"
+          ]
+        },
+        {
+          "title": "Accounting",
+          "fields": [
+            "spentAt",
+            "reimbursable",
+            "notes"
+          ]
+        }
+      ],
+      "fields": [
+        {
+          "name": "amount",
+          "type": "number",
+          "label": "Amount",
+          "required": true,
+          "validate": [
+            {
+              "expression": "payload.amount > 0",
+              "message": "Amount must be greater than zero"
+            }
+          ]
+        },
+        {
+          "name": "gross",
+          "type": "number",
+          "label": "Gross (incl. tax)",
+          "compute": "expense-total-with-tax",
+          "helpText": "Computed from amount via the expense-total-with-tax handler (amount + 20% tax)."
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "label": "Description",
+          "required": true,
+          "searchable": true
+        },
+        {
+          "name": "category",
+          "type": "select",
+          "label": "Category",
+          "required": true,
+          "defaultValue": "travel",
+          "options": [
+            {
+              "label": "Travel",
+              "value": "travel"
+            },
+            {
+              "label": "Meals",
+              "value": "meals"
+            },
+            {
+              "label": "Supplies",
+              "value": "supplies"
+            }
+          ]
+        },
+        {
+          "name": "vendorId",
+          "type": "select",
+          "label": "Vendor",
+          "helpText": "Loaded from local vendor documents.",
+          "searchable": false,
+          "source": {
+            "docType": "vendor",
+            "labelField": "payload.name"
+          }
+        },
+        {
+          "name": "spentAt",
+          "type": "date",
+          "label": "Spent date"
+        },
+        {
+          "name": "reimbursable",
+          "type": "boolean",
+          "label": "Reimbursable",
+          "defaultValue": true
+        },
+        {
+          "name": "notes",
+          "type": "textarea",
+          "label": "Notes",
+          "visibleWhen": "payload.amount >= 100"
+        }
+      ]
+    },
+    {
+      "_id": "form:vendor",
+      "kind": "form",
+      "appId": "expense",
+      "docType": "vendor",
+      "title": "Vendor",
+      "sections": [
+        {
+          "title": "Vendor",
+          "fields": [
+            "name",
+            "category",
+            "preferred",
+            "contactEmail"
+          ]
+        }
+      ],
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "label": "Name",
+          "required": true
+        },
+        {
+          "name": "category",
+          "type": "select",
+          "label": "Category",
+          "defaultValue": "travel",
+          "options": [
+            {
+              "label": "Travel",
+              "value": "travel"
+            },
+            {
+              "label": "Meals",
+              "value": "meals"
+            },
+            {
+              "label": "Supplies",
+              "value": "supplies"
+            }
+          ]
+        },
+        {
+          "name": "preferred",
+          "type": "boolean",
+          "label": "Preferred",
+          "defaultValue": false
+        },
+        {
+          "name": "contactEmail",
+          "type": "text",
+          "label": "Contact email",
+          "validate": [
+            {
+              "expression": "!payload.contactEmail || payload.contactEmail.includes('@')",
+              "message": "Contact email must include @"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "_id": "view:all-expenses",
+      "kind": "view",
+      "appId": "expense",
+      "docType": "expense",
+      "title": "All Expenses",
+      "columns": [
+        {
+          "field": "payload.description",
+          "label": "Description"
+        },
+        {
+          "field": "payload.category",
+          "label": "Category"
+        },
+        {
+          "field": "payload.amount",
+          "label": "Amount"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "expense"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "view:my-expenses",
+      "kind": "view",
+      "appId": "expense",
+      "docType": "expense",
+      "title": "My Expenses",
+      "columns": [
+        {
+          "field": "payload.category",
+          "label": "Category"
+        },
+        {
+          "field": "payload.description",
+          "label": "Description"
+        },
+        {
+          "field": "payload.amount",
+          "label": "Amount"
+        },
+        {
+          "field": "payload.spentAt",
+          "label": "Spent"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "expense"
+        },
+        {
+          "field": "readers",
+          "op": "in",
+          "value": [
+            "user:alice",
+            "role:finance"
+          ]
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "view:pending-approvals",
+      "kind": "view",
+      "appId": "expense",
+      "docType": "expense",
+      "title": "Pending Approvals",
+      "columns": [
+        {
+          "field": "payload.description",
+          "label": "Description"
+        },
+        {
+          "field": "payload.amount",
+          "label": "Amount"
+        },
+        {
+          "field": "payload.category",
+          "label": "Category"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "expense"
+        },
+        {
+          "field": "state",
+          "op": "eq",
+          "value": "submitted"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "view:vendors",
+      "kind": "view",
+      "appId": "expense",
+      "docType": "vendor",
+      "title": "Vendors",
+      "columns": [
+        {
+          "field": "payload.name",
+          "label": "Name"
+        },
+        {
+          "field": "payload.category",
+          "label": "Category"
+        },
+        {
+          "field": "payload.preferred",
+          "label": "Preferred"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "vendor"
+        }
+      ],
+      "sort": [
+        {
+          "field": "payload.name",
+          "direction": "asc"
+        }
+      ]
+    },
+    {
+      "_id": "workflow:expense",
+      "kind": "workflow",
+      "appId": "expense",
+      "docType": "expense",
+      "title": "Expense Approval",
+      "initialState": "draft",
+      "states": [
+        {
+          "name": "draft",
+          "label": "Draft"
+        },
+        {
+          "name": "submitted",
+          "label": "Submitted"
+        },
+        {
+          "name": "approved",
+          "label": "Approved",
+          "final": true
+        },
+        {
+          "name": "rejected",
+          "label": "Rejected",
+          "final": true
+        }
+      ],
+      "transitions": [
+        {
+          "id": "submit",
+          "label": "Submit",
+          "from": "draft",
+          "to": "submitted",
+          "guard": "payload.amount > 0",
+          "action": "audit-transition"
+        },
+        {
+          "id": "approve",
+          "label": "Approve",
+          "from": "submitted",
+          "to": "approved",
+          "requiredRole": "role:finance"
+        },
+        {
+          "id": "reject",
+          "label": "Reject",
+          "from": "submitted",
+          "to": "rejected",
+          "requiredRole": "role:finance"
+        }
+      ]
+    }
+  ]
+}

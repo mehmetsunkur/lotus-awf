@@ -1,0 +1,150 @@
+[
+  {
+    "_id": "doc:expense:stationery",
+    "kind": "document",
+    "appId": "expense",
+    "docType": "expense",
+    "createdAt": "2026-06-18T00:00:00.000Z",
+    "updatedAt": "2026-06-18T00:00:00.000Z",
+    "createdBy": "user:alice",
+    "updatedBy": "user:alice",
+    "readers": [
+      "user:alice",
+      "role:finance"
+    ],
+    "authors": [
+      "user:alice"
+    ],
+    "payload": {
+      "amount": 42.5,
+      "description": "Stationery",
+      "category": "supplies",
+      "spentAt": "2026-06-10"
+    }
+  },
+  {
+    "_id": "doc:expense:train-ticket",
+    "kind": "document",
+    "appId": "expense",
+    "docType": "expense",
+    "createdAt": "2026-06-18T00:00:00.000Z",
+    "updatedAt": "2026-06-18T00:00:00.000Z",
+    "createdBy": "user:alice",
+    "updatedBy": "user:alice",
+    "readers": [
+      "user:alice",
+      "role:finance"
+    ],
+    "authors": [
+      "user:alice"
+    ],
+    "payload": {
+      "amount": 125.5,
+      "description": "Train ticket",
+      "category": "travel",
+      "reimbursable": true,
+      "spentAt": "2026-06-11"
+    },
+    "state": "submitted",
+    "stateUpdatedAt": "2026-06-18T00:00:00.000Z",
+    "stateUpdatedBy": "user:alice",
+    "history": [
+      {
+        "transition": "submit",
+        "from": "draft",
+        "to": "submitted",
+        "at": "2026-06-18T00:00:00.000Z",
+        "by": "user:alice"
+      }
+    ]
+  },
+  {
+    "_id": "doc:expense:client-dinner",
+    "kind": "document",
+    "appId": "expense",
+    "docType": "expense",
+    "createdAt": "2026-06-18T00:00:00.000Z",
+    "updatedAt": "2026-06-18T00:00:00.000Z",
+    "createdBy": "user:bob",
+    "updatedBy": "user:bob",
+    "readers": [
+      "user:bob",
+      "role:finance"
+    ],
+    "authors": [
+      "user:bob"
+    ],
+    "payload": {
+      "amount": 220,
+      "description": "Client dinner",
+      "category": "meals",
+      "reimbursable": true,
+      "spentAt": "2026-06-12"
+    },
+    "state": "approved",
+    "stateUpdatedAt": "2026-06-18T00:00:00.000Z",
+    "stateUpdatedBy": "user:alice",
+    "history": [
+      {
+        "transition": "submit",
+        "from": "draft",
+        "to": "submitted",
+        "at": "2026-06-18T00:00:00.000Z",
+        "by": "user:bob"
+      },
+      {
+        "transition": "approve",
+        "from": "submitted",
+        "to": "approved",
+        "at": "2026-06-18T00:00:00.000Z",
+        "by": "user:alice"
+      }
+    ]
+  },
+  {
+    "_id": "doc:vendor:national-rail",
+    "kind": "document",
+    "appId": "expense",
+    "docType": "vendor",
+    "createdAt": "2026-06-18T00:00:00.000Z",
+    "updatedAt": "2026-06-18T00:00:00.000Z",
+    "createdBy": "user:alice",
+    "updatedBy": "user:alice",
+    "readers": [
+      "user:alice",
+      "role:finance"
+    ],
+    "authors": [
+      "user:alice"
+    ],
+    "payload": {
+      "name": "National Rail",
+      "category": "travel",
+      "preferred": true,
+      "contactEmail": "accounts@rail.example"
+    }
+  },
+  {
+    "_id": "doc:vendor:paper-market",
+    "kind": "document",
+    "appId": "expense",
+    "docType": "vendor",
+    "createdAt": "2026-06-18T00:00:00.000Z",
+    "updatedAt": "2026-06-18T00:00:00.000Z",
+    "createdBy": "user:alice",
+    "updatedBy": "user:alice",
+    "readers": [
+      "user:alice",
+      "role:finance"
+    ],
+    "authors": [
+      "user:alice"
+    ],
+    "payload": {
+      "name": "Paper Market",
+      "category": "supplies",
+      "preferred": false,
+      "contactEmail": "orders@paper.example"
+    }
+  }
+]

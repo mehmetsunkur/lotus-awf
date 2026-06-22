@@ -41,8 +41,7 @@ import { validateDesignDefinition } from "../shared/definition-validation";
 import {
   diffTemplateDefinitions,
   normalizeDefinitions,
-  stripDefinitionRev,
-  validateTemplateArtifact
+  stripDefinitionRev
 } from "../shared/template";
 import { applyComputedFields, normalizePayload, validatePayload } from "../shared/validation";
 import { applyTransition, currentState } from "../shared/workflow";
@@ -76,6 +75,7 @@ import {
 } from "./couch";
 import { config } from "./config";
 import { createDocument, createExpenseDoc, seedDocuments } from "./seed-data";
+import { validateTemplateDefinitions } from "./template-registry";
 
 const app = express();
 
@@ -371,31 +371,6 @@ async function currentDefinitions(): Promise<DesignDocument[]> {
 
 function generatedTemplateVersion() {
   return `v${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}`;
-}
-
-function validateTemplateDefinitions(template: TemplateArtifact) {
-  const messages = validateTemplateArtifact(template);
-  for (const definition of template.definitions ?? []) {
-    if (
-      definition.kind === "form" ||
-      definition.kind === "view" ||
-      definition.kind === "workflow" ||
-      definition.kind === "agent" ||
-      definition.kind === "auditpolicy"
-    ) {
-      messages.push(...validateDesignDefinition(definition).map((error) => `${definition._id}.${error.field}: ${error.message}`));
-    } else if (definition.kind === "app") {
-      if (definition._id !== "app:config") messages.push("app definition id must be app:config");
-      if (!definition.appId?.trim()) messages.push("app:config appId is required");
-      if (!definition.title?.trim()) messages.push("app:config title is required");
-    } else if (definition.kind === "acl") {
-      if (definition._id !== "acl:rules") messages.push("acl definition id must be acl:rules");
-      if (!Array.isArray(definition.users)) messages.push("acl:rules users must be an array");
-    } else {
-      messages.push(`${(definition as { _id?: string })._id ?? "unknown"} kind is not template-eligible`);
-    }
-  }
-  return messages;
 }
 
 async function applyDefinition(definition: DesignDocument) {
@@ -906,6 +881,7 @@ app.post(
     }
 
     const [localInstalled, serverInstalled] = await Promise.all([expenseAppInstalled("local"), expenseAppInstalled("server")]);
+    // M17: seedTarget installs the packaged `sample:expense` JSON template plus sample data.
     if (!localInstalled) await seedTarget("local");
     if (!serverInstalled) await seedTarget("server");
 
