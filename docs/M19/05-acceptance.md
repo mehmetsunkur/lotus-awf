@@ -1,0 +1,14 @@
+# 05 - Acceptance
+
+- Catalog shows `setup.nsf` under System apps after setup completes.
+- Admin can open `/setup.nsf` after setup and see the Directory Console.
+- Directory Console lists People, Groups, and installed apps without exposing password hashes or
+  session tokens.
+- Admin can create a person and log in as that person after setting a password.
+- Admin can edit a person's display name and active flag.
+- Deactivating a person deletes their sessions and prevents login.
+- Admin can reset a person's password.
+- Admin can create a group and edit direct person membership.
+- API rejects changes that would leave no active admin in `group:admins`.
+- Non-admin authenticated users cannot administer `setup.nsf`.
+- `npm run test:deploy` verifies `setup.nsf` system app visibility in the packaged artifact.
