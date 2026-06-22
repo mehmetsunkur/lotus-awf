@@ -9,3 +9,14 @@
 - Kept Expense document, view, create, designer, audit, conflict, and local-first API paths unchanged.
 - No server API changes were required for M20; app-scoped document APIs remain a future multi-app
   substrate step.
+- Deploy verification now probes direct `/setup.nsf/views/people` and
+  `/catalog.nsf/views/system-apps` SPA fallback routes.
+
+## Verification
+
+```bash
+npm run build
+npm run test:unit
+npm run test:e2e
+npm run test:deploy
+```

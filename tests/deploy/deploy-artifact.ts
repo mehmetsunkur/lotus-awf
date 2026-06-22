@@ -137,8 +137,10 @@ async function runAssertions() {
   assert.match(await root.text(), /<div id="root"><\/div>/, "built client HTML should include the React root");
   for (const route of [
     "/setup.nsf",
+    "/setup.nsf/views/people",
     "/login.nsf",
     "/catalog.nsf",
+    "/catalog.nsf/views/system-apps",
     "/expense.nsf",
     "/expense.nsf/views/vendors",
     "/expense.nsf/designer/forms/expense"
