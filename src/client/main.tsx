@@ -9,12 +9,15 @@ import {
   FilePlus2,
   GitCompare,
   List,
+  LogIn,
+  LogOut,
   PencilRuler,
   RefreshCcw,
   RotateCcw,
   Save,
   Search,
   Trash2,
+  User,
   Wifi,
   WifiOff
 } from "lucide-react";
@@ -68,13 +71,14 @@ type Definitions = {
   workflows: WorkflowDefinition[];
   user: string;
   roles: string[];
+  accessLevel?: string;
   form?: FormDefinition;
   view?: ViewDefinition;
 };
 
 type Draft = Record<string, unknown>;
 type EditableDefinition = FormDefinition | ViewDefinition | WorkflowDefinition;
-type PlatformRoute = "setup" | "catalog" | "expense";
+type PlatformRoute = "setup" | "login" | "catalog" | "expense";
 type NsfRoute =
   | { kind: "home" }
   | { kind: "view"; viewId: string }
@@ -92,13 +96,14 @@ const DEFAULT_EXPENSE_VIEW_ID = "view:my-expenses";
 
 const routeForPath = (path: string): PlatformRoute => {
   if (path === "/setup.nsf") return "setup";
+  if (path === "/login.nsf") return "login";
   if (path === "/expense.nsf") return "expense";
   if (path.startsWith("/expense.nsf/")) return "expense";
   return "catalog";
 };
 
 const pathForRoute = (route: PlatformRoute) =>
-  route === "setup" ? "/setup.nsf" : route === "expense" ? "/expense.nsf" : "/catalog.nsf";
+  route === "setup" ? "/setup.nsf" : route === "login" ? "/login.nsf" : route === "expense" ? "/expense.nsf" : "/catalog.nsf";
 
 const viewIdFromSlug = (slug: string) => `view:${slug}`;
 const viewSlugFromId = (id: string) => id.replace(/^view:/, "");
@@ -1320,13 +1325,62 @@ function SetupScreen({
   );
 }
 
+function LoginScreen({
+  busy,
+  message,
+  onSubmit
+}: {
+  busy: boolean;
+  message: string;
+  onSubmit: (payload: { username: string; password: string }) => void;
+}) {
+  const [username, setUsername] = React.useState("");
+  const [password, setPassword] = React.useState("");
+
+  return (
+    <main className="shell setupShell" data-testid="login-shell">
+      <section className="setupHero">
+        <p className="kicker">login.nsf</p>
+        <h1>Lotus Login</h1>
+      </section>
+      <form
+        className="band setupForm"
+        data-testid="login-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit({ username, password });
+        }}
+      >
+        <label>
+          Username
+          <input value={username} data-testid="login-username" onChange={(event) => setUsername(event.target.value)} />
+        </label>
+        <label>
+          Password
+          <input
+            type="password"
+            value={password}
+            data-testid="login-password"
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </label>
+        <button className="primary" type="submit" disabled={busy} data-testid="login-submit">
+          <LogIn size={16} /> Login
+        </button>
+        <p className="message" data-testid="message">{message}</p>
+      </form>
+    </main>
+  );
+}
+
 function AppCatalog({
   state,
   busy,
   message,
   onInstallExpense,
   onOpenExpense,
-  onRefresh
+  onRefresh,
+  onLogout
 }: {
   state: PlatformState;
   busy: boolean;
@@ -1334,6 +1388,7 @@ function AppCatalog({
   onInstallExpense: () => void;
   onOpenExpense: () => void;
   onRefresh: () => void;
+  onLogout: () => void;
 }) {
   const expenseInstalled =
     state.installedApps.some((app) => app.appId === "expense") ||
@@ -1348,10 +1403,13 @@ function AppCatalog({
         </div>
         <div className="statusCluster">
           <span className="pill ok" data-testid="catalog-admin">
-            <Database size={16} /> {state.adminUser}
+            <User size={16} /> {state.session.person?.displayName ?? state.adminUser}
           </span>
           <button onClick={onRefresh} disabled={busy} data-testid="catalog-refresh">
             <RefreshCcw size={16} /> Refresh
+          </button>
+          <button onClick={onLogout} disabled={busy} data-testid="catalog-logout">
+            <LogOut size={16} /> Logout
           </button>
         </div>
       </header>
@@ -1521,13 +1579,17 @@ function App() {
       navigateApp("setup", true);
       return;
     }
-    if (platformState.setupComplete && route.app === "setup") {
+    if (platformState.setupComplete && !platformState.session.authenticated && route.app !== "login") {
+      navigateApp("login", true);
+      return;
+    }
+    if (platformState.setupComplete && platformState.session.authenticated && (route.app === "setup" || route.app === "login")) {
       navigateApp("catalog", true);
     }
   }, [navigateApp, platformState, route.app]);
 
   React.useEffect(() => {
-    if (!platformState || route.app !== "expense") return;
+    if (!platformState || route.app !== "expense" || !platformState.session.authenticated) return;
     const expenseInstalled =
       platformState.installedApps.some((app) => app.appId === "expense") ||
       platformState.samples.some((sample) => sample.appId === "expense" && sample.installed);
@@ -1698,6 +1760,26 @@ function App() {
     );
   }
 
+  if (!platformState.session.authenticated) {
+    return (
+      <LoginScreen
+        busy={busy}
+        message={message}
+        onSubmit={(payload) =>
+          run(
+            "Login",
+            async () => {
+              await api("/api/session/login", { method: "POST", body: JSON.stringify(payload) });
+              setPlatformState(await api<PlatformState>("/api/platform/state"));
+              navigateApp("catalog", true);
+            },
+            { refreshAfter: false }
+          )
+        }
+      />
+    );
+  }
+
   if (route.app !== "expense") {
     return (
       <AppCatalog
@@ -1705,6 +1787,17 @@ function App() {
         busy={busy}
         message={message}
         onRefresh={() => run("Refresh catalog", refreshPlatform, { refreshAfter: false })}
+        onLogout={() =>
+          run(
+            "Logout",
+            async () => {
+              await api("/api/session/logout", { method: "POST" });
+              setPlatformState(await api<PlatformState>("/api/platform/state"));
+              navigateApp("login", true);
+            },
+            { refreshAfter: false }
+          )
+        }
         onInstallExpense={() =>
           run(
             "Install Expense sample",
