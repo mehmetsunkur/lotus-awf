@@ -408,6 +408,20 @@ export type SetupDirectoryState = {
   installedApps: AppInstall[];
 };
 
+export type AppAccessEntry = AclRules["entries"][number];
+
+export type AppAccessState = {
+  appId: string;
+  entries: AppAccessEntry[];
+  people: PublicPerson[];
+  groups: PublicGroup[];
+  levels: Exclude<AccessLevel, "none">[];
+};
+
+export type AppAccessUpdate = {
+  entries: AppAccessEntry[];
+};
+
 export type DesignDocument =
   | AppConfig
   | FormDefinition

@@ -9,6 +9,8 @@ import type {
   AgentDefinition,
   AgentRun,
   AgentState,
+  AppAccessEntry,
+  AppAccessState,
   AppInstall,
   AppConfig,
   AuditAction,
@@ -114,6 +116,7 @@ const timestamp = () => new Date().toISOString();
 const routeParam = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value ?? "");
 const DEV_PASSWORD = "password123";
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const APP_ACCESS_LEVELS: Array<Exclude<AccessLevel, "none">> = ["reader", "author", "editor", "designer", "manager"];
 
 type BusinessAppContext = {
   appId: string;
@@ -323,6 +326,78 @@ async function requireAppSession(request: Request, db: string, required: AccessL
     throw new CouchError(403, { error: "forbidden", reason: `${required} access is required` });
   }
   return scope;
+}
+
+function normalizeAccessEntries(entries: unknown): AppAccessEntry[] {
+  if (!Array.isArray(entries)) {
+    throw new CouchError(422, { error: "access_validation_failed", reason: "entries must be an array" });
+  }
+  const byPrincipal = new Map<string, Exclude<AccessLevel, "none">>();
+  for (const entry of entries as Array<Partial<AppAccessEntry>>) {
+    const principal = typeof entry.principal === "string" ? entry.principal.trim() : "";
+    const level = entry.level;
+    if (!principal || !level) {
+      throw new CouchError(422, { error: "access_validation_failed", reason: "Each entry requires principal and level" });
+    }
+    if (!APP_ACCESS_LEVELS.includes(level as Exclude<AccessLevel, "none">)) {
+      throw new CouchError(422, { error: "access_validation_failed", reason: `Invalid access level: ${level}` });
+    }
+    byPrincipal.set(principal, level as Exclude<AccessLevel, "none">);
+  }
+  return Array.from(byPrincipal.entries())
+    .map(([principal, level]) => ({ principal, level }))
+    .sort((left, right) => left.principal.localeCompare(right.principal));
+}
+
+async function validateAccessEntries(entries: AppAccessEntry[]): Promise<void> {
+  const [people, groups] = await Promise.all([listPeople(), listGroups()]);
+  const activePeople = new Set(people.filter((person) => person.active).map((person) => person._id));
+  const groupIds = new Set(groups.map((group) => group._id));
+  for (const entry of entries) {
+    if (entry.principal.startsWith("person:")) {
+      if (!activePeople.has(entry.principal as `person:${string}`)) {
+        throw new CouchError(422, { error: "access_validation_failed", reason: `Unknown or inactive person: ${entry.principal}` });
+      }
+    } else if (entry.principal.startsWith("group:")) {
+      if (!groupIds.has(entry.principal as `group:${string}`)) {
+        throw new CouchError(422, { error: "access_validation_failed", reason: `Unknown group: ${entry.principal}` });
+      }
+    } else {
+      throw new CouchError(422, { error: "access_validation_failed", reason: `Unsupported principal: ${entry.principal}` });
+    }
+  }
+}
+
+async function assertAppHasActiveManager(entries: AppAccessEntry[]): Promise<void> {
+  const [people, groups] = await Promise.all([listPeople(), listGroups()]);
+  const activePeople = new Set(people.filter((person) => person.active).map((person) => person._id));
+  const groupById = new Map(groups.map((group) => [group._id, group]));
+  const managerEntries = entries.filter((entry) => entry.level === "manager");
+  const activeManager =
+    managerEntries.some((entry) => entry.principal.startsWith("person:") && activePeople.has(entry.principal as `person:${string}`)) ||
+    managerEntries.some((entry) => {
+      if (!entry.principal.startsWith("group:")) return false;
+      return groupById.get(entry.principal as `group:${string}`)?.members.some((member) => activePeople.has(member)) ?? false;
+    }) ||
+    (groupById.get("group:admins")?.members.some((member) => activePeople.has(member)) ?? false);
+  if (!activeManager) {
+    throw new CouchError(422, { error: "access_validation_failed", reason: "At least one active app manager is required" });
+  }
+}
+
+async function appAccessState(appContext: BusinessAppContext): Promise<AppAccessState> {
+  const [acl, people, groups] = await Promise.all([
+    getDoc<AclRules>("local", "acl:rules", "", appContext.database),
+    listPeople(),
+    listGroups()
+  ]);
+  return {
+    appId: appContext.appId,
+    entries: [...(acl.entries ?? [])].sort((left, right) => left.principal.localeCompare(right.principal)),
+    people: people.filter((person) => person.active).map(publicPerson),
+    groups: groups.map(publicGroup),
+    levels: APP_ACCESS_LEVELS
+  };
 }
 
 function scopeUser(scope: PrincipalScope): string {
@@ -1561,6 +1636,38 @@ app.get(
       accessLevel: scope.accessLevel,
       form: forms.docs.find((form) => form._id === "form:expense"),
       view: views.docs.find((view) => view._id === "view:my-expenses")
+    });
+  })
+);
+
+app.get(
+  "/api/apps/:appId/access",
+  asyncRoute(async (request, response) => {
+    const appContext = await appContextFromRequest(request);
+    await requireAppSession(request, appContext.database, "manager");
+    response.json(await appAccessState(appContext));
+  })
+);
+
+app.put(
+  "/api/apps/:appId/access",
+  asyncRoute(async (request, response) => {
+    const appContext = await appContextFromRequest(request);
+    await requireAppSession(request, appContext.database, "manager");
+    const entries = normalizeAccessEntries(request.body.entries);
+    await validateAccessEntries(entries);
+    await assertAppHasActiveManager(entries);
+
+    const existing = await getDoc<AclRules>("local", "acl:rules", "", appContext.database);
+    const next: AclRules = {
+      ...existing,
+      appId: appContext.appId,
+      entries
+    };
+    const result = await putDoc("local", next, appContext.database);
+    response.json({
+      ...(await appAccessState(appContext)),
+      rev: result.rev
     });
   })
 );

@@ -192,6 +192,12 @@ async function runAssertions() {
   assert.equal(configured.adminUser, "admin", "admin username should persist");
   assert.equal(configured.installedApps.length, 0, "setup should still land on an empty app catalog");
 
+  await request("/api/setup/people", {
+    method: "POST",
+    ok: 201,
+    body: { username: "bob", displayName: "Bob Builder", password: "password123" }
+  });
+
   const appCreated = await request<{
     installedApps: Array<{ appId: string; database: string }>;
   }>("/api/platform/apps", {
@@ -207,6 +213,19 @@ async function runAssertions() {
   assert.equal(appDefinitions.appConfig.appId, "field-reports", "app-scoped definitions should load the created app");
   assert.ok(appDefinitions.forms.some((form) => form._id === "form:report"), "created app should have a starter form");
   assert.ok(appDefinitions.views.some((view) => view._id === "view:report"), "created app should have a starter view");
+
+  const access = await request<{ entries: Array<{ principal: string; level: string }>; people: Array<{ username: string }> }>("/api/apps/field-reports/access");
+  assert.ok(access.people.some((person) => person.username === "bob"), "access editor should list active people");
+  const updatedAccess = await request<{ entries: Array<{ principal: string; level: string }> }>("/api/apps/field-reports/access", {
+    method: "PUT",
+    body: {
+      entries: [
+        ...access.entries,
+        { principal: "person:bob", level: "author" }
+      ]
+    }
+  });
+  assert.ok(updatedAccess.entries.some((entry) => entry.principal === "person:bob" && entry.level === "author"), "access editor should grant app access");
 
   const report = await request<{ _id: string; appId: string; docType: string }>("/api/apps/field-reports/documents", {
     ok: 201,

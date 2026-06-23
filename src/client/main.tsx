@@ -22,6 +22,9 @@ import {
   WifiOff
 } from "lucide-react";
 import type {
+  AccessLevel,
+  AppAccessEntry,
+  AppAccessState,
   AuditEvent,
   BusinessDocument,
   ConflictDetails,
@@ -42,6 +45,7 @@ import type {
   WorkflowState,
   WorkflowTransition
 } from "../shared/types";
+import { accessRank } from "../shared/access";
 import { validateDesignDefinition } from "../shared/definition-validation";
 import {
   addFieldToSection,
@@ -98,6 +102,7 @@ type RouteState = {
 const DEFAULT_EXPENSE_VIEW_ID = "view:my-expenses";
 const DEFAULT_SETUP_VIEW_ID = "view:people";
 const DEFAULT_CATALOG_VIEW_ID = "view:system-apps";
+const ACCESS_PANEL_ID = "acl:access";
 const SYSTEM_APP_ROUTES = new Set(["setup", "catalog"]);
 const SETUP_VIEW_IDS = [DEFAULT_SETUP_VIEW_ID, "view:groups", "view:installed-apps"];
 const CATALOG_VIEW_IDS = [DEFAULT_CATALOG_VIEW_ID, "view:installed-apps", "view:sample-templates"];
@@ -134,6 +139,7 @@ const nsfRouteForPath = (path: string, app: PlatformRoute): NsfRoute => {
   if (parts[0] === "documents" && parts[1]) return { kind: "document", docId: parts[1] };
   if (parts[0] === "new" && parts[1]) return { kind: "new", docType: parts[1] };
   if (parts[0] === "designer" && !parts[1]) return { kind: "designerHome" };
+  if (parts[0] === "designer" && parts[1] === "access") return { kind: "designer", definitionId: ACCESS_PANEL_ID };
   if (parts[0] === "designer" && parts[1] === "forms" && parts[2]) return { kind: "designer", definitionId: formIdFromDocType(parts[2]) };
   if (parts[0] === "designer" && parts[1] === "views" && parts[2]) return { kind: "designer", definitionId: viewIdFromSlug(parts[2]) };
   if (parts[0] === "designer" && parts[1] === "workflows" && parts[2]) return { kind: "designer", definitionId: workflowIdFromDocType(parts[2]) };
@@ -153,6 +159,7 @@ const pathForNsfRoute = (app: Exclude<PlatformRoute, "login">, route: NsfRoute) 
   if (route.kind === "new") return `${prefix}/new/${encodeURIComponent(route.docType)}`;
   if (route.kind === "designerHome") return `${prefix}/designer`;
   if (route.kind === "designer") {
+    if (route.definitionId === ACCESS_PANEL_ID) return `${prefix}/designer/access`;
     if (route.definitionId.startsWith("form:")) return `${prefix}/designer/forms/${encodeURIComponent(docTypeFromDefinitionId(route.definitionId))}`;
     if (route.definitionId.startsWith("view:")) return `${prefix}/designer/views/${encodeURIComponent(viewSlugFromId(route.definitionId))}`;
     if (route.definitionId.startsWith("workflow:")) return `${prefix}/designer/workflows/${encodeURIComponent(docTypeFromDefinitionId(route.definitionId))}`;
@@ -316,7 +323,7 @@ function RuntimeSidebar({
   activeDocType?: string;
   onSelectView: (id: string) => void;
   onNewDocument: (docType: string) => void;
-  onOpenDesigner: () => void;
+  onOpenDesigner?: () => void;
 }) {
   return (
     <aside className="appSidebar" data-testid="runtime-sidebar">
@@ -351,11 +358,13 @@ function RuntimeSidebar({
           ))}
         </nav>
       </div>
-      <div className="sidebarSection">
-        <button className="sidebarDesigner" onClick={onOpenDesigner} data-testid="open-designer">
-          <PencilRuler size={16} /> Open in Designer <ExternalLink size={14} />
-        </button>
-      </div>
+      {onOpenDesigner ? (
+        <div className="sidebarSection">
+          <button className="sidebarDesigner" onClick={onOpenDesigner} data-testid="open-designer">
+            <PencilRuler size={16} /> Open in Designer <ExternalLink size={14} />
+          </button>
+        </div>
+      ) : null}
     </aside>
   );
 }
@@ -374,6 +383,7 @@ function DesignerSidebar({
   onSelect: (id: string) => void;
 }) {
   const groups = [
+    { label: "App", items: [{ id: ACCESS_PANEL_ID, title: "Access" }] },
     { label: "Forms", items: forms.map((item) => ({ id: item._id, title: item.title })) },
     { label: "Views", items: views.map((item) => ({ id: item._id, title: item.title })) },
     { label: "Workflows", items: workflows.map((item) => ({ id: item._id, title: item.docType })) }
@@ -898,6 +908,122 @@ function DefinitionEditor({
       <div className="formActions definitionActions">
         <button className="primary" data-testid="definition-save" onClick={save}>
           <Braces size={16} /> Save Definition Locally
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function principalLabel(principal: string, state?: AppAccessState): string {
+  const person = state?.people.find((candidate) => candidate._id === principal);
+  if (person) return `${person.displayName} (${person.username})`;
+  const group = state?.groups.find((candidate) => candidate._id === principal);
+  if (group) return `${group.name} (${group._id})`;
+  return principal;
+}
+
+function AppAccessPanel({
+  state,
+  busy,
+  onRefresh,
+  onSave
+}: {
+  state?: AppAccessState;
+  busy: boolean;
+  onRefresh: () => void;
+  onSave: (entries: AppAccessEntry[]) => void;
+}) {
+  const [entries, setEntries] = React.useState<AppAccessEntry[]>([]);
+  const [principal, setPrincipal] = React.useState("");
+  const [level, setLevel] = React.useState<Exclude<AccessLevel, "none">>("reader");
+
+  React.useEffect(() => {
+    setEntries(state?.entries ?? []);
+  }, [state]);
+
+  const principalOptions = React.useMemo(
+    () => [
+      ...(state?.people ?? []).map((person) => ({ id: person._id, label: `${person.displayName} (${person.username})` })),
+      ...(state?.groups ?? []).map((group) => ({ id: group._id, label: `${group.name} (${group._id})` }))
+    ],
+    [state]
+  );
+
+  const addEntry = () => {
+    if (!principal) return;
+    setEntries((current) => [...current.filter((entry) => entry.principal !== principal), { principal, level }].sort((left, right) => left.principal.localeCompare(right.principal)));
+  };
+
+  const updateEntry = (target: string, nextLevel: Exclude<AccessLevel, "none">) =>
+    setEntries((current) => current.map((entry) => (entry.principal === target ? { ...entry, level: nextLevel } : entry)));
+
+  const removeEntry = (target: string) =>
+    setEntries((current) => current.filter((entry) => entry.principal !== target));
+
+  return (
+    <section className="definitionPanel" data-testid="access-panel">
+      <div className="panelHead">
+        <div>
+          <p className="kicker">App permissions</p>
+          <h2>Access</h2>
+        </div>
+        <button type="button" onClick={onRefresh} disabled={busy} data-testid="access-refresh">
+          <RefreshCcw size={16} /> Refresh
+        </button>
+      </div>
+      <form
+        className="newTypeForm"
+        data-testid="access-add-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          addEntry();
+        }}
+      >
+        <span className="kicker">Grant access</span>
+        <select data-testid="access-principal" value={principal} onChange={(event) => setPrincipal(event.target.value)}>
+          <option value="">Select principal</option>
+          {principalOptions.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <select data-testid="access-level" value={level} onChange={(event) => setLevel(event.target.value as Exclude<AccessLevel, "none">)}>
+          {(state?.levels ?? ["reader", "author", "editor", "designer", "manager"]).map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+        </select>
+        <button type="submit" data-testid="access-add" disabled={!principal}>
+          Add
+        </button>
+      </form>
+      <div className="definitionList" data-testid="access-entries">
+        {entries.map((entry) => (
+          <article className="definitionCard" key={entry.principal} data-testid={`access-entry-${entry.principal}`}>
+            <strong>{principalLabel(entry.principal, state)}</strong>
+            <span>{entry.principal}</span>
+            <select
+              data-testid={`access-entry-level-${entry.principal}`}
+              value={entry.level}
+              onChange={(event) => updateEntry(entry.principal, event.target.value as Exclude<AccessLevel, "none">)}
+            >
+              {(state?.levels ?? ["reader", "author", "editor", "designer", "manager"]).map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+            <button type="button" className="danger" data-testid={`access-entry-remove-${entry.principal}`} onClick={() => removeEntry(entry.principal)}>
+              <Trash2 size={16} /> Remove
+            </button>
+          </article>
+        ))}
+      </div>
+      <div className="formActions definitionActions">
+        <button className="primary" data-testid="access-save" onClick={() => onSave(entries)} disabled={busy}>
+          <Save size={16} /> Save Access
         </button>
       </div>
     </section>
@@ -1825,6 +1951,7 @@ function App() {
   const [route, setRoute] = React.useState<RouteState>(() => routeStateForPath(window.location.pathname));
   const [status, setStatus] = React.useState<ReplicationStatus>();
   const [definitions, setDefinitions] = React.useState<Definitions>();
+  const [accessState, setAccessState] = React.useState<AppAccessState>();
   const [documents, setDocuments] = React.useState<BusinessDocument[]>([]);
   const [focusedDocument, setFocusedDocument] = React.useState<BusinessDocument>();
   const [documentRouteError, setDocumentRouteError] = React.useState("");
@@ -1853,6 +1980,7 @@ function App() {
   const selectedForm = definitions?.forms.find((form) => form.docType === activeDocType) ?? definitions?.form;
   const selectedWorkflow = definitions?.workflows.find((workflow) => workflow.docType === selectedForm?.docType);
   const businessApiBase = isBusinessApp(route.app) ? `/api/apps/${encodeURIComponent(route.app)}` : "/api";
+  const canDesign = accessRank(definitions?.accessLevel as AccessLevel | undefined) >= accessRank("designer");
   const editableDefinitions = React.useMemo(
     () => [...(definitions?.forms ?? []), ...(definitions?.views ?? []), ...(definitions?.workflows ?? [])],
     [definitions]
@@ -1894,6 +2022,10 @@ function App() {
   const refreshDirectory = React.useCallback(async () => {
     setDirectory(await api<SetupDirectoryState>("/api/setup/directory"));
   }, []);
+
+  const refreshAccess = React.useCallback(async () => {
+    setAccessState(await api<AppAccessState>(`${businessApiBase}/access`));
+  }, [businessApiBase]);
 
   const navigate = React.useCallback((nextRoute: RouteState, replace = false) => {
     const nextPath = pathForRouteState(nextRoute);
@@ -2038,6 +2170,10 @@ function App() {
   React.useEffect(() => {
     if (!definitions || !isBusinessApp(route.app)) return;
     const nsfRoute = route.nsf;
+    if ((nsfRoute.kind === "designer" || nsfRoute.kind === "designerHome") && !canDesign) {
+      navigateNsf({ kind: "view", viewId: selectedViewId || definitions.views[0]?._id || DEFAULT_EXPENSE_VIEW_ID }, true, route.app);
+      return;
+    }
     if (nsfRoute.kind === "view") {
       if (definitions.views.some((view) => view._id === nsfRoute.viewId)) {
         if (selectedViewId !== nsfRoute.viewId) {
@@ -2067,6 +2203,10 @@ function App() {
       return;
     }
     if (nsfRoute.kind === "designer") {
+      if (nsfRoute.definitionId === ACCESS_PANEL_ID) {
+        setSelectedDefinitionId(ACCESS_PANEL_ID);
+        return;
+      }
       if (editableDefinitions.some((definition) => definition._id === nsfRoute.definitionId)) {
         setSelectedDefinitionId(nsfRoute.definitionId);
       } else {
@@ -2074,7 +2214,12 @@ function App() {
         navigateNsf(firstDefinition ? { kind: "designer", definitionId: firstDefinition._id } : { kind: "view", viewId: definitions.views[0]?._id ?? DEFAULT_EXPENSE_VIEW_ID }, true, route.app);
       }
     }
-  }, [definitions, editableDefinitions, navigateNsf, route.app, route.nsf, selectedViewId]);
+  }, [canDesign, definitions, editableDefinitions, navigateNsf, route.app, route.nsf, selectedViewId]);
+
+  React.useEffect(() => {
+    if (!isBusinessApp(route.app) || selectedDefinitionId !== ACCESS_PANEL_ID || !canDesign) return;
+    refreshAccess().catch((error) => setMessage(error instanceof Error ? error.message : "Access refresh failed."));
+  }, [canDesign, refreshAccess, route.app, selectedDefinitionId]);
 
   React.useEffect(() => {
     const nsfRoute = route.nsf;
@@ -2347,6 +2492,19 @@ function App() {
       setSelectedViewId(`view:${docType}`);
       navigateNsf({ kind: "designer", definitionId: `form:${docType}` });
     });
+  const saveAccess = (entries: AppAccessEntry[]) =>
+    run(
+      "Save app access",
+      async () => {
+        setAccessState(
+          await api<AppAccessState>(`${businessApiBase}/access`, {
+            method: "PUT",
+            body: JSON.stringify({ entries })
+          })
+        );
+      },
+      { refreshAfter: false }
+    );
   const saveDocument = (payload: Record<string, unknown>) =>
     run("Save local document", async () => {
       if (selected) {
@@ -2382,16 +2540,20 @@ function App() {
             onSelect={selectDefinition}
           />
           <div className="workspaceMain">
-            <DefinitionEditor
-              definitions={editableDefinitions}
-              selectedId={selectedDefinitionId}
-              onSelect={selectDefinition}
-              optionsByField={optionsByField}
-              user={definitions.user}
-              roles={definitions.roles}
-              onSave={saveDefinition}
-              onCreateType={createType}
-            />
+            {selectedDefinitionId === ACCESS_PANEL_ID ? (
+              <AppAccessPanel state={accessState} busy={busy} onRefresh={() => run("Refresh app access", refreshAccess, { refreshAfter: false })} onSave={saveAccess} />
+            ) : (
+              <DefinitionEditor
+                definitions={editableDefinitions}
+                selectedId={selectedDefinitionId}
+                onSelect={selectDefinition}
+                optionsByField={optionsByField}
+                user={definitions.user}
+                roles={definitions.roles}
+                onSave={saveDefinition}
+                onCreateType={createType}
+              />
+            )}
           </div>
         </div>
       ) : (
@@ -2403,7 +2565,7 @@ function App() {
             activeDocType={isCreateRoute ? routeDocType : undefined}
             onSelectView={selectView}
             onNewDocument={startNewDocument}
-            onOpenDesigner={() => window.open(pathForNsfRoute(route.app, { kind: "designerHome" }), "_blank", "noopener,noreferrer")}
+            onOpenDesigner={canDesign ? () => window.open(pathForNsfRoute(route.app, { kind: "designerHome" }), "_blank", "noopener,noreferrer") : undefined}
           />
           <div className="workspaceMain">
             {isDocumentRoute || isCreateRoute ? (

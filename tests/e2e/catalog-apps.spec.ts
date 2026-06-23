@@ -68,4 +68,82 @@ test.describe("catalog-created apps", () => {
     });
     expect(duplicate.status()).toBe(409);
   });
+
+  test("managers grant app access without widening existing document visibility", async ({ page, bobApi }) => {
+    await page.request.post("/api/platform/apps", {
+      data: { appId: "shared-reports", title: "Shared Reports", docType: "report", docTypeTitle: "Report" }
+    });
+
+    await page.goto("/shared-reports.nsf/designer/access");
+    await expect(page.getByTestId("access-panel")).toBeVisible();
+    await page.getByTestId("access-principal").selectOption("person:bob");
+    await page.getByTestId("access-level").selectOption("author");
+    await page.getByTestId("access-add").click();
+    await expect(page.getByTestId("access-entry-person:bob")).toBeVisible();
+    await page.getByTestId("access-save").click();
+    await expect(page.getByTestId("message")).toHaveText("Save app access complete.");
+
+    const bobDefinitions = await bobApi.get("/api/apps/shared-reports/definitions");
+    expect(bobDefinitions.ok()).toBeTruthy();
+    expect((await bobDefinitions.json()).accessLevel).toBe("author");
+
+    expect((await bobApi.get("/api/apps/shared-reports/access")).status()).toBe(403);
+
+    const bobDesigner = await bobApi.put("/api/apps/shared-reports/definitions/view%3Areport", {
+      data: { _id: "view:report", kind: "view", appId: "shared-reports", docType: "report", title: "Bad", columns: [] }
+    });
+    expect(bobDesigner.status()).toBe(403);
+
+    const bobCreated = await bobApi.post("/api/apps/shared-reports/documents", {
+      data: { docType: "report", payload: { title: "Bob report" } }
+    });
+    expect(bobCreated.status()).toBe(201);
+
+    const aliceCreated = await page.request.post("/api/apps/shared-reports/documents", {
+      data: { docType: "report", payload: { title: "Alice private report" } }
+    });
+    expect(aliceCreated.status()).toBe(201);
+
+    const bobRows = await bobApi.get("/api/apps/shared-reports/views/view:report/documents").then((response) => response.json());
+    expect(bobRows.map((doc: { payload: { title?: string } }) => doc.payload.title)).toContain("Bob report");
+    expect(bobRows.map((doc: { payload: { title?: string } }) => doc.payload.title)).not.toContain("Alice private report");
+
+    const exported = await page.request
+      .post("/api/apps/shared-reports/templates/export", { data: { version: "vtest", source: "e2e" } })
+      .then((response) => response.json());
+    const acl = exported.definitions.find((definition: { _id: string }) => definition._id === "acl:rules");
+    expect(acl.entries).toContainEqual({ principal: "person:bob", level: "author" });
+  });
+
+  test("access API rejects invalid principals and normalizes duplicates", async ({ page }) => {
+    await page.request.post("/api/platform/apps", {
+      data: { appId: "secure-reports", title: "Secure Reports", docType: "report", docTypeTitle: "Report" }
+    });
+
+    const invalid = await page.request.put("/api/apps/secure-reports/access", {
+      data: { entries: [{ principal: "person:nobody", level: "reader" }, { principal: "person:alice", level: "manager" }] }
+    });
+    expect(invalid.status()).toBe(422);
+
+    const noManager = await page.request.put("/api/apps/secure-reports/access", {
+      data: { entries: [{ principal: "person:alice", level: "reader" }] }
+    });
+    // Global group:admins remains an active manager override, so removing the
+    // explicit creator manager is allowed while an active platform admin exists.
+    expect(noManager.status()).toBe(200);
+
+    const duplicate = await page.request.put("/api/apps/secure-reports/access", {
+      data: {
+        entries: [
+          { principal: "person:bob", level: "reader" },
+          { principal: "person:bob", level: "designer" }
+        ]
+      }
+    });
+    expect(duplicate.status()).toBe(200);
+    const body = await duplicate.json();
+    expect(body.entries.filter((entry: { principal: string }) => entry.principal === "person:bob")).toEqual([
+      { principal: "person:bob", level: "designer" }
+    ]);
+  });
 });
