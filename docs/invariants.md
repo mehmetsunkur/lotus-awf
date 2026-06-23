@@ -91,6 +91,11 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 - Protected API routes must resolve the current actor from an authenticated HTTP-only session cookie, never from client-supplied principal ids or stale fixed-user config; password hashes stay on `person:*` docs in `setup_app`, session tokens are stored only as hashes in `platform_app`, public session payloads must not expose hashes/tokens, and app ACL levels must be checked through shared access helpers.
   - Paths: `src/server/auth.ts`, `src/server/index.ts`, `src/shared/access.ts`, `src/shared/types.ts`, `src/client/main.tsx`, `tests/e2e/**`, `tests/deploy/**`
 
+## MCP agent interface
+
+- MCP tools must be client adapters over the authenticated Express API — never direct CouchDB writers; every app-scoped tool requires explicit `appId`, may not accept caller-supplied principals, may not mutate business documents or document `readers`/`authors`, and must validate design changes before applying them.
+  - Paths: `src/mcp/**`, `docs/M24/**`
+
 ## Offline editing
 
 - Create/edit/validate/list/option-load must work against the LOCAL CouchDB with no server round-trip; do not add a hard dependency on the server replica or network on an offline path, and source options/definitions from local data.

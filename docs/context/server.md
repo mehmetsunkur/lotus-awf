@@ -38,8 +38,9 @@ reconciliation, (M6) template export/diff/apply, (M13) production static-client 
 - `src/server/config.ts` — local vs server Couch URLs and database names.
 - `src/server/seed-data.ts` — compatibility helpers for scripts/e2e; loads the packaged Expense
   sample from the JSON template registry.
-- `src/server/template-registry.ts` — filesystem-backed sample template loader/validator for
-  `templates/expense/template.json` and `templates/expense/sample-data.json`.
+- `src/server/template-registry.ts` — filesystem-backed sample template loader for
+  `templates/expense/template.json` and `templates/expense/sample-data.json`; pure design validation
+  lives in `src/shared/template-validation.ts`.
 - `src/server/handlers/effects.ts` (M7) — server-only effect registry + `runEffect` (best-effort,
   in-memory log).
 - `src/server/handlers/agents.ts` (M8) — server-only agent-handler registry + `runAgentHandler`

@@ -35,6 +35,8 @@ No DOM, no Node/server-only APIs.
   `workflow:*` documents before local definition writes.
 - `src/shared/template.ts` (M6) — template normalization, `_rev` stripping, artifact validation, and
   document-level diff helpers.
+- `src/shared/template-validation.ts` (M24) — pure template-design validation shared by the server
+  registry, template apply endpoints, and MCP validation tools.
 - `src/shared/expression.ts` — `evaluateExpression`, `evaluateBoolean` (portable evaluator).
 - `src/shared/workflow.ts` (M3) — portable workflow engine: `currentState`, `availableTransitions`,
   `applyTransition`. Pure; reuses `evaluateBoolean` for guards and fails closed on a bad guard.

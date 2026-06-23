@@ -25,6 +25,7 @@ Classes map to the path-tagged aspects in `docs/invariants.md`.
 | Shared | Portable contract + logic used by client and server: types, validation, expression runtime | `src/shared/**` | `docs/context/shared.md` | `npm run test:e2e` (indirect) |
 | Server | Express API over two CouchDB replicas: definitions, documents, replication, conflicts, indexes | `src/server/**`, `scripts/**` | `docs/context/server.md` | `npm run test:e2e` |
 | Client | React metadata-driven runtime UI (forms, views, definition editor, conflict panel) | `src/client/**` | `docs/context/client.md` | `npm run test:e2e` |
+| MCP Adapter | Stdio MCP server exposing agent-safe app/design operations over the Express API | `src/mcp/**` | `docs/context/mcp.md` | `npm run build`, `npm run test:unit` |
 
 ## Domain Areas
 
@@ -65,6 +66,7 @@ Mapped to the path-tagged aspects in `docs/invariants.md`.
 | Data integrity | Replication & conflict | `_rev`/`_conflicts` correctness; no silent loss on resolve |
 | Security | ACL / readers | No cross-user/role leak; `readers` honoured |
 | Authentication | Identity & sessions | Sessions are HTTP-only, token hashes only, protected routes require session + app ACL |
+| Agent interface safety | MCP agent interface | MCP tools call Express APIs, never CouchDB directly; no business-doc or readers/authors mutation |
 | Availability | Offline editing | Works against local replica with no server round-trip |
 | Performance | Index & query | New sort/filter has an index; three index sites in sync |
 
@@ -74,6 +76,7 @@ Mapped to the path-tagged aspects in `docs/invariants.md`.
 | --- | --- | --- |
 | Web UI | React runtime (`src/client`) | e2e check (`npm run test:e2e`) |
 | Internal API | Express endpoints (`src/server`) | API behavior via e2e; caller-impact |
+| MCP Stdio | Local MCP process (`src/mcp`) | Build + unit tests; tool contract docs |
 | CLI/Script | `scripts/*.ts` (seed, reset, replicate, force-conflict, acl-spike) | Dry run or fixture-based check |
 | Deploy Artifact | Docker image + `deploy/compose.yml` | `npm run test:deploy` |
 
