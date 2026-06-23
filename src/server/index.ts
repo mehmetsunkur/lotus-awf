@@ -89,7 +89,7 @@ import {
 } from "./couch";
 import { config } from "./config";
 import { createDocument, createExpenseDoc, seedDocuments } from "./seed-data";
-import { validateTemplateDefinitions } from "./template-registry";
+import { validateTemplateDefinitions } from "../shared/template-validation";
 import {
   clearSessionCookie,
   createSessionToken,

@@ -96,6 +96,17 @@ export class LotusClient {
     return this.request<Record<string, unknown>>("POST", `/api/apps/${encodeURIComponent(appId)}/templates/diff`, { template });
   }
 
+  async createDocumentType(appId: string, body: { docType: string; title: string }): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>("POST", `/api/apps/${encodeURIComponent(appId)}/document-types`, body);
+  }
+
+  async scaffoldApprovalWorkflow(
+    appId: string,
+    body: { docType: string; approverPrincipal: string }
+  ): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>("POST", `/api/apps/${encodeURIComponent(appId)}/workflows/scaffold`, body);
+  }
+
   private async request<T>(method: string, path: string, body?: unknown, retryOnUnauthorized = true): Promise<T> {
     if (!this.cookie && path !== "/api/session") await this.login();
     const response = await fetch(`${this.apiUrl}${path}`, {
