@@ -64,6 +64,11 @@ subsystem.
 
 - `npm run build`
 - `npm run test:unit`
+- `npm run test:mcp`
+
+`npm run test:mcp` uses `playwright.mcp.config.ts`, starts only the Express API, launches the MCP
+server over stdio through the official MCP client transport, and reuses the CouchDB Docker setup from
+browser e2e.
 
 ## Common Pitfalls
 

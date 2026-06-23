@@ -14,15 +14,22 @@
 - Added local validation tools for design definitions and template artifacts.
 - Added pure workflow patch operations plus `lotus_preview_workflow_patch` and
   `lotus_apply_workflow_patch`.
+- Added `npm run test:mcp`, backed by `playwright.mcp.config.ts`, to exercise the stdio MCP server
+  against a real Lotus API and CouchDB pair without launching a browser.
+- Added `tests/mcp/mcp.spec.ts` for MCP auth, app reads, document-type creation, approval workflow
+  scaffold, workflow patch preview/apply, and template export.
+- Added a CouchDB readiness fallback for e2e global setup and the MCP API launcher so tests can use
+  Docker container IPs when published localhost ports are not reachable from the host.
 - Added `docs/context/mcp.md`, taxonomy routing, and an MCP invariant.
 
 ## Verification
 
-Passed during implementation:
+Passed:
 
 ```bash
 npm run build
 npm run test:unit
+npm run test:mcp
 ```
 
-The full final verification result is recorded in the implementation summary.
+`npm run test:mcp` ran one MCP stdio integration test against the real Express API and CouchDB pair.

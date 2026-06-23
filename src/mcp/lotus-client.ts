@@ -63,6 +63,7 @@ export class LotusClient {
   }
 
   async getSession(): Promise<SessionState> {
+    if (!this.cookie) await this.login();
     return this.request<SessionState>("GET", "/api/session", undefined, false);
   }
 

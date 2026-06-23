@@ -16,6 +16,7 @@
 ```bash
 npm run build        # TypeScript no-emit check + Vite production build
 npm run test:unit    # Vitest shared/runtime unit tests
+npm run test:mcp     # MCP stdio integration tests; needs CouchDB pair + Express API
 npm run test:e2e     # Playwright source-mode runtime tests; starts CouchDB pair
 npm run test:deploy  # M13 deploy artifact gate; requires Docker API access
 ```
@@ -32,6 +33,7 @@ npm run test:deploy  # M13 deploy artifact gate; requires Docker API access
 | Area | Primary Tests |
 | --- | --- |
 | Shared pure engines | `npm run test:unit` |
+| MCP agent interface | `npm run test:mcp` |
 | Runtime UI/API flows | `npm run test:e2e` |
 | Deploy packaging | `npm run test:deploy` |
 | Docker/compose shape | `docker compose -f deploy/compose.yml config` |

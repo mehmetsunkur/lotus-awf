@@ -10,4 +10,5 @@
 - Workflow patch preview returns a validated changed workflow without writing.
 - Workflow patch apply writes through `PUT /api/apps/:appId/definitions/:id`.
 - MCP tools do not write directly to CouchDB or mutate business documents.
+- `npm run test:mcp` exercises the MCP stdio server against a real Lotus API and CouchDB pair.
 - Build and unit tests pass; unavailable e2e/deploy status is recorded.

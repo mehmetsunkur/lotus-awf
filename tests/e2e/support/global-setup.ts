@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 const LOCAL_COUCH = "http://localhost:5985/";
 const SERVER_COUCH = "http://localhost:5984/";
 const COMPOSE_SERVICES = ["local-couchdb", "server-couchdb"];
+const CONTAINER_PORT = "5984";
 
 function commandWorks(command: string, args: string[]) {
   try {
@@ -36,6 +37,47 @@ async function waitForCouch(url: string, timeoutMs = 60_000): Promise<void> {
   throw new Error(`CouchDB at ${url} not reachable within ${timeoutMs}ms (last: ${lastError})`);
 }
 
+async function canReach(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url);
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+function containerIp(runner: { command: string; args: string[] }, service: string): string {
+  return execFileSync(runner.command, [
+    ...runner.args,
+    "compose",
+    "ps",
+    "-q",
+    service
+  ], { encoding: "utf8" }).trim();
+}
+
+function inspectIp(runner: { command: string; args: string[] }, containerId: string): string {
+  return execFileSync(runner.command, [
+    ...runner.args,
+    "inspect",
+    containerId,
+    "--format",
+    "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}"
+  ], { encoding: "utf8" }).trim();
+}
+
+async function reachableCouchUrl(
+  runner: { command: string; args: string[] },
+  service: string,
+  preferredUrl: string
+): Promise<string> {
+  if (await canReach(preferredUrl)) return preferredUrl;
+  const id = containerIp(runner, service);
+  const ip = inspectIp(runner, id);
+  if (!ip) return preferredUrl;
+  return `http://${ip}:${CONTAINER_PORT}/`;
+}
+
 /**
  * Bring the CouchDB pair up before the suite runs. `docker compose up -d` is
  * idempotent, so this is a no-op when the containers are already running. We
@@ -56,5 +98,9 @@ export default async function globalSetup(): Promise<void> {
     );
   }
 
-  await Promise.all([waitForCouch(LOCAL_COUCH), waitForCouch(SERVER_COUCH)]);
+  const [localUrl, serverUrl] = await Promise.all([
+    reachableCouchUrl(runner, "local-couchdb", LOCAL_COUCH),
+    reachableCouchUrl(runner, "server-couchdb", SERVER_COUCH)
+  ]);
+  await Promise.all([waitForCouch(localUrl), waitForCouch(serverUrl)]);
 }
