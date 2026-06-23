@@ -18,6 +18,8 @@ export type SampleTemplate = {
   sampleData: BusinessDocument[];
 };
 
+export { validateTemplateDefinitions };
+
 const SAMPLE_TEMPLATES: Record<string, SampleTemplateFiles> = {
   "sample:expense": {
     templatePath: "templates/expense/template.json",

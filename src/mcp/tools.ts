@@ -4,11 +4,79 @@ import type { LotusClient } from "./lotus-client";
 import { asToolResult } from "./tool-result";
 import { validateDesignDefinition } from "../shared/definition-validation";
 import { validateTemplateDefinitions } from "../shared/template-validation";
-import type { CouchDocument, DesignDocument, TemplateArtifact } from "../shared/types";
+import type { CouchDocument, DesignDocument, TemplateArtifact, WorkflowDefinition, WorkflowTransition } from "../shared/types";
+import { applyWorkflowPatch, type WorkflowPatchOperation } from "./workflow-patches";
 
 const appIdSchema = {
   appId: z.string().min(1).describe("Installed business app id, without the .nsf suffix")
 };
+
+const transitionSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  from: z.string().min(1),
+  to: z.string().min(1),
+  guard: z.string().optional(),
+  requiredRole: z.string().optional(),
+  action: z.string().optional()
+});
+
+const workflowPatchOperationSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("add_state"),
+    name: z.string().min(1),
+    label: z.string().min(1),
+    final: z.boolean().optional()
+  }),
+  z.object({
+    type: z.literal("update_state"),
+    name: z.string().min(1),
+    label: z.string().min(1).optional(),
+    final: z.boolean().optional()
+  }),
+  z.object({
+    type: z.literal("remove_state"),
+    name: z.string().min(1)
+  }),
+  z.object({
+    type: z.literal("add_transition"),
+    transition: transitionSchema
+  }),
+  z.object({
+    type: z.literal("update_transition"),
+    id: z.string().min(1),
+    patch: transitionSchema.partial().omit({ id: true })
+  }),
+  z.object({
+    type: z.literal("remove_transition"),
+    id: z.string().min(1)
+  })
+]);
+
+const workflowPatchSchema = {
+  ...appIdSchema,
+  docType: z.string().min(1).describe("Document type whose workflow should be patched"),
+  operations: z.array(workflowPatchOperationSchema).min(1).describe("Workflow patch operations to apply in order")
+};
+
+async function previewWorkflowPatch(
+  client: LotusClient,
+  appId: string,
+  docType: string,
+  operations: WorkflowPatchOperation[]
+) {
+  const current = await client.workflow(appId, docType);
+  const result = applyWorkflowPatch(current, operations);
+  return {
+    ok: result.errors.length === 0,
+    appId,
+    docType,
+    current,
+    workflow: result.workflow,
+    summary: result.summary,
+    errors: result.errors
+  };
+}
 
 export function registerLotusTools(server: McpServer, client: LotusClient): void {
   server.registerTool(
@@ -158,5 +226,36 @@ export function registerLotusTools(server: McpServer, client: LotusClient): void
     },
     ({ appId, docType, approverPrincipal }) =>
       asToolResult(() => client.scaffoldApprovalWorkflow(appId, { docType, approverPrincipal }))
+  );
+
+  server.registerTool(
+    "lotus_preview_workflow_patch",
+    {
+      title: "Preview Workflow Patch",
+      description: "Apply workflow patch operations in memory and validate the changed workflow without writing.",
+      inputSchema: workflowPatchSchema
+    },
+    ({ appId, docType, operations }) =>
+      asToolResult(() => previewWorkflowPatch(client, appId, docType, operations as WorkflowPatchOperation[]))
+  );
+
+  server.registerTool(
+    "lotus_apply_workflow_patch",
+    {
+      title: "Apply Workflow Patch",
+      description: "Apply validated workflow patch operations and write through the app-scoped definitions API.",
+      inputSchema: workflowPatchSchema
+    },
+    ({ appId, docType, operations }) =>
+      asToolResult(async () => {
+        const preview = await previewWorkflowPatch(client, appId, docType, operations as WorkflowPatchOperation[]);
+        if (!preview.ok) return preview;
+        const written = await client.updateDefinition(
+          appId,
+          (preview.workflow as WorkflowDefinition)._id,
+          preview.workflow
+        );
+        return { ...preview, written };
+      })
   );
 }

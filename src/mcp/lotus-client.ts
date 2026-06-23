@@ -107,6 +107,14 @@ export class LotusClient {
     return this.request<Record<string, unknown>>("POST", `/api/apps/${encodeURIComponent(appId)}/workflows/scaffold`, body);
   }
 
+  async updateDefinition(appId: string, id: string, definition: unknown): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(
+      "PUT",
+      `/api/apps/${encodeURIComponent(appId)}/definitions/${encodeURIComponent(id)}`,
+      definition
+    );
+  }
+
   private async request<T>(method: string, path: string, body?: unknown, retryOnUnauthorized = true): Promise<T> {
     if (!this.cookie && path !== "/api/session") await this.login();
     const response = await fetch(`${this.apiUrl}${path}`, {
