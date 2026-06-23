@@ -53,6 +53,10 @@ reconciliation, (M6) template export/diff/apply, (M13) production static-client 
 
 - Business app resolution (M21): installed app ids map to `/:appId.nsf`, database `${appId}_app`,
   and app-scoped APIs under `/api/apps/:appId/*`. Unscoped routes remain Expense aliases.
+- App access editor (M22): `GET/PUT /api/apps/:appId/access` requires app manager access, returns
+  sanitized directory people/groups plus `acl:rules.entries`, validates active people/existing
+  groups and access levels, normalizes duplicate principals, and writes the app's local `acl:rules`
+  design doc without changing existing document `readers`/`authors`.
 - Create app (M21): `POST /api/platform/apps` requires manager access, validates/reserves the app id,
   rejects duplicate install/database collisions, creates local+server app databases, writes starter
   `app:config` / `acl:rules` / `audit:policy` / form / view definitions, creates the standard Mango
@@ -177,6 +181,8 @@ this subsystem.
   checkout bind mount.
 - A query path that ignores `readers` filtering and leaks across people/groups.
 - A protected route that forgets `requireSession()` or checks app ACL levels ad hoc.
+- An app access change that mutates existing business document `readers`/`authors`; M22 edits only
+  app-level `acl:rules`.
 - Exposing `passwordHash`, `passwordSalt`, `passwordParams`, raw session tokens, or `session:*` docs
   through the setup directory APIs.
 - Letting setup directory mutations remove or deactivate the last active admin.

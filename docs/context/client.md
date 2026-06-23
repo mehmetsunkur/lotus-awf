@@ -65,6 +65,10 @@ resolution panel, and M18 login/logout.
 - Authoring (M4/M16) → Designer workspace left pane lists forms/views/workflows; structured controls
   update the JSON definition in memory → shared `validateDesignDefinition` runs client-side →
   `PUT /api/definitions/:id` (local replica) → refresh.
+- App access editing (M22) → Designer Access panel (`/:appId.nsf/designer/access`) fetches
+  `GET /api/apps/:appId/access`, edits `acl:rules.entries`, and saves with
+  `PUT /api/apps/:appId/access`. Users below designer access are redirected away from Designer; only
+  managers can read/write the Access panel.
 - Layout studio (M11) → `FormStudio` groups fields by section with move buttons, a move-to-section
   select, and native HTML5 drag, all routed through `src/shared/form-layout.ts` (keeps the form
   normalized). A live preview reuses `DocumentForm` in read-only `preview` mode (`FieldEditor`'s
@@ -115,3 +119,4 @@ the host `fs.inotify` `EMFILE` limit.
   `PlatformState.systemApps`.
 - Reintroducing one-off full-page system app layouts; first-party `.nsf` apps should use the M20
   standard workspace unless a later ADR carves out an exception.
+- Showing Designer entry points to users below `designer` access.
