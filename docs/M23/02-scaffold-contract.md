@@ -37,6 +37,15 @@ Mango index; the submitted view uses the existing state worklist index.
 
 ## API
 
+`GET /api/apps/:appId/workflows/scaffold-options`
+
+Compatibility alias:
+
+`GET /api/workflows/scaffold-options`
+
+Returns active public people and public groups. Requires app `designer` access and does not expose
+password hashes, salts, or session tokens.
+
 `POST /api/apps/:appId/workflows/scaffold`
 
 Compatibility alias:

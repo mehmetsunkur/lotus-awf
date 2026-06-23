@@ -314,6 +314,26 @@ async function runAssertions() {
   const inspections = await request<Array<{ _id: string }>>("/api/views/view%3Ainspection/documents");
   assert.ok(inspections.some((doc) => doc._id === inspection._id), "scaffolded view should list new documents");
 
+  const workflowScaffold = await request<{ workflow: { _id: string }; views: Array<{ _id: string }> }>("/api/workflows/scaffold", {
+    ok: 201,
+    body: { docType: "inspection", approverPrincipal: "group:admins" }
+  });
+  assert.equal(workflowScaffold.workflow._id, "workflow:inspection", "workflow scaffold should create an inspection workflow");
+  assert.ok(
+    workflowScaffold.views.some((view) => view._id === "view:inspection-submitted"),
+    "workflow scaffold should create submitted worklist"
+  );
+
+  const inspectionSubmitted = await request<{ state: string }>(`/api/documents/${encodeURIComponent(inspection._id)}/transition`, {
+    body: { transition: "submit" }
+  });
+  assert.equal(inspectionSubmitted.state, "submitted", "scaffolded workflow submit transition should run");
+
+  const inspectionApproved = await request<{ state: string }>(`/api/documents/${encodeURIComponent(inspection._id)}/transition`, {
+    body: { transition: "approve" }
+  });
+  assert.equal(inspectionApproved.state, "approved", "scaffolded workflow approve transition should run");
+
   const agentTick = await request<{ ok: boolean; ran: number }>("/api/agents/run", { method: "POST" });
   assert.equal(agentTick.ok, true, "agent tick should complete");
   assert.ok(agentTick.ran >= 1, "packaged runtime should record at least one agent run");

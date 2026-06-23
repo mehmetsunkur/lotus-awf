@@ -83,6 +83,11 @@ type Definitions = {
   view?: ViewDefinition;
 };
 
+type WorkflowScaffoldOptions = {
+  people: PublicPerson[];
+  groups: PublicGroup[];
+};
+
 type Draft = Record<string, unknown>;
 type EditableDefinition = FormDefinition | ViewDefinition | WorkflowDefinition;
 type PlatformRoute = string | "login";
@@ -787,6 +792,8 @@ function DefinitionEditor({
   onSelect,
   onSave,
   onCreateType,
+  onCreateWorkflow,
+  workflowOptions,
   optionsByField,
   user,
   roles
@@ -796,6 +803,8 @@ function DefinitionEditor({
   onSelect: (id: string) => void;
   onSave: (id: string, doc: EditableDefinition) => void;
   onCreateType: (docType: string, title: string) => void;
+  onCreateWorkflow: (docType: string, approverPrincipal: string) => void;
+  workflowOptions?: WorkflowScaffoldOptions;
   optionsByField: SelectOptionsByField;
   user: string;
   roles: string[];
@@ -803,6 +812,10 @@ function DefinitionEditor({
   const [newType, setNewType] = React.useState("");
   const [newTitle, setNewTitle] = React.useState("");
   const selected = definitions.find((doc) => doc._id === selectedId) ?? definitions[0];
+  const workflowDocTypes = React.useMemo(
+    () => new Set(definitions.filter((doc): doc is WorkflowDefinition => doc.kind === "workflow").map((workflow) => workflow.docType)),
+    [definitions]
+  );
   const [text, setText] = React.useState("");
   const [error, setError] = React.useState("");
   const parsed = React.useMemo<EditableDefinition | undefined>(() => {
@@ -883,7 +896,12 @@ function DefinitionEditor({
       </form>
       {parsed?.kind === "form" ? (
         <div className="studioWithPreview">
-          <FormStudio definition={parsed} onChange={updateDefinition} />
+          <div>
+            <FormStudio definition={parsed} onChange={updateDefinition} />
+            {!workflowDocTypes.has(parsed.docType) ? (
+              <WorkflowScaffoldPanel form={parsed} options={workflowOptions} onCreate={onCreateWorkflow} />
+            ) : null}
+          </div>
           <div className="studioPreview" data-testid="studio-preview">
             <p className="kicker">Live preview</p>
             <DocumentForm form={parsed} optionsByField={optionsByField} user={user} roles={roles} preview />
@@ -1338,6 +1356,60 @@ function WorkflowStudio({ definition, onChange }: { definition: WorkflowDefiniti
         Add Transition
       </button>
     </div>
+  );
+}
+
+function WorkflowScaffoldPanel({
+  form,
+  options,
+  onCreate
+}: {
+  form: FormDefinition;
+  options?: WorkflowScaffoldOptions;
+  onCreate: (docType: string, approverPrincipal: string) => void;
+}) {
+  const principalOptions = React.useMemo(
+    () => [
+      ...(options?.groups ?? []).map((group) => ({ id: group._id, label: `${group.name} (${group._id})` })),
+      ...(options?.people ?? []).map((person) => ({ id: person._id, label: `${person.displayName} (${person.username})` }))
+    ],
+    [options]
+  );
+  const fallback = principalOptions.find((option) => option.id === "group:admins")?.id ?? principalOptions[0]?.id ?? "";
+  const [approver, setApprover] = React.useState<string>(fallback);
+
+  React.useEffect(() => {
+    setApprover((current) => current || fallback);
+  }, [fallback]);
+
+  return (
+    <section className="scaffoldPanel" data-testid="workflow-scaffold-panel">
+      <div>
+        <p className="kicker">Approval workflow</p>
+        <strong>{form.docType}</strong>
+      </div>
+      <select
+        data-testid="workflow-scaffold-approver"
+        value={approver}
+        onChange={(event) => setApprover(event.target.value)}
+        disabled={!principalOptions.length}
+      >
+        {!principalOptions.length ? <option value="">No approvers available</option> : null}
+        {principalOptions.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        data-testid="workflow-scaffold-create"
+        disabled={!approver}
+        onClick={() => onCreate(form.docType, approver)}
+      >
+        Add Approval Workflow
+      </button>
+    </section>
   );
 }
 
@@ -1952,6 +2024,7 @@ function App() {
   const [status, setStatus] = React.useState<ReplicationStatus>();
   const [definitions, setDefinitions] = React.useState<Definitions>();
   const [accessState, setAccessState] = React.useState<AppAccessState>();
+  const [workflowOptions, setWorkflowOptions] = React.useState<WorkflowScaffoldOptions>();
   const [documents, setDocuments] = React.useState<BusinessDocument[]>([]);
   const [focusedDocument, setFocusedDocument] = React.useState<BusinessDocument>();
   const [documentRouteError, setDocumentRouteError] = React.useState("");
@@ -2025,6 +2098,10 @@ function App() {
 
   const refreshAccess = React.useCallback(async () => {
     setAccessState(await api<AppAccessState>(`${businessApiBase}/access`));
+  }, [businessApiBase]);
+
+  const refreshWorkflowOptions = React.useCallback(async () => {
+    setWorkflowOptions(await api<WorkflowScaffoldOptions>(`${businessApiBase}/workflows/scaffold-options`));
   }, [businessApiBase]);
 
   const navigate = React.useCallback((nextRoute: RouteState, replace = false) => {
@@ -2220,6 +2297,13 @@ function App() {
     if (!isBusinessApp(route.app) || selectedDefinitionId !== ACCESS_PANEL_ID || !canDesign) return;
     refreshAccess().catch((error) => setMessage(error instanceof Error ? error.message : "Access refresh failed."));
   }, [canDesign, refreshAccess, route.app, selectedDefinitionId]);
+
+  React.useEffect(() => {
+    if (!isBusinessApp(route.app) || !canDesign || !selectedDefinitionId?.startsWith("form:")) return;
+    const selectedForm = definitions?.forms.find((form) => form._id === selectedDefinitionId);
+    if (!selectedForm || definitions?.workflows.some((workflow) => workflow.docType === selectedForm.docType)) return;
+    refreshWorkflowOptions().catch((error) => setMessage(error instanceof Error ? error.message : "Workflow options refresh failed."));
+  }, [canDesign, definitions?.forms, definitions?.workflows, refreshWorkflowOptions, route.app, selectedDefinitionId]);
 
   React.useEffect(() => {
     const nsfRoute = route.nsf;
@@ -2492,6 +2576,15 @@ function App() {
       setSelectedViewId(`view:${docType}`);
       navigateNsf({ kind: "designer", definitionId: `form:${docType}` });
     });
+  const createWorkflow = (docType: string, approverPrincipal: string) =>
+    run("Create approval workflow", async () => {
+      await api(`${businessApiBase}/workflows/scaffold`, {
+        method: "POST",
+        body: JSON.stringify({ docType, approverPrincipal })
+      });
+      setSelectedDefinitionId(`workflow:${docType}`);
+      navigateNsf({ kind: "designer", definitionId: `workflow:${docType}` });
+    });
   const saveAccess = (entries: AppAccessEntry[]) =>
     run(
       "Save app access",
@@ -2552,6 +2645,8 @@ function App() {
                 roles={definitions.roles}
                 onSave={saveDefinition}
                 onCreateType={createType}
+                onCreateWorkflow={createWorkflow}
+                workflowOptions={workflowOptions}
               />
             )}
           </div>

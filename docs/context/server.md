@@ -57,6 +57,10 @@ reconciliation, (M6) template export/diff/apply, (M13) production static-client 
   sanitized directory people/groups plus `acl:rules.entries`, validates active people/existing
   groups and access levels, normalizes duplicate principals, and writes the app's local `acl:rules`
   design doc without changing existing document `readers`/`authors`.
+- Workflow scaffold (M23): `GET /api/apps/:appId/workflows/scaffold-options` requires designer access
+  and returns sanitized directory people/groups; `POST /api/apps/:appId/workflows/scaffold` requires
+  designer access, validates the doc type and approver principal, rejects existing workflow/generated
+  view collisions, and writes generated workflow/worklist definitions to the app's local database.
 - Create app (M21): `POST /api/platform/apps` requires manager access, validates/reserves the app id,
   rejects duplicate install/database collisions, creates local+server app databases, writes starter
   `app:config` / `acl:rules` / `audit:policy` / form / view definitions, creates the standard Mango
@@ -72,6 +76,11 @@ reconciliation, (M6) template export/diff/apply, (M13) production static-client 
   reject if `form:`/`view:<docType>` exists (409) → `scaffoldDocumentType` → validate both →
   `applyDefinition` upsert each. The scaffolded form + view promote via the template artifact; no new
   Mango index (the list view binds `m2-kind-docType-updatedAt`).
+- Create workflow scaffold (M23): `POST /api/workflows/scaffold {docType, approverPrincipal}` (and
+  app-scoped alias) checks `form:<docType>` exists, creates `workflow:<docType>` plus
+  `view:<docType>-submitted`, `view:<docType>-mine`, and `view:<docType>-all`, validates each
+  definition, and writes them local-first. It does not mutate app ACL or business document
+  `readers`/`authors`.
 - Directory/session (M18/M19): `person:*` and `group:*` live in `setup_app`; `session:*` lives in
   `platform_app`. `POST /api/session/login` sets the HTTP-only `lotus_session` cookie, and
   `requireSession()` resolves the request to a principal scope before protected routes run. M19 adds
@@ -179,6 +188,7 @@ this subsystem.
 - Accidentally including `kind: "document"` business docs in template export/apply.
 - Forgetting to copy `templates/` into the Docker image; deploy installs must not depend on a source
   checkout bind mount.
+- Letting workflow scaffolding overwrite an existing `workflow:*` or generated worklist view.
 - A query path that ignores `readers` filtering and leaks across people/groups.
 - A protected route that forgets `requireSession()` or checks app ACL levels ad hoc.
 - An app access change that mutates existing business document `readers`/`authors`; M22 edits only

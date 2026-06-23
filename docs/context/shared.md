@@ -38,6 +38,9 @@ No DOM, no Node/server-only APIs.
 - `src/shared/expression.ts` — `evaluateExpression`, `evaluateBoolean` (portable evaluator).
 - `src/shared/workflow.ts` (M3) — portable workflow engine: `currentState`, `availableTransitions`,
   `applyTransition`. Pure; reuses `evaluateBoolean` for guards and fails closed on a bad guard.
+- `src/shared/workflow-scaffold.ts` (M23) — pure approval workflow scaffold for a document type:
+  generates `workflow:<docType>` plus submitted/my/all worklist views and validates approver
+  principals before the server writes ordinary design docs.
 - `src/shared/agents.ts` (M8) — pure agent matching/scheduling: `agentIsDue`, `agentMatchesChange`,
   `agentRunKey`. The server orchestrates I/O around these; they hold the decisions.
 - `src/shared/search.ts` (M9) — pure full-text matcher: `fold`, `tokenize`, `searchableFields`,
@@ -107,6 +110,9 @@ not grow server-only password/session fields.
 
 M22 adds shared app-access editor payloads. The server owns validation and writes `acl:rules`; the
 client consumes the typed response/body so it does not invent a parallel ACL shape.
+
+M23 adds the approval workflow scaffold helper. Generated workflow/views still use the existing
+definition shapes and validators, so no replicated document shape migration is required.
 
 ## Existing Patterns
 

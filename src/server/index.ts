@@ -62,6 +62,7 @@ import { searchDocuments } from "../shared/search";
 import { auditAction, eventIsExpired, shouldAudit } from "../shared/audit";
 import { databaseForAppId, scaffoldBlankApp, validateAppId } from "../shared/app-scaffold";
 import { scaffoldDocumentType, validateDocType } from "../shared/scaffold";
+import { scaffoldApprovalWorkflow, validateApproverPrincipal } from "../shared/workflow-scaffold";
 import { HANDLER_MANIFEST } from "../shared/handlers/manifest";
 import { clearEffectLog, readEffectLog, runEffect } from "./handlers/effects";
 import { runAgentHandler } from "./handlers/agents";
@@ -365,6 +366,22 @@ async function validateAccessEntries(entries: AppAccessEntry[]): Promise<void> {
     } else {
       throw new CouchError(422, { error: "access_validation_failed", reason: `Unsupported principal: ${entry.principal}` });
     }
+  }
+}
+
+async function validateWorkflowApproverPrincipal(principal: string): Promise<void> {
+  const principalErrors = validateApproverPrincipal(principal);
+  if (principalErrors.length) {
+    throw new CouchError(422, { error: "workflow_scaffold_validation_failed", reason: principalErrors.map((item) => item.message).join("; ") });
+  }
+  const [people, groups] = await Promise.all([listPeople(), listGroups()]);
+  const activePeople = new Set(people.filter((person) => person.active).map((person) => person._id));
+  const groupIds = new Set(groups.map((group) => group._id));
+  if (principal.startsWith("person:") && !activePeople.has(principal as `person:${string}`)) {
+    throw new CouchError(422, { error: "workflow_scaffold_validation_failed", reason: `Unknown or inactive person: ${principal}` });
+  }
+  if (principal.startsWith("group:") && !groupIds.has(principal as `group:${string}`)) {
+    throw new CouchError(422, { error: "workflow_scaffold_validation_failed", reason: `Unknown group: ${principal}` });
   }
 }
 
@@ -1649,6 +1666,19 @@ app.get(
   })
 );
 
+app.get(
+  ["/api/workflows/scaffold-options", "/api/apps/:appId/workflows/scaffold-options"],
+  asyncRoute(async (request, response) => {
+    const appContext = await appContextFromRequest(request);
+    await requireAppSession(request, appContext.database, "designer");
+    const [people, groups] = await Promise.all([listPeople(), listGroups()]);
+    response.json({
+      people: people.filter((person) => person.active).map(publicPerson),
+      groups: groups.map(publicGroup)
+    });
+  })
+);
+
 app.put(
   "/api/apps/:appId/access",
   asyncRoute(async (request, response) => {
@@ -2007,6 +2037,51 @@ app.put(
     }
     const result = await putDoc("local", next, appContext.database);
     response.json({ ...next, _rev: result.rev });
+  })
+);
+
+// M23: add the standard approval lifecycle to an existing document type. This
+// creates ordinary design docs only; business document readers/authors stay
+// untouched and transition authorization remains the existing workflow gate.
+app.post(
+  ["/api/workflows/scaffold", "/api/apps/:appId/workflows/scaffold"],
+  asyncRoute(async (request, response) => {
+    const appContext = await appContextFromRequest(request);
+    await requireAppSession(request, appContext.database, "designer");
+    const docType = (typeof request.body.docType === "string" ? request.body.docType : "").trim();
+    const approverPrincipal = (typeof request.body.approverPrincipal === "string" ? request.body.approverPrincipal : "").trim();
+
+    const slugErrors = validateDocType(docType);
+    if (slugErrors.length) {
+      response.status(422).json({ error: "workflow_scaffold_validation_failed", errors: slugErrors });
+      return;
+    }
+    await validateWorkflowApproverPrincipal(approverPrincipal);
+    let form: FormDefinition;
+    try {
+      form = await formForDocType(docType, appContext.database);
+    } catch (error) {
+      if (error instanceof CouchError && error.status === 404) {
+        response.status(404).json({ error: "not_found", reason: `No form for ${docType}` });
+        return;
+      }
+      throw error;
+    }
+    const { workflow, views } = scaffoldApprovalWorkflow(appContext.appId, docType, form.title, approverPrincipal);
+    const candidates = [workflow, ...views];
+    for (const definition of candidates) {
+      if (await definitionExists(definition._id, appContext.database)) {
+        response.status(409).json({ error: "conflict", reason: `${definition._id} already exists` });
+        return;
+      }
+    }
+    const errors = candidates.flatMap((definition) => validateDesignDefinition(definition));
+    if (errors.length) {
+      response.status(422).json({ error: "definition_validation_failed", errors });
+      return;
+    }
+    await Promise.all(candidates.map((definition) => applyDefinition(definition, appContext.database)));
+    response.status(201).json({ workflow, views });
   })
 );
 

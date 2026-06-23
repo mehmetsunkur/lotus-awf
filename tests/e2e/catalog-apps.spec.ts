@@ -146,4 +146,54 @@ test.describe("catalog-created apps", () => {
       { principal: "person:bob", level: "designer" }
     ]);
   });
+
+  test("designers scaffold an approval workflow for a catalog-created app", async ({ page, bobApi }) => {
+    await page.request.post("/api/platform/apps", {
+      data: { appId: "approval-reports", title: "Approval Reports", docType: "report", docTypeTitle: "Report" }
+    });
+    await page.request.put("/api/apps/approval-reports/access", {
+      data: {
+        entries: [
+          { principal: "person:alice", level: "manager" },
+          { principal: "person:bob", level: "author" }
+        ]
+      }
+    });
+
+    await page.goto("/approval-reports.nsf/designer/forms/report");
+    await expect(page.getByTestId("workflow-scaffold-panel")).toBeVisible();
+    await page.getByTestId("workflow-scaffold-approver").selectOption("group:admins");
+    await page.getByTestId("workflow-scaffold-create").click();
+    await expect(page.getByTestId("message")).toHaveText("Create approval workflow complete.");
+    await expect(page).toHaveURL(/\/approval-reports\.nsf\/designer\/workflows\/report$/);
+    await expect(page.getByTestId("studio-workflow")).toBeVisible();
+
+    await page.goto("/approval-reports.nsf");
+    await expect(page.getByTestId("view-tab-view:report-submitted")).toBeVisible();
+    await expect(page.getByTestId("view-tab-view:report-mine")).toBeVisible();
+    await expect(page.getByTestId("view-tab-view:report-all")).toBeVisible();
+
+    await page.getByTestId("new-doc-report").click();
+    await page.getByTestId("field-title").fill("Generator report");
+    await page.getByTestId("form-save").click();
+    const documentId = decodeURIComponent(new URL(page.url()).pathname.split("/documents/")[1]);
+
+    await page.getByTestId("workflow-action-submit").click();
+    await expect(page.getByTestId("workflow-state")).toHaveText("Submitted");
+
+    const bobApprove = await bobApi.post(`/api/apps/approval-reports/documents/${encodeURIComponent(documentId)}/transition`, {
+      data: { transition: "approve" }
+    });
+    expect(bobApprove.status()).toBe(422);
+
+    await page.getByTestId("workflow-action-approve").click();
+    await expect(page.getByTestId("workflow-state")).toHaveText("Approved");
+    await expect(page.getByTestId("workflow-history")).toContainText("submitted → approved");
+
+    const template = await page.request
+      .post("/api/apps/approval-reports/templates/export", { data: { version: "vtest", source: "e2e" } })
+      .then((response) => response.json());
+    const ids = template.definitions.map((definition: { _id: string }) => definition._id);
+    expect(ids).toEqual(expect.arrayContaining(["workflow:report", "view:report-submitted", "view:report-mine", "view:report-all"]));
+  });
 });

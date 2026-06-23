@@ -76,6 +76,10 @@ resolution panel, and M18 login/logout.
 - New document type (M12) → the studio's "New document type" form (`new-type-form`) `POST`s
   `/api/document-types`; on success the studio + view picker point at the new type, and the refresh
   surfaces its view tab. Errors (409/422) surface in the status message.
+- Workflow scaffold (M23) → when a selected form has no matching workflow, the Designer shows an
+  approval scaffold panel (`workflow-scaffold-panel`). It fetches designer-level sanitized approver
+  options, posts to `/api/apps/:appId/workflows/scaffold`, refreshes definitions, and opens the new
+  `workflow:<docType>` in the existing workflow editor.
 - Conflict resolve → "Keep This Revision" on any revision → `POST /api/conflicts/:id/resolve` with
   `chosenRev` so the elected state/history survives.
 - Switch view does NOT auto-refetch documents; a refresh does (see `tests/e2e/support/fixtures.ts`).
@@ -120,3 +124,5 @@ the host `fs.inotify` `EMFILE` limit.
 - Reintroducing one-off full-page system app layouts; first-party `.nsf` apps should use the M20
   standard workspace unless a later ADR carves out an exception.
 - Showing Designer entry points to users below `designer` access.
+- Hiding the workflow scaffold behind the manager-only Access panel; designers need sanitized
+  approver options without access-edit privileges.
