@@ -15,9 +15,15 @@ NVM := export NVM_DIR="$$HOME/.nvm"; . "$$NVM_DIR/nvm.sh"; nvm use --lts >/dev/n
 DOCKER ?= sudo docker
 DEPLOY_PROJECT ?= lotus-fresh
 DEPLOY_COMPOSE ?= deploy/compose.yml
+MCP_API_URL ?= http://localhost:3001
+LOTUS_USERNAME ?= alice
+LOTUS_PASSWORD ?= password123
+CLAUDE ?= claude
+MCP_CONFIG_DIR ?= .tmp
+MCP_CONFIG ?= $(MCP_CONFIG_DIR)/claude-mcp.lotus.json
 
 .PHONY: help e2e e2e-headed e2e-ui e2e-debug e2e-report setup-e2e \
-	deploy-up deploy-down
+	deploy-up deploy-down mcp-api mcp-reset mcp-test claude-mcp
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*## .*$$' $(MAKEFILE_LIST) \
@@ -46,3 +52,34 @@ deploy-up: ## Build and start the deploy artifact stack (lotus-fresh) using depl
 
 deploy-down: ## Stop and remove deploy artifact stack (+ volumes + orphans)
 	$(DOCKER) compose -p $(DEPLOY_PROJECT) -f $(DEPLOY_COMPOSE) down -v --remove-orphans
+
+mcp-api: ## Start CouchDB pair and Lotus API for local MCP testing
+	$(DOCKER) compose up -d local-couchdb server-couchdb
+	$(NVM) npx tsx tests/mcp/support/start-api.ts
+
+mcp-reset: ## Reset local Lotus API state for MCP testing
+	curl -fsS -X POST $(MCP_API_URL)/api/reset >/dev/null
+	@echo "Reset $(MCP_API_URL)"
+
+mcp-test: ## Run MCP stdio e2e tests
+	$(NVM) npm run test:mcp
+
+claude-mcp: ## Launch Claude Code with local Lotus MCP config
+	@command -v $(CLAUDE) >/dev/null || { echo "Claude CLI not found: $(CLAUDE)"; exit 1; }
+	@mkdir -p $(MCP_CONFIG_DIR)
+	@printf '%s\n' '{' \
+	  '  "mcpServers": {' \
+	  '    "lotus-notes": {' \
+	  '      "type": "stdio",' \
+	  '      "command": "npx",' \
+	  '      "args": ["tsx", "src/mcp/server.ts"],' \
+	  '      "cwd": "$(CURDIR)",' \
+	  '      "env": {' \
+	  '        "LOTUS_API_URL": "$(MCP_API_URL)",' \
+	  '        "LOTUS_USERNAME": "$(LOTUS_USERNAME)",' \
+	  '        "LOTUS_PASSWORD": "$(LOTUS_PASSWORD)"' \
+	  '      }' \
+	  '    }' \
+	  '  }' \
+	  '}' > $(MCP_CONFIG)
+	$(CLAUDE) --strict-mcp-config --mcp-config $(MCP_CONFIG)

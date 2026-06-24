@@ -20,6 +20,8 @@
   scaffold, workflow patch preview/apply, and template export.
 - Added a CouchDB readiness fallback for e2e global setup and the MCP API launcher so tests can use
   Docker container IPs when published localhost ports are not reachable from the host.
+- Added Makefile targets for local Claude Code MCP testing: `mcp-api`, `mcp-reset`, `mcp-test`, and
+  `claude-mcp`.
 - Added `docs/context/mcp.md`, taxonomy routing, and an MCP invariant.
 
 ## Verification

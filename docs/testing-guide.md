@@ -37,3 +37,12 @@ npm run test:deploy  # M13 deploy artifact gate; requires Docker API access
 | Runtime UI/API flows | `npm run test:e2e` |
 | Deploy packaging | `npm run test:deploy` |
 | Docker/compose shape | `docker compose -f deploy/compose.yml config` |
+
+## Local MCP Helpers
+
+```bash
+make mcp-api      # foreground Lotus API for MCP testing
+make mcp-reset    # explicit API reset
+make mcp-test     # wrapper around npm run test:mcp
+make claude-mcp   # launch Claude Code with generated Lotus MCP config
+```

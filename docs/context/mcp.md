@@ -70,6 +70,34 @@ subsystem.
 server over stdio through the official MCP client transport, and reuses the CouchDB Docker setup from
 browser e2e.
 
+## Local Claude Code Testing
+
+Use the Makefile targets for local Claude Code MCP sessions:
+
+```bash
+make mcp-api
+```
+
+Run that in one terminal to start the CouchDB pair and Lotus API. In another terminal, reset state
+only when wanted:
+
+```bash
+make mcp-reset
+```
+
+Then launch Claude Code with a generated local MCP config:
+
+```bash
+make claude-mcp
+```
+
+The generated config is written to `.tmp/claude-mcp.lotus.json` and is ignored by git because it
+contains local credentials. Override defaults with environment variables:
+
+```bash
+LOTUS_USERNAME=admin LOTUS_PASSWORD=password123 MCP_API_URL=http://localhost:3001 make claude-mcp
+```
+
 ## Common Pitfalls
 
 - Writing directly to CouchDB from MCP instead of going through Express APIs.
