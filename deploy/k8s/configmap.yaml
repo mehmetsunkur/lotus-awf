@@ -14,4 +14,12 @@ data:
   CORS_ORIGIN: https://lotus.example.com
   LOCAL_COUCH_HOST: local-couchdb
   SERVER_COUCH_HOST: server-couchdb
+  # MCP-over-HTTP host (runs as a sidecar in the lotus-app pod).
+  MCP_HTTP_PORT: "3002"
+  # All three surfaces are served in-cluster; the public ingress only routes
+  # designer/workspace. Admin stays reachable only inside the cluster.
+  MCP_HTTP_SURFACES: admin,designer,workspace
+  MCP_ALLOWED_HOSTS: lotus.example.com
+  MCP_ALLOWED_ORIGINS: https://lotus.example.com
+  MCP_SESSION_TTL_MS: "1800000"
 

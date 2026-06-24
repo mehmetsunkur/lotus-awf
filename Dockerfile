@@ -13,6 +13,8 @@ RUN npm run build
 
 ENV NODE_ENV=production
 
-EXPOSE 3001
+# 3001 = Express API/app (default CMD). 3002 = MCP-over-HTTP host when the same
+# image is run with `npm run mcp:http` (e.g. the k8s app-pod sidecar).
+EXPOSE 3001 3002
 
 CMD ["npm", "start"]

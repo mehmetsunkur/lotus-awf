@@ -28,7 +28,7 @@ MCP_CONFIG ?= $(MCP_CONFIG_DIR)/claude-mcp.lotus.json
 
 .PHONY: help e2e e2e-headed e2e-ui e2e-debug e2e-report setup-e2e \
 	deploy-up deploy-down image-build k8s-dry-run k8s-apply k8s-status \
-	mcp-api mcp-reset mcp-test claude-mcp \
+	mcp-api mcp-reset mcp-test mcp-http claude-mcp \
 	claude-mcp-admin claude-mcp-designer claude-mcp-workspace \
 	codex-mcp-admin-install codex-mcp-designer-install codex-mcp-workspace-install \
 	codex-mcp-admin-remove codex-mcp-designer-remove codex-mcp-workspace-remove \
@@ -93,6 +93,9 @@ mcp-reset: ## Reset local Lotus API state for MCP testing
 
 mcp-test: ## Run MCP stdio e2e tests
 	$(NVM) npm run test:mcp
+
+mcp-http: ## Start the MCP-over-HTTP host against a running Lotus API (see mcp-api)
+	$(NVM) env LOTUS_API_URL=$(MCP_API_URL) npm run mcp:http
 
 claude-mcp: ## Launch Claude Code with local Lotus MCP config
 	$(MAKE) claude-mcp-designer
