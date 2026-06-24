@@ -98,6 +98,37 @@ contains local credentials. Override defaults with environment variables:
 LOTUS_USERNAME=admin LOTUS_PASSWORD=password123 MCP_API_URL=http://localhost:3001 make claude-mcp
 ```
 
+## Local Codex CLI Testing
+
+Codex CLI manages MCP servers as persistent user config. Register the Lotus MCP server explicitly:
+
+```bash
+make codex-mcp-install
+```
+
+Then launch Codex from the project root:
+
+```bash
+make codex-mcp
+```
+
+Inspect or remove the registration with:
+
+```bash
+make codex-mcp-list
+make codex-mcp-remove
+```
+
+The install target reuses `MCP_API_URL`, `LOTUS_USERNAME`, and `LOTUS_PASSWORD`, and registers a
+stdio server that runs from this repository:
+
+```bash
+bash -lc 'cd <repo> && npx tsx src/mcp/server.ts'
+```
+
+Run `make mcp-api` in another terminal before launching Codex, and run `make mcp-reset` only when
+you want to reset local test state.
+
 ## Common Pitfalls
 
 - Writing directly to CouchDB from MCP instead of going through Express APIs.

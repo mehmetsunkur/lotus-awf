@@ -22,6 +22,8 @@
   Docker container IPs when published localhost ports are not reachable from the host.
 - Added Makefile targets for local Claude Code MCP testing: `mcp-api`, `mcp-reset`, `mcp-test`, and
   `claude-mcp`.
+- Added Makefile targets for local Codex CLI MCP testing: `codex-mcp-install`, `codex-mcp-remove`,
+  `codex-mcp-list`, and `codex-mcp`.
 - Added `docs/context/mcp.md`, taxonomy routing, and an MCP invariant.
 
 ## Verification

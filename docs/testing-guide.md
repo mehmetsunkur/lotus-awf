@@ -45,4 +45,6 @@ make mcp-api      # foreground Lotus API for MCP testing
 make mcp-reset    # explicit API reset
 make mcp-test     # wrapper around npm run test:mcp
 make claude-mcp   # launch Claude Code with generated Lotus MCP config
+make codex-mcp-install # persistently register Lotus MCP with Codex CLI
+make codex-mcp    # launch Codex after verifying the registration
 ```

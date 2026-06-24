@@ -19,11 +19,14 @@ MCP_API_URL ?= http://localhost:3001
 LOTUS_USERNAME ?= alice
 LOTUS_PASSWORD ?= password123
 CLAUDE ?= claude
+CODEX ?= codex
+CODEX_MCP_NAME ?= lotus-notes
 MCP_CONFIG_DIR ?= .tmp
 MCP_CONFIG ?= $(MCP_CONFIG_DIR)/claude-mcp.lotus.json
 
 .PHONY: help e2e e2e-headed e2e-ui e2e-debug e2e-report setup-e2e \
-	deploy-up deploy-down mcp-api mcp-reset mcp-test claude-mcp
+	deploy-up deploy-down mcp-api mcp-reset mcp-test claude-mcp \
+	codex-mcp-install codex-mcp-remove codex-mcp-list codex-mcp
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*## .*$$' $(MAKEFILE_LIST) \
@@ -83,3 +86,23 @@ claude-mcp: ## Launch Claude Code with local Lotus MCP config
 	  '  }' \
 	  '}' > $(MCP_CONFIG)
 	$(CLAUDE) --strict-mcp-config --mcp-config $(MCP_CONFIG)
+
+codex-mcp-install: ## Persistently register Lotus MCP with Codex CLI
+	@command -v $(CODEX) >/dev/null || { echo "Codex CLI not found: $(CODEX)"; exit 1; }
+	$(CODEX) mcp remove $(CODEX_MCP_NAME) >/dev/null 2>&1 || true
+	$(CODEX) mcp add $(CODEX_MCP_NAME) \
+	  --env LOTUS_API_URL=$(MCP_API_URL) \
+	  --env LOTUS_USERNAME=$(LOTUS_USERNAME) \
+	  --env LOTUS_PASSWORD=$(LOTUS_PASSWORD) \
+	  -- bash -lc 'cd $(CURDIR) && npx tsx src/mcp/server.ts'
+
+codex-mcp-remove: ## Remove the persistent Lotus MCP registration from Codex CLI
+	$(CODEX) mcp remove $(CODEX_MCP_NAME)
+
+codex-mcp-list: ## List Codex MCP registrations
+	$(CODEX) mcp list
+
+codex-mcp: ## Launch Codex CLI after verifying Lotus MCP is registered
+	@command -v $(CODEX) >/dev/null || { echo "Codex CLI not found: $(CODEX)"; exit 1; }
+	@$(CODEX) mcp get $(CODEX_MCP_NAME) >/dev/null || { echo "Run: make codex-mcp-install"; exit 1; }
+	$(CODEX) -C $(CURDIR)
