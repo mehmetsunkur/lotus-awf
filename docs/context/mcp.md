@@ -2,32 +2,40 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `TBD`
-- Last reviewed date: `2026-06-23`
+- Last code review baseline: `c92220b`
+- Last reviewed date: `2026-06-24`
 - Code areas:
   - `src/mcp/**`
 - Tests:
   - `tests/unit/workflow-patches.spec.ts`
+  - `tests/mcp/**`
 - Config/runtime areas:
   - `package.json`
+  - `deploy/k8s/**`
 - Review trigger:
   - Update this doc when MCP tools, auth flow, mutation safety rules, or MCP runtime assumptions
     change.
 
 ## Purpose
 
-Local stdio Model Context Protocol servers for coding agents. The adapter exposes three non-layered
-surfaces: `lotus-admin`, `lotus-designer`, and `lotus-workspace`. Each calls the existing Express API
-and imports only pure shared validators/helpers.
+Model Context Protocol servers for coding agents. The adapter exposes three non-layered surfaces:
+`lotus-admin`, `lotus-designer`, and `lotus-workspace`, over two transports — **local stdio** (one
+process per user, env credentials) and **HTTP** (a multi-session host, per-session credentials). Both
+call the existing Express API and import only pure shared validators/helpers.
 
 ## Main Files
 
 - `src/mcp/admin-server.ts` — stdio MCP entrypoint for platform/app/access administration.
 - `src/mcp/designer-server.ts` — stdio MCP entrypoint for app design, workflows, and templates.
 - `src/mcp/workspace-server.ts` — stdio MCP entrypoint for business document work.
-- `src/mcp/runtime.ts` — shared server construction/stdio connection.
-- `src/mcp/lotus-client.ts` — HTTP client, username/password login, session-cookie replay, typed API
-  errors.
+- `src/mcp/runtime.ts` — shared server construction; stdio connection plus
+  `createLotusMcpServerWithClient` for per-session client injection.
+- `src/mcp/http-server.ts` — HTTP host: serves all surfaces at `/mcp/<surface>` over
+  StreamableHTTP, authenticates each session (Basic/Bearer), routes by session id, sweeps idle
+  sessions.
+- `src/mcp/http-config.ts` — env-only host config (port, surfaces, allowed hosts/origins, TTL).
+- `src/mcp/lotus-client.ts` — HTTP client, username/password login, session-cookie replay (including
+  a pre-supplied Bearer token), typed API errors.
 - `src/mcp/tools/admin.ts` — admin tool registration.
 - `src/mcp/tools/designer.ts` — designer tool registration.
 - `src/mcp/tools/workspace.ts` — workspace tool registration.
@@ -36,8 +44,13 @@ and imports only pure shared validators/helpers.
 
 ## Key Flows
 
-- Auth: login through `POST /api/session/login`, capture `lotus_session`, replay the cookie on API
-  calls, and retry login once on `401`.
+- Auth (stdio): login through `POST /api/session/login`, capture `lotus_session`, replay the cookie
+  on API calls, and retry login once on `401`.
+- Auth (HTTP): the caller presents an `Authorization` header on `initialize` — Basic
+  (`username:password`, host logs in) or Bearer (existing `lotus_session` token, replayed). The host
+  builds one `LotusClient` per MCP session and proves identity via `GET /api/session`; the principal
+  is always resolved server-side, never caller-supplied. Sessions are bound to their surface and
+  evicted on close/DELETE/idle-TTL.
 - Admin tools: session/platform state, installed apps, app creation, and app ACL management.
 - Designer tools: app definitions, workflow scaffolds, document-type scaffolds, template
   export/diff/apply/validation, and workflow patch preview/apply.
@@ -57,14 +70,15 @@ and imports only pure shared validators/helpers.
 
 ## Invariants
 
-See `docs/invariants.md`: **MCP agent interface**, **Identity & sessions**, **Definitions-as-data
-contract**, **Validation parity**, **ACL / readers**, and **Replication & conflict** govern this
-subsystem.
+See `docs/invariants.md`: **MCP agent interface** (both the tool-adapter rule and the HTTP host
+per-session-identity rule), **Identity & sessions**, **Definitions-as-data contract**, **Validation
+parity**, **ACL / readers**, and **Replication & conflict** govern this subsystem.
 
 ## Relevant Decisions
 
 - `docs/decisions/0001-definitions-as-data.md`
 - `docs/decisions/0010-directory-and-session-auth.md`
+- `docs/decisions/0011-mcp-over-http.md`
 - `docs/M24/02-tool-contract.md`
 
 ## Tests
@@ -76,6 +90,11 @@ subsystem.
 `npm run test:mcp` uses `playwright.mcp.config.ts`, starts only the Express API, launches all three
 MCP servers over stdio through the official MCP client transport, and reuses the CouchDB Docker setup
 from browser e2e.
+
+`npm run test:mcp:http` uses `playwright.mcp.http.config.ts`, runs the HTTP host in-process against
+the same API, and drives it with the official StreamableHTTP client transport. It covers
+unauthenticated rejection, per-session identity isolation (two Basic identities resolve to distinct
+principals), surface routing, and a representative tool call per surface.
 
 ## Local Claude Code Testing
 

@@ -9,8 +9,10 @@ current deploy artifact topology: one app pod, one local CouchDB pod, and one se
 - `secret.example.yaml` is a template for CouchDB credentials. Copy it before applying real secrets.
 - `configmap.yaml` contains non-secret runtime settings.
 - `local-couchdb.yaml` and `server-couchdb.yaml` run internal CouchDB `StatefulSet`s with PVCs.
-- `app.yaml` runs the Lotus app image and wires liveness/readiness probes.
-- `ingress.yaml` exposes the app through an nginx ingress placeholder.
+- `app.yaml` runs the Lotus app image (with the MCP-over-HTTP host as a sidecar container)
+  and a `lotus-mcp` Service, and wires liveness/readiness probes for both.
+- `ingress.yaml` exposes the app through an nginx ingress placeholder, and routes the MCP
+  `designer`/`workspace` surfaces. The MCP `admin` surface is intentionally not exposed publicly.
 
 ## Required Client Decisions
 
@@ -83,5 +85,9 @@ business app or install the Expense sample from the catalog.
   client decides to enable a single always-on scheduler pod.
 - CouchDB services are `ClusterIP` only. Do not expose CouchDB through ingress.
 - `COOKIE_SECURE=1`, `TRUST_PROXY=1`, and `CORS_ORIGIN` are set for ingress-backed HTTPS.
+- The MCP host runs as a sidecar and authenticates each MCP session against the app API
+  (HTTP Basic username/password, or Bearer Lotus session token). It never accepts a
+  caller-supplied principal. Keep the `admin` surface off the public ingress; restrict it
+  with network policy. `MCP_ALLOWED_HOSTS`/`MCP_ALLOWED_ORIGINS` gate DNS-rebinding.
 - Backup/restore is outside these manifests. Use the client platform's PVC snapshots or a CouchDB
   backup job and test restore before production data entry.

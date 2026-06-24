@@ -95,6 +95,8 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 
 - MCP tools must be client adapters over the authenticated Express API — never direct CouchDB writers; every app-scoped tool requires explicit `appId`, may not accept caller-supplied principals, may not mutate business documents or document `readers`/`authors`, and must validate design changes before applying them.
   - Paths: `src/mcp/**`, `docs/M24/**`
+- The HTTP host (`src/mcp/http-server.ts`) must bind each MCP session to its own identity resolved server-side at `initialize` from caller-supplied **credentials** (HTTP Basic username/password, or Bearer Lotus session token) — never a caller-supplied principal. One MCP session = one `LotusClient` = one identity; sessions never share a client. Unauthenticated `initialize` is rejected, and the host stays a transport adapter (no CouchDB access, no new tool authority beyond the stdio surfaces).
+  - Paths: `src/mcp/http-server.ts`, `src/mcp/http-config.ts`, `docs/decisions/0011-mcp-over-http.md`
 
 ## Offline editing
 

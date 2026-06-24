@@ -113,3 +113,74 @@ spec:
             limits:
               cpu: "1"
               memory: 1Gi
+        - name: mcp
+          image: lotus-notes-platform:dev
+          imagePullPolicy: IfNotPresent
+          command: ["npm", "run", "mcp:http"]
+          ports:
+            - name: mcp-http
+              containerPort: 3002
+          env:
+            # The sidecar authenticates inbound MCP callers against the app's API
+            # over the shared pod loopback; it never talks to CouchDB directly.
+            - name: LOTUS_API_URL
+              value: http://localhost:3001
+            - name: MCP_HTTP_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: lotus-config
+                  key: MCP_HTTP_PORT
+            - name: MCP_HTTP_SURFACES
+              valueFrom:
+                configMapKeyRef:
+                  name: lotus-config
+                  key: MCP_HTTP_SURFACES
+            - name: MCP_ALLOWED_HOSTS
+              valueFrom:
+                configMapKeyRef:
+                  name: lotus-config
+                  key: MCP_ALLOWED_HOSTS
+            - name: MCP_ALLOWED_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: lotus-config
+                  key: MCP_ALLOWED_ORIGINS
+            - name: MCP_SESSION_TTL_MS
+              valueFrom:
+                configMapKeyRef:
+                  name: lotus-config
+                  key: MCP_SESSION_TTL_MS
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: mcp-http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: mcp-http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "500m"
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lotus-mcp
+  namespace: lotus-notes
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: lotus-app
+  ports:
+    - name: http
+      port: 80
+      targetPort: mcp-http

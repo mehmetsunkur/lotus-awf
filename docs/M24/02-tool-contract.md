@@ -2,7 +2,9 @@
 
 ## Configuration
 
-Each MCP server reads the same configuration from environment variables:
+### Stdio servers
+
+Each stdio MCP server reads the same configuration from environment variables:
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
@@ -10,18 +12,39 @@ Each MCP server reads the same configuration from environment variables:
 | `LOTUS_USERNAME` | yes for protected tools | Login username. |
 | `LOTUS_PASSWORD` | yes for protected tools | Login password. |
 
-All three servers use the existing session-cookie login flow. They never accept a client-supplied
-principal and never bypass app ACL checks.
+### HTTP host
+
+`src/mcp/http-server.ts` serves the same surfaces over HTTP and reads host-level configuration from
+the environment (`src/mcp/http-config.ts`):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `LOTUS_API_URL` | `http://localhost:3001` | Base API URL the host calls. |
+| `MCP_HTTP_PORT` | `3002` | Listen port. |
+| `MCP_HTTP_SURFACES` | `admin,designer,workspace` | Enabled surfaces. |
+| `MCP_ALLOWED_HOSTS` | (unset) | Host-header allowlist (DNS-rebinding guard). |
+| `MCP_ALLOWED_ORIGINS` | (unset) | Origin-header allowlist. |
+| `MCP_SESSION_TTL_MS` | `1800000` | Idle session eviction window. |
+
+The HTTP host takes **per-session** credentials on the `initialize` request via the `Authorization`
+header — HTTP Basic (`username:password`) or Bearer (an existing `lotus_session` token) — instead of
+process-wide env credentials.
+
+Both transports use the existing session-cookie login flow. They never accept a client-supplied
+principal and never bypass app ACL checks; the principal is always resolved server-side.
 
 ## Surfaces
 
-M24 exposes three non-layered stdio MCP servers:
+M24 exposes three non-layered MCP surfaces over two transports:
 
 - `lotus-admin` (`src/mcp/admin-server.ts`) for platform/app lifecycle and app access.
 - `lotus-designer` (`src/mcp/designer-server.ts`) for design definitions, workflows, and templates.
 - `lotus-workspace` (`src/mcp/workspace-server.ts`) for business document work.
 
-Users can register one or more servers depending on their role and task. The surfaces are
+Over stdio, each surface is a separate process. Over HTTP, the single host (`src/mcp/http-server.ts`)
+serves each surface at `/mcp/<surface>`, binding one authenticated identity per MCP session.
+
+Users can register one or more surfaces depending on their role and task. The surfaces are
 composable, not hierarchical: admin does not include designer/workspace tools, and designer does not
 include workspace tools.
 
@@ -80,3 +103,6 @@ conflict-resolution tools in v1.
 - Workspace tools may mutate business document payload/state; admin/designer tools may not.
 - MCP tools return structured errors from the Lotus API instead of hiding them.
 - Mutating tools validate locally when possible and rely on the server as final authority.
+- The HTTP host binds one authenticated identity per MCP session at `initialize`, rejects
+  unauthenticated initialization, never shares a client across sessions, and adds no tool authority
+  beyond the stdio surfaces.
