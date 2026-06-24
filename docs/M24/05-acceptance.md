@@ -1,14 +1,17 @@
 # 05 - Acceptance
 
-- A coding agent can launch the MCP server over stdio.
-- The MCP server can authenticate to a running Lotus API with username/password and session cookie.
-- Read tools can list installed apps and fetch app definitions.
-- Read tools can fetch workflow scaffold options without exposing password or session fields.
-- A tool can create a document type through the app-scoped API.
-- A tool can scaffold the standard approval workflow through the app-scoped API.
-- Validation tools reject invalid workflow definitions before a write attempt.
-- Workflow patch preview returns a validated changed workflow without writing.
-- Workflow patch apply writes through `PUT /api/apps/:appId/definitions/:id`.
-- MCP tools do not write directly to CouchDB or mutate business documents.
-- `npm run test:mcp` exercises the MCP stdio server against a real Lotus API and CouchDB pair.
+- A coding agent can launch `lotus-admin`, `lotus-designer`, and `lotus-workspace` MCP servers over
+  stdio.
+- Each MCP server can authenticate to a running Lotus API with username/password and session cookie.
+- Admin tools can list apps, create an app, and inspect app access.
+- Designer tools can create document types, scaffold approval workflows, validate design changes,
+  patch workflows, and export templates.
+- Workspace tools can discover views, create/query/update business documents, and run workflow
+  transitions.
+- Tool lists are isolated: admin does not expose designer/workspace tools, designer does not expose
+  admin/workspace tools, and workspace does not expose admin/designer tools.
+- MCP tools do not write directly to CouchDB.
+- Workspace tools do not mutate design documents.
+- Admin/designer tools do not mutate business documents.
+- `npm run test:mcp` exercises all three stdio servers against a real Lotus API and CouchDB pair.
 - Build and unit tests pass; unavailable e2e/deploy status is recorded.

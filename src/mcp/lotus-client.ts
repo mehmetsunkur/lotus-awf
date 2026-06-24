@@ -1,4 +1,5 @@
 import type {
+  AppAccessUpdate,
   PlatformState,
   SessionState,
   TemplateArtifact,
@@ -71,6 +72,18 @@ export class LotusClient {
     return this.request<PlatformState>("GET", "/api/platform/state");
   }
 
+  async createApp(body: { appId: string; title: string; docType: string; docTypeTitle: string }): Promise<PlatformState> {
+    return this.request<PlatformState>("POST", "/api/platform/apps", body);
+  }
+
+  async appAccess(appId: string): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>("GET", `/api/apps/${encodeURIComponent(appId)}/access`);
+  }
+
+  async updateAppAccess(appId: string, body: AppAccessUpdate): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>("PUT", `/api/apps/${encodeURIComponent(appId)}/access`, body);
+  }
+
   async appDefinitions(appId: string): Promise<Record<string, unknown>> {
     return this.request<Record<string, unknown>>("GET", `/api/apps/${encodeURIComponent(appId)}/definitions`);
   }
@@ -97,6 +110,10 @@ export class LotusClient {
     return this.request<Record<string, unknown>>("POST", `/api/apps/${encodeURIComponent(appId)}/templates/diff`, { template });
   }
 
+  async applyTemplate(appId: string, template: TemplateArtifact): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>("POST", `/api/apps/${encodeURIComponent(appId)}/templates/apply`, { template });
+  }
+
   async createDocumentType(appId: string, body: { docType: string; title: string }): Promise<Record<string, unknown>> {
     return this.request<Record<string, unknown>>("POST", `/api/apps/${encodeURIComponent(appId)}/document-types`, body);
   }
@@ -113,6 +130,48 @@ export class LotusClient {
       "PUT",
       `/api/apps/${encodeURIComponent(appId)}/definitions/${encodeURIComponent(id)}`,
       definition
+    );
+  }
+
+  async listDocuments(appId: string, docType: string): Promise<Record<string, unknown>[]> {
+    const query = new URLSearchParams({ docType });
+    return this.request<Record<string, unknown>[]>("GET", `/api/apps/${encodeURIComponent(appId)}/documents?${query.toString()}`);
+  }
+
+  async queryView(appId: string, viewId: string, queryText?: string): Promise<Record<string, unknown>[]> {
+    const query = new URLSearchParams();
+    if (queryText) query.set("q", queryText);
+    const suffix = query.size ? `?${query.toString()}` : "";
+    return this.request<Record<string, unknown>[]>(
+      "GET",
+      `/api/apps/${encodeURIComponent(appId)}/views/${encodeURIComponent(viewId)}/documents${suffix}`
+    );
+  }
+
+  async getDocument(appId: string, id: string): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(
+      "GET",
+      `/api/apps/${encodeURIComponent(appId)}/documents/${encodeURIComponent(id)}`
+    );
+  }
+
+  async createDocument(appId: string, body: { docType: string; payload: Record<string, unknown> }): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>("POST", `/api/apps/${encodeURIComponent(appId)}/documents`, body);
+  }
+
+  async updateDocument(appId: string, id: string, body: { payload: Record<string, unknown> }): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(
+      "PUT",
+      `/api/apps/${encodeURIComponent(appId)}/documents/${encodeURIComponent(id)}`,
+      body
+    );
+  }
+
+  async transitionDocument(appId: string, id: string, transition: string): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(
+      "POST",
+      `/api/apps/${encodeURIComponent(appId)}/documents/${encodeURIComponent(id)}/transition`,
+      { transition }
     );
   }
 

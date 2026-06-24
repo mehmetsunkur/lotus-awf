@@ -1,17 +1,12 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { LotusClient } from "./lotus-client";
-import { asToolResult } from "./tool-result";
-import { validateDesignDefinition } from "../shared/definition-validation";
-import { validateTemplateDefinitions } from "../shared/template-validation";
-import type { CouchDocument, DesignDocument, TemplateArtifact, WorkflowDefinition, WorkflowTransition } from "../shared/types";
-import { applyWorkflowPatch, type WorkflowPatchOperation } from "./workflow-patches";
-
-const appIdSchema = {
-  appId: z.string().min(1).describe("Installed business app id, without the .nsf suffix")
-};
-
-const jsonObjectSchema = z.record(z.string(), z.any());
+import type { LotusClient } from "../lotus-client";
+import { asToolResult } from "../tool-result";
+import { validateDesignDefinition } from "../../shared/definition-validation";
+import { validateTemplateDefinitions } from "../../shared/template-validation";
+import type { CouchDocument, TemplateArtifact, WorkflowDefinition, WorkflowTransition } from "../../shared/types";
+import { applyWorkflowPatch, type WorkflowPatchOperation } from "../workflow-patches";
+import { appIdSchema, jsonObjectSchema } from "./common";
 
 const transitionSchema = z.object({
   id: z.string().min(1),
@@ -80,39 +75,18 @@ async function previewWorkflowPatch(
   };
 }
 
-export function registerLotusTools(server: McpServer, client: LotusClient): void {
+export function registerDesignerTools(server: McpServer, client: LotusClient): void {
   server.registerTool(
-    "lotus_get_session",
+    "lotus_designer_get_session",
     {
-      title: "Get Lotus Session",
+      title: "Get Lotus Designer Session",
       description: "Return the current Lotus session state for the configured MCP credentials."
     },
     () => asToolResult(() => client.getSession())
   );
 
   server.registerTool(
-    "lotus_get_platform_state",
-    {
-      title: "Get Lotus Platform State",
-      description: "Return setup state, system apps, installed business apps, samples, and session state."
-    },
-    () => asToolResult(() => client.platformState())
-  );
-
-  server.registerTool(
-    "lotus_list_apps",
-    {
-      title: "List Lotus Apps",
-      description: "Return installed business apps from platform state."
-    },
-    () => asToolResult(async () => {
-      const state = await client.platformState();
-      return state.installedApps;
-    })
-  );
-
-  server.registerTool(
-    "lotus_get_app_definitions",
+    "lotus_designer_get_app_definitions",
     {
       title: "Get App Definitions",
       description: "Return app config, forms, views, workflows, current roles, and access level.",
@@ -122,7 +96,7 @@ export function registerLotusTools(server: McpServer, client: LotusClient): void
   );
 
   server.registerTool(
-    "lotus_get_workflow",
+    "lotus_designer_get_workflow",
     {
       title: "Get Workflow",
       description: "Return workflow:<docType> from an installed app.",
@@ -135,7 +109,7 @@ export function registerLotusTools(server: McpServer, client: LotusClient): void
   );
 
   server.registerTool(
-    "lotus_get_workflow_scaffold_options",
+    "lotus_designer_get_workflow_scaffold_options",
     {
       title: "Get Workflow Scaffold Options",
       description: "Return sanitized people and groups that can be selected as approval principals.",
@@ -145,7 +119,7 @@ export function registerLotusTools(server: McpServer, client: LotusClient): void
   );
 
   server.registerTool(
-    "lotus_export_template",
+    "lotus_designer_export_template",
     {
       title: "Export App Template",
       description: "Export current app design definitions as a template artifact.",
@@ -159,7 +133,7 @@ export function registerLotusTools(server: McpServer, client: LotusClient): void
   );
 
   server.registerTool(
-    "lotus_diff_template",
+    "lotus_designer_diff_template",
     {
       title: "Diff App Template",
       description: "Diff a proposed template artifact against the current app definitions.",
@@ -172,7 +146,20 @@ export function registerLotusTools(server: McpServer, client: LotusClient): void
   );
 
   server.registerTool(
-    "lotus_validate_definition",
+    "lotus_designer_apply_template",
+    {
+      title: "Apply App Template",
+      description: "Validate and apply a template artifact to an installed app.",
+      inputSchema: {
+        ...appIdSchema,
+        template: jsonObjectSchema.describe("Template artifact to apply")
+      }
+    },
+    ({ appId, template }) => asToolResult(() => client.applyTemplate(appId, template as TemplateArtifact))
+  );
+
+  server.registerTool(
+    "lotus_designer_validate_definition",
     {
       title: "Validate Definition",
       description: "Validate a single Lotus design definition locally using shared validation.",
@@ -187,7 +174,7 @@ export function registerLotusTools(server: McpServer, client: LotusClient): void
   );
 
   server.registerTool(
-    "lotus_validate_template",
+    "lotus_designer_validate_template",
     {
       title: "Validate Template",
       description: "Validate a Lotus template artifact locally using shared template validation.",
@@ -202,7 +189,7 @@ export function registerLotusTools(server: McpServer, client: LotusClient): void
   );
 
   server.registerTool(
-    "lotus_create_document_type",
+    "lotus_designer_create_document_type",
     {
       title: "Create Document Type",
       description: "Create a new document type by scaffolding its form and list view through the app-scoped API.",
@@ -216,7 +203,7 @@ export function registerLotusTools(server: McpServer, client: LotusClient): void
   );
 
   server.registerTool(
-    "lotus_scaffold_approval_workflow",
+    "lotus_designer_scaffold_approval_workflow",
     {
       title: "Scaffold Approval Workflow",
       description: "Create the standard approval workflow and worklist views for an existing document type.",
@@ -231,7 +218,7 @@ export function registerLotusTools(server: McpServer, client: LotusClient): void
   );
 
   server.registerTool(
-    "lotus_preview_workflow_patch",
+    "lotus_designer_preview_workflow_patch",
     {
       title: "Preview Workflow Patch",
       description: "Apply workflow patch operations in memory and validate the changed workflow without writing.",
@@ -242,7 +229,7 @@ export function registerLotusTools(server: McpServer, client: LotusClient): void
   );
 
   server.registerTool(
-    "lotus_apply_workflow_patch",
+    "lotus_designer_apply_workflow_patch",
     {
       title: "Apply Workflow Patch",
       description: "Apply validated workflow patch operations and write through the app-scoped definitions API.",
@@ -261,3 +248,4 @@ export function registerLotusTools(server: McpServer, client: LotusClient): void
       })
   );
 }
+

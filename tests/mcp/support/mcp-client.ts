@@ -13,6 +13,8 @@ export type LotusMcpTestClient = {
   close(): Promise<void>;
 };
 
+export type LotusMcpServerKind = "admin" | "designer" | "workspace";
+
 function firstText(result: unknown): string {
   const content = (result as { content?: unknown }).content;
   if (!Array.isArray(content)) throw new Error(`Tool result had no content: ${JSON.stringify(result)}`);
@@ -23,11 +25,11 @@ function firstText(result: unknown): string {
   return text.text;
 }
 
-export async function connectLotusMcp(): Promise<LotusMcpTestClient> {
+export async function connectLotusMcp(kind: LotusMcpServerKind): Promise<LotusMcpTestClient> {
   const client = new Client({ name: "lotus-mcp-e2e", version: "0.1.0" });
   const transport = new StdioClientTransport({
     command: "npx",
-    args: ["tsx", "src/mcp/server.ts"],
+    args: ["tsx", `src/mcp/${kind}-server.ts`],
     cwd: process.cwd(),
     env: {
       ...process.env,

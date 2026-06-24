@@ -16,15 +16,21 @@
 
 ## Purpose
 
-Local stdio Model Context Protocol server for coding agents. It exposes Lotus app/design operations
-by calling the existing Express API and importing only pure shared validators/helpers.
+Local stdio Model Context Protocol servers for coding agents. The adapter exposes three non-layered
+surfaces: `lotus-admin`, `lotus-designer`, and `lotus-workspace`. Each calls the existing Express API
+and imports only pure shared validators/helpers.
 
 ## Main Files
 
-- `src/mcp/server.ts` — stdio MCP entrypoint.
+- `src/mcp/admin-server.ts` — stdio MCP entrypoint for platform/app/access administration.
+- `src/mcp/designer-server.ts` — stdio MCP entrypoint for app design, workflows, and templates.
+- `src/mcp/workspace-server.ts` — stdio MCP entrypoint for business document work.
+- `src/mcp/runtime.ts` — shared server construction/stdio connection.
 - `src/mcp/lotus-client.ts` — HTTP client, username/password login, session-cookie replay, typed API
   errors.
-- `src/mcp/tools.ts` — MCP tool registration.
+- `src/mcp/tools/admin.ts` — admin tool registration.
+- `src/mcp/tools/designer.ts` — designer tool registration.
+- `src/mcp/tools/workspace.ts` — workspace tool registration.
 - `src/mcp/workflow-patches.ts` — pure workflow patch operations used by preview/apply tools.
 - `src/mcp/tool-result.ts` — JSON/error result helpers.
 
@@ -32,18 +38,19 @@ by calling the existing Express API and importing only pure shared validators/he
 
 - Auth: login through `POST /api/session/login`, capture `lotus_session`, replay the cookie on API
   calls, and retry login once on `401`.
-- Read tools: session/platform/app/definition/workflow/template discovery through app-scoped API
-  routes.
-- Safe creation tools: document-type creation and approval workflow scaffold wrap existing
-  app-scoped endpoints, so server-side designer access and validation remain authoritative.
-- Validation tools: individual definitions use `src/shared/definition-validation.ts`; template
-  artifacts use `src/shared/template-validation.ts`.
-- Workflow patch tools: fetch `workflow:<docType>`, apply pure operations in memory, validate the
-  changed definition, and write through `PUT /api/apps/:appId/definitions/:id` only when valid.
+- Admin tools: session/platform state, installed apps, app creation, and app ACL management.
+- Designer tools: app definitions, workflow scaffolds, document-type scaffolds, template
+  export/diff/apply/validation, and workflow patch preview/apply.
+- Workspace tools: definitions/view discovery plus business document list/query/get/create/update and
+  workflow transitions.
+- Validation tools: designer definitions use `src/shared/definition-validation.ts`; template artifacts
+  use `src/shared/template-validation.ts`.
 
 ## Existing Patterns
 
 - MCP code is a client adapter, not a backend authority.
+- The three servers are composable, not layered. Register multiple servers when a user/session needs
+  multiple capability sets.
 - Every app-scoped tool requires explicit `appId`.
 - Tools return structured JSON as text content for broad MCP client compatibility.
 - Mutating tools prefer existing API endpoints and shared validation over custom write behavior.
@@ -66,9 +73,9 @@ subsystem.
 - `npm run test:unit`
 - `npm run test:mcp`
 
-`npm run test:mcp` uses `playwright.mcp.config.ts`, starts only the Express API, launches the MCP
-server over stdio through the official MCP client transport, and reuses the CouchDB Docker setup from
-browser e2e.
+`npm run test:mcp` uses `playwright.mcp.config.ts`, starts only the Express API, launches all three
+MCP servers over stdio through the official MCP client transport, and reuses the CouchDB Docker setup
+from browser e2e.
 
 ## Local Claude Code Testing
 
@@ -88,22 +95,26 @@ make mcp-reset
 Then launch Claude Code with a generated local MCP config:
 
 ```bash
-make claude-mcp
+make claude-mcp-designer
 ```
 
 The generated config is written to `.tmp/claude-mcp.lotus.json` and is ignored by git because it
 contains local credentials. Override defaults with environment variables:
 
 ```bash
-LOTUS_USERNAME=admin LOTUS_PASSWORD=password123 MCP_API_URL=http://localhost:3001 make claude-mcp
+LOTUS_USERNAME=admin LOTUS_PASSWORD=password123 MCP_API_URL=http://localhost:3001 make claude-mcp-admin
 ```
+
+Use `make claude-mcp-admin`, `make claude-mcp-designer`, or `make claude-mcp-workspace` depending on
+the surface needed for the session.
 
 ## Local Codex CLI Testing
 
-Codex CLI manages MCP servers as persistent user config. Register the Lotus MCP server explicitly:
+Codex CLI manages MCP servers as persistent user config. Register the needed Lotus MCP surface
+explicitly:
 
 ```bash
-make codex-mcp-install
+make codex-mcp-designer-install
 ```
 
 Then launch Codex from the project root:
@@ -116,14 +127,14 @@ Inspect or remove the registration with:
 
 ```bash
 make codex-mcp-list
-make codex-mcp-remove
+make codex-mcp-designer-remove
 ```
 
-The install target reuses `MCP_API_URL`, `LOTUS_USERNAME`, and `LOTUS_PASSWORD`, and registers a
+Each install target reuses `MCP_API_URL`, `LOTUS_USERNAME`, and `LOTUS_PASSWORD`, and registers a
 stdio server that runs from this repository:
 
 ```bash
-bash -lc 'cd <repo> && npx tsx src/mcp/server.ts'
+bash -lc 'cd <repo> && npx tsx src/mcp/<surface>-server.ts'
 ```
 
 Run `make mcp-api` in another terminal before launching Codex, and run `make mcp-reset` only when

@@ -20,13 +20,15 @@ LOTUS_USERNAME ?= alice
 LOTUS_PASSWORD ?= password123
 CLAUDE ?= claude
 CODEX ?= codex
-CODEX_MCP_NAME ?= lotus-notes
 MCP_CONFIG_DIR ?= .tmp
 MCP_CONFIG ?= $(MCP_CONFIG_DIR)/claude-mcp.lotus.json
 
 .PHONY: help e2e e2e-headed e2e-ui e2e-debug e2e-report setup-e2e \
 	deploy-up deploy-down mcp-api mcp-reset mcp-test claude-mcp \
-	codex-mcp-install codex-mcp-remove codex-mcp-list codex-mcp
+	claude-mcp-admin claude-mcp-designer claude-mcp-workspace \
+	codex-mcp-admin-install codex-mcp-designer-install codex-mcp-workspace-install \
+	codex-mcp-admin-remove codex-mcp-designer-remove codex-mcp-workspace-remove \
+	codex-mcp-install-all codex-mcp-remove-all codex-mcp-list codex-mcp
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*## .*$$' $(MAKEFILE_LIST) \
@@ -68,14 +70,17 @@ mcp-test: ## Run MCP stdio e2e tests
 	$(NVM) npm run test:mcp
 
 claude-mcp: ## Launch Claude Code with local Lotus MCP config
+	$(MAKE) claude-mcp-designer
+
+claude-mcp-admin: ## Launch Claude Code with Lotus admin MCP config
 	@command -v $(CLAUDE) >/dev/null || { echo "Claude CLI not found: $(CLAUDE)"; exit 1; }
 	@mkdir -p $(MCP_CONFIG_DIR)
 	@printf '%s\n' '{' \
 	  '  "mcpServers": {' \
-	  '    "lotus-notes": {' \
+	  '    "lotus-admin": {' \
 	  '      "type": "stdio",' \
 	  '      "command": "npx",' \
-	  '      "args": ["tsx", "src/mcp/server.ts"],' \
+	  '      "args": ["tsx", "src/mcp/admin-server.ts"],' \
 	  '      "cwd": "$(CURDIR)",' \
 	  '      "env": {' \
 	  '        "LOTUS_API_URL": "$(MCP_API_URL)",' \
@@ -87,22 +92,98 @@ claude-mcp: ## Launch Claude Code with local Lotus MCP config
 	  '}' > $(MCP_CONFIG)
 	$(CLAUDE) --strict-mcp-config --mcp-config $(MCP_CONFIG)
 
-codex-mcp-install: ## Persistently register Lotus MCP with Codex CLI
+claude-mcp-designer: ## Launch Claude Code with Lotus designer MCP config
+	@command -v $(CLAUDE) >/dev/null || { echo "Claude CLI not found: $(CLAUDE)"; exit 1; }
+	@mkdir -p $(MCP_CONFIG_DIR)
+	@printf '%s\n' '{' \
+	  '  "mcpServers": {' \
+	  '    "lotus-designer": {' \
+	  '      "type": "stdio",' \
+	  '      "command": "npx",' \
+	  '      "args": ["tsx", "src/mcp/designer-server.ts"],' \
+	  '      "cwd": "$(CURDIR)",' \
+	  '      "env": {' \
+	  '        "LOTUS_API_URL": "$(MCP_API_URL)",' \
+	  '        "LOTUS_USERNAME": "$(LOTUS_USERNAME)",' \
+	  '        "LOTUS_PASSWORD": "$(LOTUS_PASSWORD)"' \
+	  '      }' \
+	  '    }' \
+	  '  }' \
+	  '}' > $(MCP_CONFIG)
+	$(CLAUDE) --strict-mcp-config --mcp-config $(MCP_CONFIG)
+
+claude-mcp-workspace: ## Launch Claude Code with Lotus workspace MCP config
+	@command -v $(CLAUDE) >/dev/null || { echo "Claude CLI not found: $(CLAUDE)"; exit 1; }
+	@mkdir -p $(MCP_CONFIG_DIR)
+	@printf '%s\n' '{' \
+	  '  "mcpServers": {' \
+	  '    "lotus-workspace": {' \
+	  '      "type": "stdio",' \
+	  '      "command": "npx",' \
+	  '      "args": ["tsx", "src/mcp/workspace-server.ts"],' \
+	  '      "cwd": "$(CURDIR)",' \
+	  '      "env": {' \
+	  '        "LOTUS_API_URL": "$(MCP_API_URL)",' \
+	  '        "LOTUS_USERNAME": "$(LOTUS_USERNAME)",' \
+	  '        "LOTUS_PASSWORD": "$(LOTUS_PASSWORD)"' \
+	  '      }' \
+	  '    }' \
+	  '  }' \
+	  '}' > $(MCP_CONFIG)
+	$(CLAUDE) --strict-mcp-config --mcp-config $(MCP_CONFIG)
+
+codex-mcp-admin-install: ## Persistently register Lotus admin MCP with Codex CLI
 	@command -v $(CODEX) >/dev/null || { echo "Codex CLI not found: $(CODEX)"; exit 1; }
-	$(CODEX) mcp remove $(CODEX_MCP_NAME) >/dev/null 2>&1 || true
-	$(CODEX) mcp add $(CODEX_MCP_NAME) \
+	$(CODEX) mcp remove lotus-admin >/dev/null 2>&1 || true
+	$(CODEX) mcp add lotus-admin \
 	  --env LOTUS_API_URL=$(MCP_API_URL) \
 	  --env LOTUS_USERNAME=$(LOTUS_USERNAME) \
 	  --env LOTUS_PASSWORD=$(LOTUS_PASSWORD) \
-	  -- bash -lc 'cd $(CURDIR) && npx tsx src/mcp/server.ts'
+	  -- bash -lc 'cd $(CURDIR) && npx tsx src/mcp/admin-server.ts'
 
-codex-mcp-remove: ## Remove the persistent Lotus MCP registration from Codex CLI
-	$(CODEX) mcp remove $(CODEX_MCP_NAME)
+codex-mcp-designer-install: ## Persistently register Lotus designer MCP with Codex CLI
+	@command -v $(CODEX) >/dev/null || { echo "Codex CLI not found: $(CODEX)"; exit 1; }
+	$(CODEX) mcp remove lotus-designer >/dev/null 2>&1 || true
+	$(CODEX) mcp add lotus-designer \
+	  --env LOTUS_API_URL=$(MCP_API_URL) \
+	  --env LOTUS_USERNAME=$(LOTUS_USERNAME) \
+	  --env LOTUS_PASSWORD=$(LOTUS_PASSWORD) \
+	  -- bash -lc 'cd $(CURDIR) && npx tsx src/mcp/designer-server.ts'
+
+codex-mcp-workspace-install: ## Persistently register Lotus workspace MCP with Codex CLI
+	@command -v $(CODEX) >/dev/null || { echo "Codex CLI not found: $(CODEX)"; exit 1; }
+	$(CODEX) mcp remove lotus-workspace >/dev/null 2>&1 || true
+	$(CODEX) mcp add lotus-workspace \
+	  --env LOTUS_API_URL=$(MCP_API_URL) \
+	  --env LOTUS_USERNAME=$(LOTUS_USERNAME) \
+	  --env LOTUS_PASSWORD=$(LOTUS_PASSWORD) \
+	  -- bash -lc 'cd $(CURDIR) && npx tsx src/mcp/workspace-server.ts'
+
+codex-mcp-admin-remove: ## Remove the persistent Lotus admin MCP registration
+	$(CODEX) mcp remove lotus-admin
+
+codex-mcp-designer-remove: ## Remove the persistent Lotus designer MCP registration
+	$(CODEX) mcp remove lotus-designer
+
+codex-mcp-workspace-remove: ## Remove the persistent Lotus workspace MCP registration
+	$(CODEX) mcp remove lotus-workspace
+
+codex-mcp-install-all: ## Register all Lotus MCP surfaces with Codex CLI
+	$(CODEX) mcp remove lotus-notes >/dev/null 2>&1 || true
+	$(MAKE) codex-mcp-admin-install
+	$(MAKE) codex-mcp-designer-install
+	$(MAKE) codex-mcp-workspace-install
+
+codex-mcp-remove-all: ## Remove all Lotus MCP surface registrations from Codex CLI
+	$(CODEX) mcp remove lotus-notes >/dev/null 2>&1 || true
+	$(CODEX) mcp remove lotus-admin >/dev/null 2>&1 || true
+	$(CODEX) mcp remove lotus-designer >/dev/null 2>&1 || true
+	$(CODEX) mcp remove lotus-workspace >/dev/null 2>&1 || true
 
 codex-mcp-list: ## List Codex MCP registrations
 	$(CODEX) mcp list
 
-codex-mcp: ## Launch Codex CLI after verifying Lotus MCP is registered
+codex-mcp: ## Launch Codex CLI after verifying Lotus designer MCP is registered
 	@command -v $(CODEX) >/dev/null || { echo "Codex CLI not found: $(CODEX)"; exit 1; }
-	@$(CODEX) mcp get $(CODEX_MCP_NAME) >/dev/null || { echo "Run: make codex-mcp-install"; exit 1; }
+	@$(CODEX) mcp get lotus-designer >/dev/null || { echo "Run: make codex-mcp-designer-install"; exit 1; }
 	$(CODEX) -C $(CURDIR)

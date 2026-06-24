@@ -2,7 +2,7 @@
 
 ## Configuration
 
-The MCP server reads configuration from environment variables:
+Each MCP server reads the same configuration from environment variables:
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
@@ -10,58 +10,73 @@ The MCP server reads configuration from environment variables:
 | `LOTUS_USERNAME` | yes for protected tools | Login username. |
 | `LOTUS_PASSWORD` | yes for protected tools | Login password. |
 
-The MCP server uses the existing session-cookie login flow. It never accepts a client-supplied
-principal and never bypasses app ACL checks.
+All three servers use the existing session-cookie login flow. They never accept a client-supplied
+principal and never bypass app ACL checks.
 
-## Read tools
+## Surfaces
 
-- `lotus_get_session` returns the authenticated session state.
-- `lotus_get_platform_state` returns setup, system apps, installed apps, samples, and session state.
-- `lotus_list_apps` returns installed business apps from platform state.
-- `lotus_get_app_definitions` returns app config, forms, views, workflows, roles, and access level.
-- `lotus_get_workflow` returns one `workflow:<docType>` from an app.
-- `lotus_get_workflow_scaffold_options` returns sanitized people/groups for workflow approvers.
-- `lotus_export_template` exports current app design definitions.
-- `lotus_diff_template` diffs a proposed template against the app's current definitions.
+M24 exposes three non-layered stdio MCP servers:
 
-## Creation tools
+- `lotus-admin` (`src/mcp/admin-server.ts`) for platform/app lifecycle and app access.
+- `lotus-designer` (`src/mcp/designer-server.ts`) for design definitions, workflows, and templates.
+- `lotus-workspace` (`src/mcp/workspace-server.ts`) for business document work.
 
-- `lotus_create_document_type` wraps `POST /api/apps/:appId/document-types`.
-- `lotus_scaffold_approval_workflow` wraps `POST /api/apps/:appId/workflows/scaffold`.
+Users can register one or more servers depending on their role and task. The surfaces are
+composable, not hierarchical: admin does not include designer/workspace tools, and designer does not
+include workspace tools.
 
-Both tools require server-side `designer` access and keep validation in the Express API.
+## Admin tools
 
-## Validation tools
+- `lotus_admin_get_session`
+- `lotus_admin_get_platform_state`
+- `lotus_admin_list_apps`
+- `lotus_admin_create_app`
+- `lotus_admin_get_app_access`
+- `lotus_admin_update_app_access`
 
-- `lotus_validate_definition` validates a single form/view/workflow/agent/audit policy definition.
-- `lotus_validate_template` validates a template artifact and all eligible design definitions.
+Admin tools require the server-side session/app access needed by the backing API. Creating apps uses
+`POST /api/platform/apps`; access tools use `GET/PUT /api/apps/:appId/access`.
 
-Validation tools are local and pure. Server routes still validate before writing.
+## Designer tools
 
-## Workflow patch tools
+- `lotus_designer_get_session`
+- `lotus_designer_get_app_definitions`
+- `lotus_designer_get_workflow`
+- `lotus_designer_get_workflow_scaffold_options`
+- `lotus_designer_create_document_type`
+- `lotus_designer_scaffold_approval_workflow`
+- `lotus_designer_preview_workflow_patch`
+- `lotus_designer_apply_workflow_patch`
+- `lotus_designer_validate_definition`
+- `lotus_designer_export_template`
+- `lotus_designer_validate_template`
+- `lotus_designer_diff_template`
+- `lotus_designer_apply_template`
 
-- `lotus_preview_workflow_patch` fetches a workflow, applies patch operations in memory, validates the
-  result, and returns the changed workflow plus a summary.
-- `lotus_apply_workflow_patch` performs the same preview and writes the validated workflow through
-  `PUT /api/apps/:appId/definitions/:id`.
+Designer tools operate on replicated design documents and template artifacts through the existing
+app-scoped APIs.
 
-Supported operations:
+## Workspace tools
 
-- `add_state`
-- `update_state`
-- `remove_state`
-- `add_transition`
-- `update_transition`
-- `remove_transition`
+- `lotus_workspace_get_session`
+- `lotus_workspace_get_app_definitions`
+- `lotus_workspace_list_documents`
+- `lotus_workspace_query_view`
+- `lotus_workspace_get_document`
+- `lotus_workspace_create_document`
+- `lotus_workspace_update_document`
+- `lotus_workspace_transition_document`
 
-Patch tools preserve existing definition ids and app ids. A remove-state operation must not leave a
-transition pointing at the removed state and must not remove the initial state.
+Workspace tools operate only on business documents and view results. They do not expose delete or
+conflict-resolution tools in v1.
 
 ## Safety rules
 
 - Every app-scoped tool requires an explicit `appId`.
 - MCP tools never write directly to CouchDB.
-- MCP tools never mutate business documents.
-- MCP tools never mutate document `readers` or `authors`.
+- MCP tools never accept caller-supplied principals.
+- Admin/design/workspace tools are exposed by separate MCP servers.
+- Designer tools may mutate design documents; workspace tools may not.
+- Workspace tools may mutate business document payload/state; admin/designer tools may not.
 - MCP tools return structured errors from the Lotus API instead of hiding them.
 - Mutating tools validate locally when possible and rely on the server as final authority.

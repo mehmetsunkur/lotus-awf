@@ -44,7 +44,7 @@ npm run test:deploy  # M13 deploy artifact gate; requires Docker API access
 make mcp-api      # foreground Lotus API for MCP testing
 make mcp-reset    # explicit API reset
 make mcp-test     # wrapper around npm run test:mcp
-make claude-mcp   # launch Claude Code with generated Lotus MCP config
-make codex-mcp-install # persistently register Lotus MCP with Codex CLI
+make claude-mcp-designer # launch Claude Code with generated Lotus designer MCP config
+make codex-mcp-designer-install # persistently register Lotus designer MCP with Codex CLI
 make codex-mcp    # launch Codex after verifying the registration
 ```
