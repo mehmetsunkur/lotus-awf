@@ -2,6 +2,15 @@ import type { LotusMcpSurface } from "./runtime";
 
 const ALL_SURFACES: LotusMcpSurface[] = ["admin", "designer", "workspace"];
 
+function parseNumber(value: string | undefined, fallback: number, name: string): number {
+  if (value === undefined || value.trim() === "") return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive number, got: ${value}`);
+  }
+  return parsed;
+}
+
 function parseList(value: string | undefined): string[] {
   return (value ?? "")
     .split(",")
@@ -36,10 +45,10 @@ export type HttpHostConfig = {
 export function httpHostConfigFromEnv(env = process.env): HttpHostConfig {
   return {
     apiUrl: env.LOTUS_API_URL ?? "http://localhost:3001",
-    port: Number(env.MCP_HTTP_PORT ?? 3002),
+    port: parseNumber(env.MCP_HTTP_PORT, 3002, "MCP_HTTP_PORT"),
     surfaces: parseSurfaces(env.MCP_HTTP_SURFACES),
     allowedHosts: parseList(env.MCP_ALLOWED_HOSTS),
     allowedOrigins: parseList(env.MCP_ALLOWED_ORIGINS),
-    sessionTtlMs: Number(env.MCP_SESSION_TTL_MS ?? 30 * 60 * 1000)
+    sessionTtlMs: parseNumber(env.MCP_SESSION_TTL_MS, 30 * 60 * 1000, "MCP_SESSION_TTL_MS")
   };
 }

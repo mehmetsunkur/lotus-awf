@@ -199,7 +199,10 @@ export class LotusClient {
       body: body === undefined ? undefined : JSON.stringify(body)
     });
     const json = await response.json().catch(() => ({}));
-    if (response.status === 401 && retryOnUnauthorized) {
+    // Only auto-relogin when we hold credentials. A token-only (Bearer) client cannot log
+    // in, so an expired/revoked token must surface as a real 401 the host can act on rather
+    // than a misleading "credentials required" error.
+    if (response.status === 401 && retryOnUnauthorized && this.username && this.password) {
       this.cookie = undefined;
       await this.login();
       return this.request<T>(method, path, body, false);
