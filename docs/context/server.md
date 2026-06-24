@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `78e6778`
-- Last reviewed date: `2026-06-22`
+- Last code review baseline: `8793300`
+- Last reviewed date: `2026-06-24`
 - Code areas:
   - `src/server/**`
   - `scripts/**`
@@ -26,6 +26,10 @@ definition validation, business documents, ACL-scoped query/write paths, bidirec
 revocation purge, conflict inspection/resolution, Mango indexes, (M3) workflow transitions + sync
 reconciliation, (M6) template export/diff/apply, (M13) production static-client serving/readiness,
 (M18) directory-backed session authentication, and (M21) catalog-created business app databases.
+
+The k8s deploy adds an MCP-over-HTTP sidecar to the app pod; that host is a client of this API and is
+documented in `docs/context/mcp.md` and `docs/decisions/0011-mcp-over-http.md` — it does not change
+the server's own behavior.
 
 ## Main Files
 
