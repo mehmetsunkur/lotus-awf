@@ -12,7 +12,11 @@ current deploy artifact topology: one app pod, one local CouchDB pod, and one se
 - `app.yaml` runs the Lotus app image (with the MCP-over-HTTP host as a sidecar container)
   and a `lotus-mcp` Service, and wires liveness/readiness probes for both.
 - `ingress.yaml` exposes the app through an nginx ingress placeholder, and routes the MCP
-  `designer`/`workspace` surfaces. The MCP `admin` surface is intentionally not exposed publicly.
+  `designer`/`workspace`/`admin` surfaces. `ingress.traefik.yaml` is the Traefik variant for
+  k3s-style clusters. As of ADR-0011's 2026-06-24 amendment the `admin` surface IS routed
+  publicly; it is protected by the app's Basic/Bearer auth and the MCP `Host`/`Origin`
+  allowlist, not by network isolation. To keep admin in-cluster, drop its ingress path
+  and/or restrict it with a NetworkPolicy.
 
 ## Required Client Decisions
 

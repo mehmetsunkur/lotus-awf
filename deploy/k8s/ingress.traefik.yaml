@@ -1,0 +1,73 @@
+# Traefik-compatible variant of ingress.yaml, for clusters whose ingress controller
+# is Traefik (the k3s default) rather than nginx. Apply this INSTEAD of ingress.yaml.
+#
+# Differences from the nginx variant:
+#   - ingressClassName: traefik
+#   - the nginx `proxy-body-size: 10m` annotation has no Traefik equivalent as an
+#     annotation; the request-body cap is expressed as a Traefik Middleware
+#     (buffering.maxRequestBodyBytes) and attached via the router.middlewares
+#     annotation. Note Traefik buffers the request body to enforce the cap.
+#   - routing (host, paths, public surfaces) is otherwise identical: designer/workspace
+#     and admin are publicly routable. (Admin was previously kept in-cluster; ADR-0011
+#     was updated 2026-06-24 to route it publicly. It is gated by the app's Basic/Bearer
+#     auth and the MCP Host/Origin allowlist, not by network isolation.)
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: lotus-bodylimit
+  namespace: lotus-notes
+spec:
+  buffering:
+    # 10 MiB, mirrors nginx `proxy-body-size: 10m`. Requests larger than this are
+    # rejected with HTTP 413 before reaching the backend.
+    maxRequestBodyBytes: 10485760
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: lotus-app
+  namespace: lotus-notes
+  annotations:
+    # <namespace>-<middleware-name>@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: lotus-notes-lotus-bodylimit@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - lotus.example.com
+      secretName: lotus-tls
+  rules:
+    - host: lotus.example.com
+      http:
+        paths:
+          # MCP designer/workspace and admin surfaces are publicly routable
+          # (admin exposed per ADR-0011 update 2026-06-24; gated by app auth + Host/Origin allowlist).
+          - path: /mcp/admin
+            pathType: Prefix
+            backend:
+              service:
+                name: lotus-mcp
+                port:
+                  name: http
+          - path: /mcp/designer
+            pathType: Prefix
+            backend:
+              service:
+                name: lotus-mcp
+                port:
+                  name: http
+          - path: /mcp/workspace
+            pathType: Prefix
+            backend:
+              service:
+                name: lotus-mcp
+                port:
+                  name: http
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: lotus-app
+                port:
+                  name: http

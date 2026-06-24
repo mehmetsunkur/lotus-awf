@@ -16,8 +16,9 @@ data:
   SERVER_COUCH_HOST: server-couchdb
   # MCP-over-HTTP host (runs as a sidecar in the lotus-app pod).
   MCP_HTTP_PORT: "3002"
-  # All three surfaces are served in-cluster; the public ingress only routes
-  # designer/workspace. Admin stays reachable only inside the cluster.
+  # All three surfaces are served in-cluster; the public ingress routes
+  # designer/workspace and admin (ADR-0011 amended 2026-06-24). Admin is gated
+  # by the app's auth and MCP_ALLOWED_HOSTS/ORIGINS, not by network isolation.
   MCP_HTTP_SURFACES: admin,designer,workspace
   MCP_ALLOWED_HOSTS: lotus.example.com
   MCP_ALLOWED_ORIGINS: https://lotus.example.com

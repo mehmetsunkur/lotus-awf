@@ -6,6 +6,13 @@ Date: 2026-06-24
 
 Accepted
 
+> **Amendment (2026-06-24):** The original decision kept the `admin` surface in-cluster
+> (the ingress routed `designer`/`workspace` only). The ingress now also routes `/mcp/admin`,
+> so the admin MCP surface is publicly reachable. Its protection is the app's Basic/Bearer
+> authentication plus the MCP `Host`/`Origin` allowlist; it no longer relies on network
+> isolation. Operators who want the prior posture should drop the `/mcp/admin` ingress path
+> and/or restrict it with a NetworkPolicy.
+
 ## Context
 
 The Lotus MCP adapter (ADR-0001, M24) shipped as three **stdio** servers (`admin`, `designer`,
@@ -42,8 +49,9 @@ the MCP `StreamableHTTPServerTransport` (stateful, `randomUUID` session ids).
 - **No new authority.** The host reuses the existing `tools/*` registrations unchanged and only
   calls the Express API; it never touches CouchDB. Stdio entrypoints are unchanged.
 - **Deployment.** The host runs as a sidecar container in the `lotus-app` pod (same image,
-  `npm run mcp:http`), behind a `lotus-mcp` Service. The public ingress routes `designer`/`workspace`
-  only; `admin` stays in-cluster.
+  `npm run mcp:http`), behind a `lotus-mcp` Service. The public ingress routes `designer`,
+  `workspace`, and `admin` (see Amendment 2026-06-24); admin is protected by the app's
+  Basic/Bearer auth and the `Host`/`Origin` allowlist rather than by network isolation.
 
 ## Alternatives Considered
 

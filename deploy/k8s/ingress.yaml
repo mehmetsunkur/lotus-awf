@@ -15,8 +15,15 @@ spec:
     - host: lotus.example.com
       http:
         paths:
-          # MCP designer/workspace surfaces are publicly routable; the admin surface
-          # is intentionally NOT exposed here and stays reachable only in-cluster.
+          # MCP designer/workspace and admin surfaces are publicly routable
+          # (admin exposed per ADR-0011 update 2026-06-24; gated by app auth + Host/Origin allowlist).
+          - path: /mcp/admin
+            pathType: Prefix
+            backend:
+              service:
+                name: lotus-mcp
+                port:
+                  name: http
           - path: /mcp/designer
             pathType: Prefix
             backend:
