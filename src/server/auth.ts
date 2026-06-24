@@ -60,19 +60,23 @@ export function sessionTokenFromRequest(request: Request): string | undefined {
   return parseCookies(request)[SESSION_COOKIE];
 }
 
-export function setSessionCookie(response: Response, token: string, expires: string): void {
+export function setSessionCookie(response: Response, token: string, expires: string, secure = false): void {
   const cookie = [
     `${SESSION_COOKIE}=${encodeURIComponent(token)}`,
     "HttpOnly",
     "SameSite=Lax",
     "Path=/",
+    ...(secure ? ["Secure"] : []),
     `Expires=${new Date(expires).toUTCString()}`
   ];
   response.setHeader("Set-Cookie", cookie.join("; "));
 }
 
-export function clearSessionCookie(response: Response): void {
-  response.setHeader("Set-Cookie", `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
+export function clearSessionCookie(response: Response, secure = false): void {
+  response.setHeader(
+    "Set-Cookie",
+    `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; ${secure ? "Secure; " : ""}Max-Age=0`
+  );
 }
 
 export function publicPerson(person: PersonDocument): PublicPerson {

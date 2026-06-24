@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lotus-config
+  namespace: lotus-notes
+data:
+  API_PORT: "3001"
+  APP_DB: expense_app
+  PLATFORM_DB: platform_app
+  SETUP_DB: setup_app
+  APP_AUTO_SETUP: "1"
+  TRUST_PROXY: "1"
+  COOKIE_SECURE: "1"
+  CORS_ORIGIN: https://lotus.example.com
+  LOCAL_COUCH_HOST: local-couchdb
+  SERVER_COUCH_HOST: server-couchdb
+

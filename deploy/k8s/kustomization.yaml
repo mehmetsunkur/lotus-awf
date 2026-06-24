@@ -1,0 +1,9 @@
+resources:
+  - namespace.yaml
+  - secret.example.yaml
+  - configmap.yaml
+  - local-couchdb.yaml
+  - server-couchdb.yaml
+  - app.yaml
+  - ingress.yaml
+

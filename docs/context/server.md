@@ -12,11 +12,12 @@
 - Config/runtime areas:
   - `docker-compose.yml`
   - `deploy/compose.yml`
+  - `deploy/k8s/**`
   - `Dockerfile`
   - `.env.example`
 - Review trigger:
-  - Update this doc when API endpoints, replication, conflict handling, ACL, workflow transitions, or
-    index seeding change.
+  - Update this doc when API endpoints, replication, conflict handling, ACL, workflow transitions,
+    deployment/runtime config, or index seeding change.
 
 ## Purpose
 
@@ -47,8 +48,8 @@ reconciliation, (M6) template export/diff/apply, (M13) production static-client 
   (fail-closed). The `runAgents()` tick orchestrator lives in `index.ts`.
 - `scripts/*.ts` — `seed`, `reset`, `replicate`, `force-conflict`, `force-state-conflict`,
   `acl-spike`, and `app` (M7 definitions-as-code `extract`/`apply` CLI).
-- `Dockerfile` / `deploy/compose.yml` — M13 deployable artifact topology; no source bind mount;
-  the image includes `templates/` for JSON-backed app installs.
+- `Dockerfile` / `deploy/compose.yml` / `deploy/k8s/` — M13 deployable artifact topologies; no source
+  bind mount; the image includes `templates/` for JSON-backed app installs.
 
 ## Key Flows
 
@@ -142,8 +143,11 @@ reconciliation, (M6) template export/diff/apply, (M13) production static-client 
   installed only through the sample installer after setup. Setup creates and logs in the admin person;
   unauthenticated app APIs return `401`; `GET /api/platform/state` always advertises `setup.nsf` in
   `systemApps`. The client renders `setup.nsf`, `catalog.nsf`, and `expense.nsf` through the M20
-  standard NSF workspace. `npm run test:deploy` builds/runs that topology and exercises setup,
-  catalog, runtime, and design operations externally over HTTP.
+  standard NSF workspace. `deploy/k8s/` mirrors the deploy topology with one app `Deployment`, two
+  internal CouchDB `StatefulSet`s, PVCs, ConfigMap/Secret config, and optional ingress; production
+  ingress should set `TRUST_PROXY=1`, `COOKIE_SECURE=1`, and a specific `CORS_ORIGIN`. `npm run
+  test:deploy` builds/runs the Compose topology and exercises setup, catalog, runtime, and design
+  operations externally over HTTP.
 
 ## Existing Patterns
 

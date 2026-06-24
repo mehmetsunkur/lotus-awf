@@ -105,7 +105,9 @@ import {
 
 const app = express();
 
-app.use(cors());
+if (config.trustProxy) app.set("trust proxy", 1);
+
+app.use(config.corsOrigin ? cors({ origin: config.corsOrigin, credentials: true }) : cors());
 app.use(express.json());
 
 const asyncRoute =
@@ -436,7 +438,7 @@ async function createSession(response: Response, person: PersonDocument): Promis
     upsertDocInDb("local", config.platformDb, session),
     upsertDocInDb("server", config.platformDb, session)
   ]);
-  setSessionCookie(response, token, expiresAt);
+  setSessionCookie(response, token, expiresAt, config.cookieSecure);
   return sessionStateForPerson(person);
 }
 
@@ -455,7 +457,7 @@ async function logoutSession(request: Request, response: Response): Promise<void
       })
     );
   }
-  clearSessionCookie(response);
+  clearSessionCookie(response, config.cookieSecure);
 }
 
 async function upsertPerson(target: "local" | "server", username: string, displayName: string, password: string): Promise<PersonDocument> {
