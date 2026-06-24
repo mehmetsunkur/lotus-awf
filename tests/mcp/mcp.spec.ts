@@ -23,6 +23,10 @@ test.describe("Lotus MCP server", () => {
   });
 
   test("authenticates and performs workflow design operations through MCP", async () => {
+    const tools = await mcp.listTools();
+    expect(tools).toContain("lotus_get_session");
+    expect(tools).toContain("lotus_apply_workflow_patch");
+
     const session = await mcp.callJsonTool<SessionState>("lotus_get_session");
     expect(session.authenticated).toBe(true);
     expect(session.person?.username).toBe("alice");

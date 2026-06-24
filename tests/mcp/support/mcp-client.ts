@@ -8,6 +8,7 @@ type ToolTextContent = {
 };
 
 export type LotusMcpTestClient = {
+  listTools(): Promise<string[]>;
   callJsonTool<T>(name: string, args?: Record<string, unknown>): Promise<T>;
   close(): Promise<void>;
 };
@@ -39,6 +40,10 @@ export async function connectLotusMcp(): Promise<LotusMcpTestClient> {
   await client.connect(transport);
 
   return {
+    async listTools(): Promise<string[]> {
+      const result = await client.listTools();
+      return result.tools.map((tool) => tool.name);
+    },
     async callJsonTool<T>(name: string, args: Record<string, unknown> = {}): Promise<T> {
       const result = await client.callTool({ name, arguments: args }, CallToolResultSchema);
       if (result.isError) throw new Error(firstText(result));

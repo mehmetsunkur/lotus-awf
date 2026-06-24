@@ -11,6 +11,8 @@ const appIdSchema = {
   appId: z.string().min(1).describe("Installed business app id, without the .nsf suffix")
 };
 
+const jsonObjectSchema = z.record(z.string(), z.any());
+
 const transitionSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
@@ -163,10 +165,10 @@ export function registerLotusTools(server: McpServer, client: LotusClient): void
       description: "Diff a proposed template artifact against the current app definitions.",
       inputSchema: {
         ...appIdSchema,
-        template: z.custom<TemplateArtifact>().describe("Template artifact to diff")
+        template: jsonObjectSchema.describe("Template artifact to diff")
       }
     },
-    ({ appId, template }) => asToolResult(() => client.diffTemplate(appId, template))
+    ({ appId, template }) => asToolResult(() => client.diffTemplate(appId, template as TemplateArtifact))
   );
 
   server.registerTool(
@@ -175,7 +177,7 @@ export function registerLotusTools(server: McpServer, client: LotusClient): void
       title: "Validate Definition",
       description: "Validate a single Lotus design definition locally using shared validation.",
       inputSchema: {
-        definition: z.custom<DesignDocument>().describe("Design definition to validate")
+        definition: jsonObjectSchema.describe("Design definition to validate")
       }
     },
     ({ definition }) => asToolResult(async () => {
@@ -190,11 +192,11 @@ export function registerLotusTools(server: McpServer, client: LotusClient): void
       title: "Validate Template",
       description: "Validate a Lotus template artifact locally using shared template validation.",
       inputSchema: {
-        template: z.custom<TemplateArtifact>().describe("Template artifact to validate")
+        template: jsonObjectSchema.describe("Template artifact to validate")
       }
     },
     ({ template }) => asToolResult(async () => {
-      const errors = validateTemplateDefinitions(template);
+      const errors = validateTemplateDefinitions(template as TemplateArtifact);
       return { ok: errors.length === 0, errors };
     })
   );
