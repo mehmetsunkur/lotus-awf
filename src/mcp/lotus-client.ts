@@ -6,10 +6,22 @@ import type {
   WorkflowDefinition
 } from "../shared/types";
 
+/**
+ * Session cookie name. Mirrors `SESSION_COOKIE` in `src/server/auth.ts`; duplicated here
+ * because `src/mcp/**` must not import from `src/server/**` (layering boundary).
+ */
+const SESSION_COOKIE = "lotus_session";
+
 export type LotusClientConfig = {
   apiUrl: string;
   username?: string;
   password?: string;
+  /**
+   * Pre-supplied Lotus session token (the opaque value carried in the `lotus_session`
+   * cookie). When present the client replays it directly instead of logging in, which
+   * lets the HTTP host bind an inbound Bearer token to a per-session client.
+   */
+  sessionToken?: string;
 };
 
 export class LotusApiError extends Error {
@@ -44,6 +56,7 @@ export class LotusClient {
     this.apiUrl = normalizeApiUrl(config.apiUrl);
     this.username = config.username;
     this.password = config.password;
+    if (config.sessionToken) this.cookie = `${SESSION_COOKIE}=${config.sessionToken}`;
   }
 
   async login(): Promise<SessionState> {
@@ -202,4 +215,14 @@ export function lotusClientFromEnv(env = process.env): LotusClient {
     username: env.LOTUS_USERNAME,
     password: env.LOTUS_PASSWORD
   });
+}
+
+/** Build a client that logs in with the supplied username/password (HTTP Basic surface). */
+export function lotusClientWithCredentials(apiUrl: string, username: string, password: string): LotusClient {
+  return new LotusClient({ apiUrl, username, password });
+}
+
+/** Build a client that replays an existing Lotus session token (HTTP Bearer surface). */
+export function lotusClientWithToken(apiUrl: string, sessionToken: string): LotusClient {
+  return new LotusClient({ apiUrl, sessionToken });
 }
