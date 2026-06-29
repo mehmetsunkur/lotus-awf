@@ -20,6 +20,7 @@
     "mcp:http": "tsx src/mcp/http-server.ts",
     "test:serve": "E2E=1 concurrently -n api,web -c cyan,green \"tsx src/server/index.ts\" \"vite --host 0.0.0.0 --port 3000\"",
     "test:unit": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:mcp": "playwright test -c playwright.mcp.config.ts",
     "test:mcp:http": "playwright test -c playwright.mcp.http.config.ts",
     "test:e2e": "xvfb-run -a playwright test",
@@ -50,6 +51,7 @@
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.2",
+    "@vitest/coverage-v8": "^4.1.9",
     "testcontainers": "^12.0.3",
     "vitest": "^4.1.9"
   }

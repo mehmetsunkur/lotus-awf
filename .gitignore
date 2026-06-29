@@ -13,5 +13,8 @@ playwright-report-mcp/
 playwright-report-mcp-http/
 blob-report/
 
+# Coverage output
+coverage/
+
 # bv (beads viewer) local config and caches
 .bv/
