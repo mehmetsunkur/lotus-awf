@@ -17,14 +17,17 @@ import { defineConfig, devices } from "@playwright/test";
 // Each worker runs ~2 CouchDB containers + a node server + Chromium (~0.6-0.8 GB).
 // Cap workers to keep container RAM/disk in check and limit CPU contention (which
 // stretches the runtime's refresh cascades that the settle helper waits out).
-// Override with PLAYWRIGHT_WORKERS on a beefier host.
-const WORKERS = Number(process.env.PLAYWRIGHT_WORKERS ?? 2);
+// Override with PLAYWRIGHT_WORKERS / PLAYWRIGHT_MAX_FAILURES.
+const WORKERS = Number(process.env.PLAYWRIGHT_WORKERS ?? 4);
+// Fail fast: stop the run once this many tests have failed (0 = run everything).
+const MAX_FAILURES = Number(process.env.PLAYWRIGHT_MAX_FAILURES ?? 5);
 
 export default defineConfig({
   testDir: "./tests/e2e",
   globalSetup: "./tests/e2e/support/global-setup.ts",
   fullyParallel: true,
   workers: WORKERS,
+  maxFailures: MAX_FAILURES,
   forbidOnly: !!process.env.CI,
   retries: 0,
   reporter: [["list"], ["html", { open: "never" }]],
