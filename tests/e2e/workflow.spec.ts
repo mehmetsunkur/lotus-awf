@@ -110,7 +110,7 @@ test.describe("workflow lifecycle", () => {
     expect((await allowed.json()).state).toBe("approved");
   });
 
-  test("a transition writes only the local replica until an explicit sync", async ({ app, page }) => {
+  test("a transition writes only the local replica until an explicit sync", async ({ app, page, serverCouchUrl }) => {
     await app.goto();
 
     const docs = await page.request.get("/api/documents?docType=expense").then((r) => r.json());
@@ -125,7 +125,7 @@ test.describe("workflow lifecycle", () => {
 
     // The server replica is still untouched (proves the transition was offline-capable).
     const serverAuth = { authorization: `Basic ${Buffer.from("admin:password").toString("base64")}` };
-    const serverDocUrl = `http://localhost:5984/expense_app/${encodeURIComponent(id)}`;
+    const serverDocUrl = `${serverCouchUrl}/expense_app/${encodeURIComponent(id)}`;
     const before = await page.request.get(serverDocUrl, { headers: serverAuth }).then((r) => r.json());
     expect(before.state ?? null).toBeNull();
 

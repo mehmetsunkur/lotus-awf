@@ -5,6 +5,10 @@ test.describe("authoring studio", () => {
     await app.gotoDesigner();
 
     await page.getByTestId("definition-select").selectOption("form:expense");
+    // The selection navigates the designer route; let its refresh cascade settle
+    // before editing, else a trailing refresh reloads definitions and discards
+    // the in-progress structured edits.
+    await app.settle();
     await page.getByTestId("studio-form-add-field").click();
 
     const lastField = page.getByTestId("studio-form-field").last();
@@ -21,6 +25,7 @@ test.describe("authoring studio", () => {
     await app.gotoDesigner();
 
     await page.getByTestId("definition-select").selectOption("view:all-expenses");
+    await app.settle();
     await page.getByTestId("studio-view-add-column").click();
 
     const lastColumn = page.getByTestId("studio-view-column").last();
@@ -38,6 +43,7 @@ test.describe("authoring studio", () => {
     await app.gotoDesigner();
 
     await page.getByTestId("definition-select").selectOption("workflow:expense");
+    await app.settle();
     await page.getByTestId("studio-workflow-transition-label-0").fill("Send for approval");
     await page.getByTestId("definition-save").click();
     await expect(app.message()).toHaveText("Save local definition complete.");
@@ -52,6 +58,7 @@ test.describe("authoring studio", () => {
     await app.gotoDesigner();
 
     await page.getByTestId("definition-select").selectOption("form:expense");
+    await app.settle();
     await page.getByTestId("studio-form-field-name-0").fill("");
     await page.getByTestId("definition-save").click();
     await expect(page.getByTestId("definition-error")).toContainText("Field name is required");
