@@ -1,46 +1,73 @@
 # E2E tests (Playwright)
 
-Browser-level tests for the M2 metadata runtime UI.
+Browser-level tests for the M2 metadata runtime UI, each Playwright **worker** running
+in a fully isolated, ephemeral environment.
 
 ## Run
 
 ```bash
-npm run test:e2e          # headless
+npm run test:e2e          # headless (builds dist/ first, then runs)
+SKIP_BUILD=1 npm run test:e2e   # skip the client build when dist/ is fresh
+PLAYWRIGHT_WORKERS=4 npm run test:e2e   # more parallelism on a beefier host
 npm run test:e2e:ui       # Playwright UI mode
 npm run test:e2e:report   # open the last HTML report
 ```
 
+`test:e2e` runs under **`xvfb-run`** (a virtual X display) — required on a display-less
+Linux host, see the rAF gotcha below. On a machine that already has a display (e.g. a dev
+desktop, or no `xvfb-run` installed such as macOS), use `npm run test:e2e:nodisplay` instead.
+
 ## How it works
 
-- **`globalSetup`** (`support/global-setup.ts`) brings the CouchDB pair up via
-  `docker compose up -d local-couchdb server-couchdb` and waits for both to be
-  reachable (`:5985` local, `:5984` server). It does **not** seed app data.
-- **`webServer`** runs `npm run test:serve` — a non-watch variant of `npm run dev`
-  (see note below) — and is considered ready when `GET /api/health` returns 200.
-  `/api/health` does not touch CouchDB, so server readiness and DB readiness are
-  independent.
-- **Per-test isolation**: the `resetState` auto fixture (`support/fixtures.ts`)
-  POSTs `/api/reset` before each test, fully re-seeding both replicas. Because
-  the replicas are shared, the suite runs serially (`workers: 1`).
-- **`RuntimeApp`** (`support/fixtures.ts`) is a small page object over the
-  `data-testid` selectors in `src/client/main.tsx`.
+- **Isolation model**: each worker owns its own substrate, so the suite runs in parallel
+  (`fullyParallel: true`) with a per-test clean slate. The `workerHarness` fixture
+  (`support/worker-harness.ts`) starts, per worker:
+  - a private testcontainers `Network` + two `couchdb:3.4` containers (network aliases
+    `local-couchdb` / `server-couchdb`) on random host ports, and
+  - one Express server (`tsx src/server/index.ts`, `NODE_ENV=production E2E=1`) that serves
+    both the built SPA from `dist/` and `/api`, pointed at that worker's CouchDB pair.
+
+  The server reaches CouchDB over the Docker-mapped host endpoint (resolved via
+  `container.getHost()` — **not** assumed to be `localhost`), while container-to-container
+  replication uses the network aliases. This maps onto `src/server/config.ts`'s split of
+  `*_COUCH_URL` (API→Couch) vs `*_COUCH_REPLICATION_URL` (Couch→Couch).
+- **`globalSetup`** (`support/global-setup.ts`) runs once: builds `dist/` (skip with
+  `SKIP_BUILD=1`) and pre-pulls the CouchDB image so worker 1 doesn't block on the pull.
+- **`baseURL`** is overridden per worker to the worker's Express URL, so `page` and
+  `page.request` target the right server transparently. Specs that talk to CouchDB directly
+  use the `localCouchUrl` / `serverCouchUrl` fixtures; specs that open extra user contexts
+  use `apiBaseURL`.
+- **Per-test isolation**: the `resetState` auto fixture POSTs `/api/reset` (re-seeds the
+  worker's replicas) and logs in alice before each test.
+- **`RuntimeApp`** (`support/fixtures.ts`) is a page object over the `data-testid` selectors
+  in `src/client/main.tsx`.
 
 ## Notes / gotchas
 
-- **Non-watch server (`test:serve`)**: `npm run dev` uses `tsx watch` + Vite file
-  watching, which on this host exhausts `fs.inotify.max_user_instances` and fails
-  with `EMFILE`. `test:serve` runs the API without `tsx watch` and sets `E2E=1`,
-  which disables Vite's watcher (see `vite.config.ts`). Watch mode isn't needed
-  for tests.
-- **Settling the runtime**: the boot/refresh sequence issues several requests and
-  only finalizes the selected row / reloads definitions once they all apply.
-  `RuntimeApp.waitForReady()` and `refresh()` gate on the completion message
-  rather than a single HTTP response to avoid racing those state updates.
-- **Definition JSON editor**: it's a controlled textarea; `locator.fill()` is
-  unreliable on it, so `RuntimeApp.setDefinitionJson()` drives React's onChange
-  via the native value setter + an `input` event.
+- **Needs a display (`xvfb-run`)**: with Chromium running headless on a host with **no X
+  display**, the compositor never produces animation frames, so `requestAnimationFrame` never
+  fires (measured 0 fps). Playwright's click/`stable` actionability check is rAF-based, so
+  `click()` on a quiescent page hangs until the 30s test timeout — intermittently at first,
+  then reliably under parallelism (fewer incidental renders to pump a frame). Running under
+  `xvfb-run` gives a virtual display, rAF returns to ~60 fps, and clicks work normally. This is
+  why `npm run test:e2e` wraps the run in `xvfb-run`. Symptom to recognize: `locator.click ...
+  waiting for element to be visible, enabled and stable` with the element already resolved and
+  the network idle.
+- **`settle()`**: navigations and view switches trigger a background refresh cascade
+  (status/definitions/conflicts/documents/options/audit) that, if it lands mid-edit, resets
+  the form/definition draft and wipes typed input. `RuntimeApp.settle()` waits for a
+  sustained quiet window with no in-flight `/api` request (Playwright's `networkidle` is too
+  eager — the cascade has sub-second gaps). The page-object helpers call it after navigation;
+  raw-action designer/studio specs call `app.settle()` after a `definition-select` / route
+  change before editing.
+- **Worker count**: each worker ≈ 2 CouchDB containers + a node server + Chromium. The default
+  is 2 workers to bound RAM and CPU contention (contention stretches the refresh cascades);
+  raise `PLAYWRIGHT_WORKERS` on a larger host.
+- **Definition JSON editor**: a controlled textarea where `locator.fill()` is unreliable, so
+  `RuntimeApp.setDefinitionJson()` drives React's onChange via the native value setter.
 
-## Not covered yet (deferred)
+## Now unblocked: the `@infra` suite
 
-Offline editing and replication-conflict-generation flows need container
-stop/start orchestration and are intended for a separate `@infra`-tagged suite.
+The `workerHarness` exposes `localCouch` / `serverCouch` container handles, so a future
+`@infra`-tagged suite can stop/start a replica mid-test to exercise offline editing and
+replication-conflict generation — previously deferred for lack of per-test container control.

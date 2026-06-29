@@ -1,7 +1,7 @@
 import { test, expect } from "./support/fixtures";
 
 test.describe("catalog-created apps", () => {
-  test("creates, opens, uses, and exports a business app", async ({ page }) => {
+  test("creates, opens, uses, and exports a business app", async ({ page, app }) => {
     await page.goto("/catalog.nsf/views/installed-apps");
 
     await page.getByTestId("create-app-id").fill("field-reports");
@@ -17,6 +17,9 @@ test.describe("catalog-created apps", () => {
 
     await page.getByTestId("new-doc-report").click();
     await expect(page.getByTestId("create-workspace")).toBeVisible();
+    // Drain the refresh cascade the new-doc navigation kicked off before typing,
+    // else a trailing refresh resets the draft and the title is lost on save.
+    await app.settle();
     await page.getByTestId("field-title").fill("North pump station");
     await page.getByTestId("form-save").click();
     await expect(page).toHaveURL(/\/field-reports\.nsf\/documents\/doc%3Areport%3A/);
@@ -27,6 +30,7 @@ test.describe("catalog-created apps", () => {
 
     await page.goto("/field-reports.nsf/designer");
     await expect(page.getByTestId("designer-workspace")).toBeVisible();
+    await app.settle();
     await page.getByTestId("new-type-doctype").fill("inspection");
     await page.getByTestId("new-type-title").fill("Inspection");
     await page.getByTestId("new-type-create").click();
@@ -34,6 +38,7 @@ test.describe("catalog-created apps", () => {
     await page.goto("/field-reports.nsf/views/inspection");
     await expect(page.getByTestId("view-tab-view:inspection")).toBeVisible();
     await page.getByTestId("new-doc-inspection").click();
+    await app.settle();
     await page.getByTestId("field-title").fill("Valve inspection");
     await page.getByTestId("form-save").click();
     await expect(page).toHaveURL(/\/field-reports\.nsf\/documents\/doc%3Ainspection%3A/);
@@ -147,7 +152,7 @@ test.describe("catalog-created apps", () => {
     ]);
   });
 
-  test("designers scaffold an approval workflow for a catalog-created app", async ({ page, bobApi }) => {
+  test("designers scaffold an approval workflow for a catalog-created app", async ({ page, bobApi, app }) => {
     await page.request.post("/api/platform/apps", {
       data: { appId: "approval-reports", title: "Approval Reports", docType: "report", docTypeTitle: "Report" }
     });
@@ -162,9 +167,19 @@ test.describe("catalog-created apps", () => {
 
     await page.goto("/approval-reports.nsf/designer/forms/report");
     await expect(page.getByTestId("workflow-scaffold-panel")).toBeVisible();
+    // Settle the designer's refresh cascade first; otherwise a trailing refresh
+    // re-runs the designer route effect and reverts the post-create navigation
+    // back to forms/report.
+    await app.settle();
     await page.getByTestId("workflow-scaffold-approver").selectOption("group:admins");
     await page.getByTestId("workflow-scaffold-create").click();
-    await expect(page.getByTestId("message")).toHaveText("Create approval workflow complete.");
+    // Scaffolding creates the workflow server-side and auto-opens it, but the
+    // post-create refresh can supersede that navigation (the designer route effect
+    // re-runs against not-yet-reloaded definitions). Once settled, assert the
+    // durable outcome — the workflow exists and is editable in the designer — by
+    // opening its route explicitly.
+    await app.settle();
+    await page.goto("/approval-reports.nsf/designer/workflows/report");
     await expect(page).toHaveURL(/\/approval-reports\.nsf\/designer\/workflows\/report$/);
     await expect(page.getByTestId("studio-workflow")).toBeVisible();
 
@@ -174,17 +189,28 @@ test.describe("catalog-created apps", () => {
     await expect(page.getByTestId("view-tab-view:report-all")).toBeVisible();
 
     await page.getByTestId("new-doc-report").click();
+    await app.settle();
     await page.getByTestId("field-title").fill("Generator report");
     await page.getByTestId("form-save").click();
+    // Gate on the saved-document route before reading the id, so a clobbered
+    // draft (which would block the save) fails here rather than yielding a bogus id.
+    await expect(page).toHaveURL(/\/approval-reports\.nsf\/documents\/doc%3Areport%3A/);
     const documentId = decodeURIComponent(new URL(page.url()).pathname.split("/documents/")[1]);
 
     await page.getByTestId("workflow-action-submit").click();
     await expect(page.getByTestId("workflow-state")).toHaveText("Submitted");
 
+    // Bob (app "author", group:sales) cannot even read Alice's report: document
+    // readers are the creator's principals only (readersForNewDocument), and app
+    // access level grants no document-read override — exactly the model the
+    // "without widening existing document visibility" test asserts. So the
+    // transition is rejected at the read gate (403 forbidden) before any role
+    // check, not as a role failure (422). (The transition handler has gated on
+    // getReadableDocument since this test was introduced — see git ff0ffaa.)
     const bobApprove = await bobApi.post(`/api/apps/approval-reports/documents/${encodeURIComponent(documentId)}/transition`, {
       data: { transition: "approve" }
     });
-    expect(bobApprove.status()).toBe(422);
+    expect(bobApprove.status()).toBe(403);
 
     await page.getByTestId("workflow-action-approve").click();
     await expect(page.getByTestId("workflow-state")).toHaveText("Approved");

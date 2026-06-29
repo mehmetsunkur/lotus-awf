@@ -50,7 +50,7 @@ test.describe("ACL scoped runtime", () => {
     expect(JSON.stringify(await refused.json())).toContain("not readable");
   });
 
-  test("revocation purge removes unauthorized local revisions without deleting the server document", async ({ bobApi, page }) => {
+  test("revocation purge removes unauthorized local revisions without deleting the server document", async ({ bobApi, page, localCouchUrl, serverCouchUrl }) => {
     const bobExpenses = (await bobApi.get("/api/documents?docType=expense").then((r) => r.json())) as Doc[];
     const visible = bobExpenses.find((doc) => doc.payload.description === "Client dinner");
     expect(visible).toBeTruthy();
@@ -72,12 +72,12 @@ test.describe("ACL scoped runtime", () => {
     const afterBob = (await bobApi.get("/api/documents?docType=expense").then((r) => r.json())) as Doc[];
     expect(afterBob.map((doc) => doc._id)).not.toContain(visible!._id);
 
-    const localDoc = await page.request.get(`http://localhost:5985/expense_app/${encodeURIComponent(visible!._id)}`, {
+    const localDoc = await page.request.get(`${localCouchUrl}/expense_app/${encodeURIComponent(visible!._id)}`, {
       headers: couchAuth
     });
     expect(localDoc.status()).toBe(404);
 
-    const serverDoc = await page.request.get(`http://localhost:5984/expense_app/${encodeURIComponent(visible!._id)}`, {
+    const serverDoc = await page.request.get(`${serverCouchUrl}/expense_app/${encodeURIComponent(visible!._id)}`, {
       headers: couchAuth
     });
     expect(serverDoc.ok()).toBeTruthy();

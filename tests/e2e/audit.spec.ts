@@ -1,7 +1,6 @@
 import { test, expect } from "./support/fixtures";
 import type { APIRequestContext } from "@playwright/test";
 
-const COUCH = "http://localhost:5985/expense_app";
 const couchAuth = { authorization: `Basic ${Buffer.from("admin:password").toString("base64")}` };
 
 type Doc = { _id: string; payload: Record<string, unknown> };
@@ -45,11 +44,12 @@ test.describe("audit & retention", () => {
     expect(aliceAudit.some((e) => e.docId === stationery)).toBe(true);
   });
 
-  test("retention prunes events past the policy horizon", async ({ page }) => {
+  test("retention prunes events past the policy horizon", async ({ page, localCouchUrl }) => {
     // Insert an aged event straight into the local replica, then tick. With the
     // seeded 365-day policy a year-2000 event is expired and tombstoned.
+    const couch = `${localCouchUrl}/expense_app`;
     const agedId = "auditevent:aged-0001";
-    await page.request.put(`${COUCH}/${agedId}`, {
+    await page.request.put(`${couch}/${agedId}`, {
       headers: couchAuth,
       data: {
         _id: agedId,
@@ -70,7 +70,7 @@ test.describe("audit & retention", () => {
 
     const audit = (await page.request.get("/api/audit").then((r) => r.json())) as Event[];
     expect(audit.some((e) => e._id === agedId)).toBe(false);
-    const couchDoc = await page.request.get(`${COUCH}/${agedId}`, { headers: couchAuth });
+    const couchDoc = await page.request.get(`${couch}/${agedId}`, { headers: couchAuth });
     expect(couchDoc.status()).toBe(404);
   });
 

@@ -8,6 +8,9 @@ test.describe("local definition editor", () => {
     await page.getByTestId("definition-select").selectOption("view:all-expenses");
     const editor = page.getByTestId("definition-json");
     await expect(editor).toHaveValue(/view:all-expenses/);
+    // Let any refresh the selection kicked off finish before we edit — otherwise
+    // a trailing refresh reloads server definitions and clobbers the local edit.
+    await app.settle();
 
     const definition = JSON.parse(await editor.inputValue()) as { title: string };
     definition.title = "All Expenses (Edited)";
