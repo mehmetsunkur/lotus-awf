@@ -2,6 +2,7 @@ import { test, expect } from "../support/fixtures";
 import { startAgentMcpHost, ALICE_AUTH, mintSessionToken, type AgentMcpHost } from "./support/mcp-host";
 import { connectHttpMcp, type LotusHttpMcpClient } from "../http/support/http-client";
 import { ClaudeCodeDriver, CodexDriver, type AgentDriver } from "./support/agent-driver";
+import { createAgentDiagnostics } from "./support/diagnostics";
 import type { WorkflowDefinition } from "../../../src/shared/types";
 
 type AppDefinitions = {
@@ -88,15 +89,38 @@ test.describe("MCP real-agent acceptance", () => {
     }
     // Mint a fresh Bearer token (after the auto reset seeded the directory). Both drivers
     // authenticate to the host with it: Claude as a header, Codex via a bearer-token env var.
-    const authorization = `Bearer ${await mintSessionToken(apiUrl)}`;
+    const sessionToken = await mintSessionToken(apiUrl);
+    const authorization = `Bearer ${sessionToken}`;
     const mcpServers = Object.fromEntries(
       surfaces.map((surface) => [
         `lotus-${surface}`,
         { url: host.surfaceUrl(surface), authorization }
       ])
     );
-    const run = await driver.run({ prompt, mcpServers });
-    // Sanity: the run actually went through the LiteLLM proxy to the configured model.
+    const diagnostics = createAgentDiagnostics({
+      rootDir: test.info().outputPath("agent-diagnostics", driver.name),
+      driverName: driver.name,
+      testTitle: test.info().title,
+      extraSecrets: [sessionToken, authorization]
+    });
+    diagnostics.event({ event: "session_token_minted", surfaces });
+    let run: Awaited<ReturnType<AgentDriver["run"]>>;
+    try {
+      run = await driver.run({ prompt, mcpServers, diagnostics });
+    } catch (error) {
+      diagnostics.event({ event: "run_agent_error", message: error instanceof Error ? error.message : String(error) });
+      diagnostics.finalizeExit({
+        schemaVersion: 1,
+        runId: diagnostics.runId,
+        driver: driver.name,
+        ok: false,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      await diagnostics.attachTo(test.info(), false);
+      throw error;
+    }
+    await diagnostics.attachTo(test.info(), run.ok);
+    // Sanity: the run completed through the configured agent/model path.
     expect(run.ok, `agent run failed: ${run.finalText}`).toBeTruthy();
     return run;
   }

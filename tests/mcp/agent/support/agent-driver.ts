@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { AgentDiagnostics } from "./diagnostics";
 
 /**
  * Driver seam for the real-agent acceptance suite. A driver hands a natural-language
@@ -22,6 +23,8 @@ export type AgentTask = {
   prompt: string;
   /** MCP servers exposed to the agent, keyed by server name (becomes the mcp__<name>__ tool prefix). */
   mcpServers: Record<string, AgentMcpServer>;
+  /** Redacted report artifact writer for this agent turn. */
+  diagnostics?: AgentDiagnostics;
 };
 
 export type AgentRun = {
@@ -33,6 +36,8 @@ export type AgentRun = {
   costUsd?: number;
   /** Full parsed result envelope, for diagnostics/sanity checks (e.g. which model ran). */
   raw: unknown;
+  /** Report artifact directory and id for this turn, when diagnostics were enabled. */
+  diagnostics?: { runId: string; rootDir: string };
 };
 
 export interface AgentDriver {
@@ -127,6 +132,8 @@ export class ClaudeCodeDriver implements AgentDriver {
   async run(task: AgentTask): Promise<AgentRun> {
     const model = this.model();
     if (!model) throw new Error("LOTUS_AGENT_CLAUDE_MODEL is required to run the agent");
+    const startedAt = Date.now();
+    const diagnostics = task.diagnostics;
 
     const dir = mkdtempSync(join(tmpdir(), "lotus-agent-mcp-"));
     const configPath = join(dir, "mcp-config.json");
@@ -137,6 +144,8 @@ export class ClaudeCodeDriver implements AgentDriver {
       ])
     );
     writeFileSync(configPath, JSON.stringify({ mcpServers }, null, 2));
+    diagnostics?.writeText("prompt.txt", "prompt", task.prompt, { attach: "always" });
+    diagnostics?.writeJson("mcp-config.json", "config", { mcpServers }, { attach: "failure" });
 
     // Allow exactly the tools from the servers we passed (mcp__<serverName>__*), nothing else.
     const allowedTools = Object.keys(task.mcpServers)
@@ -160,27 +169,91 @@ export class ClaudeCodeDriver implements AgentDriver {
       "--max-budget-usd",
       budget
     ];
+    diagnostics?.writeJson(
+      "spawn.json",
+      "spawn",
+      {
+        schemaVersion: 1,
+        runId: diagnostics.runId,
+        driver: this.name,
+        binary: "claude",
+        args: args.map((arg) => (arg === task.prompt ? "[prompt omitted; see prompt.txt]" : arg)),
+        model,
+        baseUrl: this.baseUrl() ?? "",
+        mcpServers: Object.keys(task.mcpServers),
+        allowedTools,
+        budgetUsd: budget
+      },
+      { attach: "always" }
+    );
+    diagnostics?.event({ event: "agent_spawned", driver: this.name, model, mcpServers: Object.keys(task.mcpServers) });
 
     try {
-      const { stdout } = await this.spawnClaude(args);
-      const raw = JSON.parse(stdout) as {
+      const { code, stdout, stderr } = await this.spawnClaude(args);
+      diagnostics?.writeText("stdout.log", "stdout", stdout, { attach: "failure" });
+      diagnostics?.writeText("stderr.log", "stderr", stderr, { attach: "failure" });
+      diagnostics?.event({ event: "agent_exited", driver: this.name, code, durationMs: Date.now() - startedAt });
+      let raw: {
         is_error?: boolean;
         subtype?: string;
         result?: string;
         total_cost_usd?: number;
       };
+      try {
+        raw = JSON.parse(stdout) as typeof raw;
+      } catch (error) {
+        raw = {
+          is_error: true,
+          subtype: "parse_error",
+          result: `Claude output was not valid JSON: ${error instanceof Error ? error.message : String(error)}`
+        };
+      }
+      const ok = code === 0 && raw.is_error === false && raw.subtype === "success";
+      const finalText = typeof raw.result === "string" ? raw.result : "";
+      diagnostics?.writeText("final_message.txt", "final_message", finalText, { attach: "always" });
+      diagnostics?.writeJson("raw_result.json", "raw_result", raw);
+      diagnostics?.finalizeExit({
+        schemaVersion: 1,
+        runId: diagnostics.runId,
+        driver: this.name,
+        ok,
+        code,
+        startedAt: new Date(startedAt).toISOString(),
+        durationMs: Date.now() - startedAt,
+        model,
+        baseUrl: this.baseUrl() ?? "",
+        costUsd: raw.total_cost_usd,
+        resultSubtype: raw.subtype,
+        stderrBytes: Buffer.byteLength(stderr),
+        stdoutBytes: Buffer.byteLength(stdout)
+      });
       return {
-        ok: raw.is_error === false && raw.subtype === "success",
+        ok,
         finalText: typeof raw.result === "string" ? raw.result : "",
         costUsd: raw.total_cost_usd,
-        raw
+        raw,
+        diagnostics: diagnostics ? { runId: diagnostics.runId, rootDir: diagnostics.rootDir } : undefined
       };
+    } catch (error) {
+      diagnostics?.event({ event: "agent_spawn_failed", driver: this.name, error: error instanceof Error ? error.message : String(error) });
+      diagnostics?.finalizeExit({
+        schemaVersion: 1,
+        runId: diagnostics.runId,
+        driver: this.name,
+        ok: false,
+        startedAt: new Date(startedAt).toISOString(),
+        durationMs: Date.now() - startedAt,
+        model,
+        baseUrl: this.baseUrl() ?? "",
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   }
 
-  private spawnClaude(args: string[]): Promise<{ stdout: string; stderr: string }> {
+  private spawnClaude(args: string[]): Promise<{ code: number | null; stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
       const child = spawn("claude", args, { env: this.childEnv(), stdio: ["ignore", "pipe", "pipe"] });
       let stdout = "";
@@ -189,8 +262,7 @@ export class ClaudeCodeDriver implements AgentDriver {
       child.stderr.on("data", (chunk) => (stderr += chunk));
       child.on("error", reject);
       child.on("close", (code) => {
-        if (code === 0) resolve({ stdout, stderr });
-        else reject(new Error(`claude exited ${code}: ${stderr || stdout}`));
+        resolve({ code, stdout, stderr });
       });
     });
   }
@@ -269,6 +341,8 @@ export class CodexDriver implements AgentDriver {
     const model = this.model();
     const baseUrl = this.baseUrl();
     if (!model || !baseUrl) throw new Error("LOTUS_AGENT_CODEX_MODEL and LOTUS_AGENT_CODEX_BASE_URL are required to run the agent");
+    const startedAt = Date.now();
+    const diagnostics = task.diagnostics;
 
     // All surfaces share one minted token; unpack it from the Bearer authorization header.
     const bearer = Object.values(task.mcpServers)[0]?.authorization.replace(/^Bearer\s+/i, "") ?? "";
@@ -280,6 +354,11 @@ export class CodexDriver implements AgentDriver {
     mkdirSync(workDir);
     writeFileSync(join(codexHome, "config.toml"), this.configToml(model, baseUrl, task.mcpServers));
     const lastMessagePath = join(dir, "last.txt");
+    diagnostics?.writeText("prompt.txt", "prompt", task.prompt, { attach: "always" });
+    diagnostics?.writeText("codex-config.toml", "config", this.configToml(model, baseUrl, task.mcpServers), {
+      attach: "failure",
+      contentType: "application/toml"
+    });
 
     const args = [
       "exec",
@@ -292,21 +371,75 @@ export class CodexDriver implements AgentDriver {
       lastMessagePath,
       task.prompt
     ];
+    diagnostics?.writeJson(
+      "spawn.json",
+      "spawn",
+      {
+        schemaVersion: 1,
+        runId: diagnostics.runId,
+        driver: this.name,
+        binary: "codex",
+        args: args.map((arg) => (arg === task.prompt ? "[prompt omitted; see prompt.txt]" : arg)),
+        model,
+        baseUrl,
+        mcpServers: Object.keys(task.mcpServers),
+        codexHome,
+        workDir
+      },
+      { attach: "always" }
+    );
+    diagnostics?.event({ event: "agent_spawned", driver: this.name, model, mcpServers: Object.keys(task.mcpServers) });
 
     try {
       const env: NodeJS.ProcessEnv = { ...process.env, CODEX_HOME: codexHome, [CODEX_BEARER_ENV]: bearer };
       const { code, stdout, stderr } = await this.spawnCodex(args, env);
+      diagnostics?.writeText("stdout.log", "stdout", stdout, { attach: "failure" });
+      diagnostics?.writeText("stderr.log", "stderr", stderr, { attach: "failure" });
+      diagnostics?.event({ event: "agent_exited", driver: this.name, code, durationMs: Date.now() - startedAt });
       let finalText = "";
       try {
         finalText = readFileSync(lastMessagePath, "utf8").trim();
       } catch {
         // No last-message file written — treated as a failed run below.
       }
+      const ok = code === 0 && finalText.length > 0;
+      const raw = { code, stdoutTail: stdout.slice(-2000), stderrTail: stderr.slice(-2000) };
+      diagnostics?.writeText("final_message.txt", "final_message", finalText, { attach: "always" });
+      diagnostics?.writeJson("raw_result.json", "raw_result", raw);
+      diagnostics?.finalizeExit({
+        schemaVersion: 1,
+        runId: diagnostics.runId,
+        driver: this.name,
+        ok,
+        code,
+        startedAt: new Date(startedAt).toISOString(),
+        durationMs: Date.now() - startedAt,
+        model,
+        baseUrl,
+        stdoutBytes: Buffer.byteLength(stdout),
+        stderrBytes: Buffer.byteLength(stderr),
+        finalMessageBytes: Buffer.byteLength(finalText)
+      });
       return {
-        ok: code === 0 && finalText.length > 0,
+        ok,
         finalText,
-        raw: { code, stdoutTail: stdout.slice(-2000), stderrTail: stderr.slice(-2000) }
+        raw,
+        diagnostics: diagnostics ? { runId: diagnostics.runId, rootDir: diagnostics.rootDir } : undefined
       };
+    } catch (error) {
+      diagnostics?.event({ event: "agent_spawn_failed", driver: this.name, error: error instanceof Error ? error.message : String(error) });
+      diagnostics?.finalizeExit({
+        schemaVersion: 1,
+        runId: diagnostics.runId,
+        driver: this.name,
+        ok: false,
+        startedAt: new Date(startedAt).toISOString(),
+        durationMs: Date.now() - startedAt,
+        model,
+        baseUrl,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
