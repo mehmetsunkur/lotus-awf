@@ -44,34 +44,44 @@ export interface AgentDriver {
   run(task: AgentTask): Promise<AgentRun>;
 }
 
-/** Per-run cost ceiling passed to `claude --max-budget-usd`; override with LOTUS_AGENT_BUDGET_USD. */
+/** Per-run cost ceiling passed to `claude --max-budget-usd`; override with LOTUS_AGENT_CLAUDE_BUDGET_USD. */
 const DEFAULT_BUDGET_USD = "2.00";
 
 /**
  * Drives the `claude` CLI headlessly against the MCP HTTP host.
  *
- * Auth: nothing is stored in-repo. The CLI is already configured via the environment
- * (ANTHROPIC_BASE_URL -> LiteLLM proxy, ANTHROPIC_AUTH_TOKEN), which the child inherits.
- * Because this suite itself runs inside Claude Code, the child env is scrubbed of the
- * parent's nested-session orchestration vars so the spawned agent launches clean.
+ * Config is suite-namespaced under LOTUS_AGENT_CLAUDE_* and mapped to the provider-native
+ * ANTHROPIC_* names the `claude` CLI actually reads. Each LOTUS_AGENT_CLAUDE_* var falls
+ * back to its ANTHROPIC_* counterpart, so inside a Claude Code session (where ANTHROPIC_*
+ * are pre-injected) the suite still runs with zero extra config. The child env is scrubbed
+ * of the parent's nested-session orchestration vars so the spawned agent launches clean.
  */
 export class ClaudeCodeDriver implements AgentDriver {
   readonly name = "claude-code";
 
   private model(): string | undefined {
-    return process.env.LOTUS_AGENT_MODEL?.trim() || undefined;
+    return process.env.LOTUS_AGENT_CLAUDE_MODEL?.trim() || undefined;
+  }
+
+  private baseUrl(): string | undefined {
+    return process.env.LOTUS_AGENT_CLAUDE_BASE_URL?.trim() || process.env.ANTHROPIC_BASE_URL?.trim() || undefined;
+  }
+
+  private token(): string | undefined {
+    return process.env.LOTUS_AGENT_CLAUDE_TOKEN?.trim() || process.env.ANTHROPIC_AUTH_TOKEN?.trim() || undefined;
+  }
+
+  private apiKey(): string | undefined {
+    return process.env.ANTHROPIC_API_KEY?.trim() || undefined;
   }
 
   /**
-   * Credentials are usable when either a direct ANTHROPIC_API_KEY is set, or a proxy
-   * token (ANTHROPIC_AUTH_TOKEN) is paired with its endpoint (ANTHROPIC_BASE_URL).
-   * A token without a base URL would send a Bearer to api.anthropic.com and fail, so
-   * we treat that as unavailable (skip) rather than letting it run and error out.
+   * Credentials are usable with either a direct ANTHROPIC_API_KEY, or a proxy token paired
+   * with its endpoint. A token without a base URL would send a Bearer to api.anthropic.com
+   * and fail, so we treat that as unavailable (skip) rather than letting it run and error.
    */
   private hasCredentials(): boolean {
-    const proxy = Boolean(process.env.ANTHROPIC_AUTH_TOKEN && process.env.ANTHROPIC_BASE_URL);
-    const directApiKey = Boolean(process.env.ANTHROPIC_API_KEY);
-    return proxy || directApiKey;
+    return Boolean(this.token() && this.baseUrl()) || Boolean(this.apiKey());
   }
 
   private binaryPresent(): boolean {
@@ -88,31 +98,35 @@ export class ClaudeCodeDriver implements AgentDriver {
 
   unavailableReason(): string {
     if (!this.binaryPresent()) return "claude CLI not found on PATH";
-    if (!this.model()) return "LOTUS_AGENT_MODEL is not set";
+    if (!this.model()) return "LOTUS_AGENT_CLAUDE_MODEL is not set";
     if (!this.hasCredentials()) {
-      if (process.env.ANTHROPIC_AUTH_TOKEN && !process.env.ANTHROPIC_BASE_URL) {
-        return "ANTHROPIC_AUTH_TOKEN is set but ANTHROPIC_BASE_URL is missing (proxy endpoint required)";
+      if (this.token() && !this.baseUrl()) {
+        return "a Claude token is set but no base URL (LOTUS_AGENT_CLAUDE_BASE_URL / ANTHROPIC_BASE_URL)";
       }
-      return "no credentials: set ANTHROPIC_API_KEY, or ANTHROPIC_AUTH_TOKEN + ANTHROPIC_BASE_URL";
+      return "no Claude credentials: set LOTUS_AGENT_CLAUDE_TOKEN + LOTUS_AGENT_CLAUDE_BASE_URL, or ANTHROPIC_API_KEY";
     }
     return "";
   }
 
   /**
-   * Child env = parent env minus the nested-session orchestration vars Claude Code sets,
-   * keeping ANTHROPIC_* so the proxy + token carry through.
+   * Child env = parent env minus Claude Code's nested-session orchestration vars, with the
+   * resolved LOTUS_AGENT_CLAUDE_* values mapped onto the ANTHROPIC_* names the CLI reads.
    */
   private childEnv(): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = { ...process.env };
     for (const key of Object.keys(env)) {
       if (key === "CLAUDECODE" || key.startsWith("CLAUDE_CODE_")) delete env[key];
     }
+    const baseUrl = this.baseUrl();
+    const token = this.token();
+    if (baseUrl) env.ANTHROPIC_BASE_URL = baseUrl;
+    if (token) env.ANTHROPIC_AUTH_TOKEN = token;
     return env;
   }
 
   async run(task: AgentTask): Promise<AgentRun> {
     const model = this.model();
-    if (!model) throw new Error("LOTUS_AGENT_MODEL is required to run the agent");
+    if (!model) throw new Error("LOTUS_AGENT_CLAUDE_MODEL is required to run the agent");
 
     const dir = mkdtempSync(join(tmpdir(), "lotus-agent-mcp-"));
     const configPath = join(dir, "mcp-config.json");
@@ -128,7 +142,7 @@ export class ClaudeCodeDriver implements AgentDriver {
     const allowedTools = Object.keys(task.mcpServers)
       .map((serverName) => `mcp__${serverName}__*`)
       .join(",");
-    const budget = process.env.LOTUS_AGENT_BUDGET_USD?.trim() || DEFAULT_BUDGET_USD;
+    const budget = process.env.LOTUS_AGENT_CLAUDE_BUDGET_USD?.trim() || DEFAULT_BUDGET_USD;
 
     const args = [
       "-p",
@@ -203,15 +217,15 @@ export class CodexDriver implements AgentDriver {
   readonly name = "codex";
 
   private model(): string | undefined {
-    return process.env.CODEX_MODEL?.trim() || undefined;
+    return process.env.LOTUS_AGENT_CODEX_MODEL?.trim() || undefined;
   }
 
   private baseUrl(): string | undefined {
-    return process.env.CODEX_BASE_URL?.trim() || undefined;
+    return process.env.LOTUS_AGENT_CODEX_BASE_URL?.trim() || undefined;
   }
 
   private hasCredentials(): boolean {
-    return Boolean(process.env.CODEX_AUTH_TOKEN && this.baseUrl());
+    return Boolean(process.env.LOTUS_AGENT_CODEX_TOKEN && this.baseUrl());
   }
 
   private binaryPresent(): boolean {
@@ -228,8 +242,8 @@ export class CodexDriver implements AgentDriver {
 
   unavailableReason(): string {
     if (!this.binaryPresent()) return "codex CLI not found on PATH";
-    if (!this.model()) return "CODEX_MODEL is not set";
-    if (!this.hasCredentials()) return "no credentials: set CODEX_AUTH_TOKEN + CODEX_BASE_URL";
+    if (!this.model()) return "LOTUS_AGENT_CODEX_MODEL is not set";
+    if (!this.hasCredentials()) return "no Codex credentials: set LOTUS_AGENT_CODEX_TOKEN + LOTUS_AGENT_CODEX_BASE_URL";
     return "";
   }
 
@@ -242,7 +256,7 @@ export class CodexDriver implements AgentDriver {
       `[model_providers.litellm]`,
       `name = "litellm"`,
       `base_url = ${JSON.stringify(baseUrl)}`,
-      `env_key = "CODEX_AUTH_TOKEN"`,
+      `env_key = "LOTUS_AGENT_CODEX_TOKEN"`,
       `wire_api = "responses"`
     ];
     for (const [serverName, server] of Object.entries(mcpServers)) {
@@ -254,7 +268,7 @@ export class CodexDriver implements AgentDriver {
   async run(task: AgentTask): Promise<AgentRun> {
     const model = this.model();
     const baseUrl = this.baseUrl();
-    if (!model || !baseUrl) throw new Error("CODEX_MODEL and CODEX_BASE_URL are required to run the agent");
+    if (!model || !baseUrl) throw new Error("LOTUS_AGENT_CODEX_MODEL and LOTUS_AGENT_CODEX_BASE_URL are required to run the agent");
 
     // All surfaces share one minted token; unpack it from the Bearer authorization header.
     const bearer = Object.values(task.mcpServers)[0]?.authorization.replace(/^Bearer\s+/i, "") ?? "";

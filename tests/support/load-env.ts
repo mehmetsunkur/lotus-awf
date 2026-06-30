@@ -3,10 +3,10 @@ import { resolve } from "node:path";
 
 /**
  * Side-effect module: load a local `.env` (if present) into process.env so
- * `npm run test:*` picks up ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN /
- * LOTUS_AGENT_MODEL without exporting them by hand. Imported at the top of the
- * Playwright configs, it runs in the runner's main process before workers fork,
- * so workers inherit the values.
+ * `npm run test:*` picks up the agent-suite vars (LOTUS_AGENT_CLAUDE_* /
+ * LOTUS_AGENT_CODEX_*, and the inherited ANTHROPIC_* fallbacks) without exporting
+ * them by hand. Imported at the top of the Playwright configs, it runs in the
+ * runner's main process before workers fork, so workers inherit the values.
  *
  * Node's `loadEnvFile` does NOT override variables that are already set, so an
  * inline `VAR=... npm run` and the Claude Code runtime's injected vars still win;
