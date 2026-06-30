@@ -109,4 +109,42 @@ test.describe("MCP real-agent acceptance", () => {
     });
     expect(validation.ok, `workflow invalid: ${JSON.stringify(validation.errors)}`).toBe(true);
   });
+
+  // Scenario B — build a new app end-to-end across the admin + designer surfaces.
+  test("agent builds a new leave-requests app with an approval workflow", async () => {
+    await runAgent(
+      [
+        "You build Lotus Notes apps via the lotus admin and lotus designer MCP tools.",
+        "Create a new business app with appId `leave-requests`, title \"Leave Request\", and a",
+        "document type `leave`. Then give the `leave` document type a standard approval workflow",
+        "that is approved by the `group:finance` group. Verify the app and its workflow exist."
+      ].join(" "),
+      ["admin", "designer"]
+    );
+
+    const admin = await oracle("admin");
+    const apps = await admin.callJsonTool<Array<{ appId: string }>>("lotus_admin_list_apps");
+    expect(apps.map((app) => app.appId)).toContain("leave-requests");
+
+    const designer = await oracle("designer");
+    const defs = await designer.callJsonTool<AppDefinitions>("lotus_designer_get_app_definitions", {
+      appId: "leave-requests"
+    });
+    expect(defs.forms.length, "app should have at least one form").toBeGreaterThan(0);
+    expect(defs.views.length, "app should have at least one view").toBeGreaterThan(0);
+    expect(defs.workflows.length, "app should have a workflow").toBeGreaterThan(0);
+
+    const workflow = defs.workflows[0];
+    expect(workflow.initialState, "workflow needs an initial state").toBeTruthy();
+
+    // A standard approval workflow has at least one role-gated approval transition.
+    const approval = workflow.transitions.find((t) => Boolean(t.requiredRole));
+    expect(approval, "workflow should have a role-gated approval transition").toBeTruthy();
+    expect(approval!.requiredRole).toMatch(/finance/i);
+
+    const validation = await designer.callJsonTool<ValidationResult>("lotus_designer_validate_definition", {
+      definition: workflow
+    });
+    expect(validation.ok, `workflow invalid: ${JSON.stringify(validation.errors)}`).toBe(true);
+  });
 });
