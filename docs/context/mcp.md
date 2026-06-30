@@ -117,14 +117,18 @@ also self-skips independently, printing the reason via `console.warn`.
 
 Every real-agent run writes redacted diagnostics into the Playwright test output and attaches them
 to `playwright-report-mcp-agent`. The default report always includes `manifest.json`, `exit.json`,
-`events.jsonl`, `spawn.json`, `prompt.txt`, and `final_message.txt`; verbose artifacts such as
-`stdout.log`, `stderr.log`, `raw_result.json`, and generated MCP/client config are attached on
-failure. Set `LOTUS_AGENT_DIAGNOSTICS=full` to attach verbose artifacts for passing runs too. All
-diagnostic text is redacted before it is written: suite tokens, minted `lotus_session` bearers,
-authorization headers, `sk-*` keys, GitHub token shapes, and `REMOTE_AGENT_SECRET_*` values are
-replaced. The artifacts provide local correlation data (run id, model, base URL, timestamps, exit
-code, byte counts, and final text) for matching against LiteLLM logs; they do not by themselves
-prove server-side LiteLLM receipt.
+`events.jsonl`, `spawn.json`, `prompt.txt`, `final_message.txt`, and the oracle-exported app template
+artifacts (`template-before-<appId>.json`, `template-after-<appId>.json`,
+`template-diff-<appId>.json`, `template-validation-<appId>.json`). The before/after diff compares
+normalized design definitions only, so volatile export metadata (`createdAt`, `version`,
+`templateId`) does not count as a design change. Verbose artifacts such as `stdout.log`,
+`stderr.log`, `raw_result.json`, and generated MCP/client config are attached on failure. Set
+`LOTUS_AGENT_DIAGNOSTICS=full` to attach verbose artifacts for passing runs too. All diagnostic text
+is redacted before it is written: suite tokens, minted `lotus_session` bearers, authorization
+headers, `sk-*` keys, GitHub token shapes, and `REMOTE_AGENT_SECRET_*` values are replaced. The
+artifacts provide local correlation data (run id, model, base URL, timestamps, exit code, byte
+counts, and final text) for matching against LiteLLM logs; they do not by themselves prove
+server-side LiteLLM receipt.
 
 - **`ClaudeCodeDriver`** — `claude -p` with a temp `--mcp-config` (Bearer header). Reads the
   suite-namespaced `LOTUS_AGENT_CLAUDE_*` vars and maps them onto the provider-native `ANTHROPIC_*`
