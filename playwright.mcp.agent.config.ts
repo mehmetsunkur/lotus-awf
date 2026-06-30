@@ -24,7 +24,9 @@ export default defineConfig({
   retries: 2,
   maxFailures: 0,
   reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-report-mcp-agent" }]],
-  // A full agent turn (multiple tool calls + model latency) is far slower than a scripted spec.
-  timeout: 180_000,
+  // A full agent turn is far slower than a scripted spec, and a multi-surface build (e.g. Codex
+  // creating an app + workflow across admin+designer) can run several minutes. Generous ceiling so
+  // a slow-but-working run isn't killed and re-run on a paid retry.
+  timeout: 300_000,
   expect: { timeout: 10_000 }
 });
