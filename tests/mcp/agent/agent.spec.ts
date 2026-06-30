@@ -2,6 +2,15 @@ import { test, expect } from "@playwright/test";
 import { startAgentMcpHost, ALICE_AUTH, type AgentMcpHost } from "./support/mcp-host";
 import { connectHttpMcp, type LotusHttpMcpClient } from "../http/support/http-client";
 import { ClaudeCodeDriver, type AgentDriver } from "./support/agent-driver";
+import type { WorkflowDefinition } from "../../../src/shared/types";
+
+type AppDefinitions = {
+  appConfig?: { appId: string };
+  forms: Array<{ _id: string; docType: string }>;
+  views: Array<{ _id: string; docType: string }>;
+  workflows: WorkflowDefinition[];
+};
+type ValidationResult = { ok: boolean; errors: Array<{ field: string; message: string }> };
 
 /**
  * Real-agent acceptance suite. The `claude` CLI is given a natural-language task plus the
@@ -64,5 +73,40 @@ test.describe("MCP real-agent acceptance", () => {
     const tools = await designer.listTools();
     expect(tools).toContain("lotus_designer_get_app_definitions");
     expect(tools).toContain("lotus_designer_apply_workflow_patch");
+  });
+
+  // Scenario A — maintain an existing workflow.
+  // Seeded expense workflow: draft -> submitted -> approved[final] / rejected[final].
+  test("agent extends the expense workflow with a reimbursed step", async () => {
+    await runAgent(
+      [
+        "You manage a Lotus Notes app via the lotus designer MCP tools.",
+        "Extend the workflow of the `expense` app: add a new final state named `reimbursed`",
+        "(label \"Reimbursed\") and a transition from the `approved` state to `reimbursed`",
+        "labelled \"Reimburse\". Inspect the current workflow first, then apply the change and",
+        "confirm it validates."
+      ].join(" "),
+      ["designer"]
+    );
+
+    const designer = await oracle("designer");
+    const defs = await designer.callJsonTool<AppDefinitions>("lotus_designer_get_app_definitions", {
+      appId: "expense"
+    });
+    const workflow = defs.workflows.find((w) => w._id === "workflow:expense");
+    expect(workflow, "expense workflow should exist").toBeTruthy();
+
+    const reimbursed = workflow!.states.find((s) => s.name === "reimbursed");
+    expect(reimbursed, "reimbursed state should be added").toBeTruthy();
+    expect(reimbursed!.final).toBe(true);
+
+    const transition = workflow!.transitions.find((t) => t.from === "approved" && t.to === "reimbursed");
+    expect(transition, "approved -> reimbursed transition should be added").toBeTruthy();
+
+    // The produced definition must be valid per the shared validator.
+    const validation = await designer.callJsonTool<ValidationResult>("lotus_designer_validate_definition", {
+      definition: workflow!
+    });
+    expect(validation.ok, `workflow invalid: ${JSON.stringify(validation.errors)}`).toBe(true);
   });
 });
