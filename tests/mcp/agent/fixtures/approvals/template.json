@@ -1,0 +1,403 @@
+{
+  "kind": "template",
+  "templateId": "fixture:approvals",
+  "appId": "approvals",
+  "version": "fixture",
+  "createdAt": "2026-06-30T00:00:00.000Z",
+  "createdBy": "system:seed",
+  "source": "tests/mcp/agent/fixtures/approvals/template.json",
+  "definitions": [
+    {
+      "_id": "acl:rules",
+      "kind": "acl",
+      "appId": "approvals",
+      "policy": "Finance approves; requestors author their own purchase requests.",
+      "entries": [
+        {
+          "principal": "group:finance",
+          "level": "manager"
+        },
+        {
+          "principal": "person:bob",
+          "level": "author"
+        }
+      ]
+    },
+    {
+      "_id": "agent:on-request-change",
+      "kind": "agent",
+      "appId": "approvals",
+      "title": "On request change",
+      "handler": "record-activity",
+      "trigger": {
+        "type": "on-change",
+        "docType": "request"
+      }
+    },
+    {
+      "_id": "agent:on-approval-change",
+      "kind": "agent",
+      "appId": "approvals",
+      "title": "On approval change",
+      "handler": "record-activity",
+      "trigger": {
+        "type": "on-change",
+        "docType": "approval"
+      }
+    },
+    {
+      "_id": "app:config",
+      "kind": "app",
+      "appId": "approvals",
+      "title": "Purchase Approvals",
+      "database": "approvals_app"
+    },
+    {
+      "_id": "audit:policy",
+      "kind": "auditpolicy",
+      "appId": "approvals",
+      "retentionDays": 365
+    },
+    {
+      "_id": "form:request",
+      "kind": "form",
+      "appId": "approvals",
+      "docType": "request",
+      "title": "Purchase Request",
+      "sections": [
+        {
+          "title": "Request",
+          "fields": [
+            "title",
+            "amount",
+            "gross",
+            "category",
+            "justification"
+          ]
+        },
+        {
+          "title": "Routing",
+          "fields": [
+            "neededBy",
+            "urgent"
+          ]
+        }
+      ],
+      "fields": [
+        {
+          "name": "title",
+          "type": "text",
+          "label": "Title",
+          "required": true,
+          "searchable": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "label": "Amount",
+          "required": true,
+          "validate": [
+            {
+              "expression": "payload.amount > 0",
+              "message": "Amount must be greater than zero"
+            }
+          ]
+        },
+        {
+          "name": "gross",
+          "type": "number",
+          "label": "Gross (incl. tax)",
+          "compute": "expense-total-with-tax",
+          "helpText": "Computed from amount via the expense-total-with-tax handler (amount + 20% tax)."
+        },
+        {
+          "name": "category",
+          "type": "select",
+          "label": "Category",
+          "required": true,
+          "defaultValue": "hardware",
+          "options": [
+            {
+              "label": "Hardware",
+              "value": "hardware"
+            },
+            {
+              "label": "Software",
+              "value": "software"
+            },
+            {
+              "label": "Services",
+              "value": "services"
+            }
+          ]
+        },
+        {
+          "name": "justification",
+          "type": "textarea",
+          "label": "Justification",
+          "required": true,
+          "searchable": true
+        },
+        {
+          "name": "neededBy",
+          "type": "date",
+          "label": "Needed by"
+        },
+        {
+          "name": "urgent",
+          "type": "boolean",
+          "label": "Urgent",
+          "defaultValue": false
+        }
+      ]
+    },
+    {
+      "_id": "form:approval",
+      "kind": "form",
+      "appId": "approvals",
+      "docType": "approval",
+      "title": "Approval Decision",
+      "sections": [
+        {
+          "title": "Decision",
+          "fields": [
+            "requestRef",
+            "decision",
+            "comment"
+          ]
+        }
+      ],
+      "fields": [
+        {
+          "name": "requestRef",
+          "type": "select",
+          "label": "Request",
+          "required": true,
+          "helpText": "The purchase request this decision applies to.",
+          "source": {
+            "docType": "request",
+            "labelField": "payload.title"
+          }
+        },
+        {
+          "name": "decision",
+          "type": "select",
+          "label": "Decision",
+          "required": true,
+          "defaultValue": "approve",
+          "options": [
+            {
+              "label": "Approve",
+              "value": "approve"
+            },
+            {
+              "label": "Reject",
+              "value": "reject"
+            },
+            {
+              "label": "Needs info",
+              "value": "needs-info"
+            }
+          ]
+        },
+        {
+          "name": "comment",
+          "type": "textarea",
+          "label": "Comment",
+          "requiredWhen": "payload.decision != 'approve'"
+        }
+      ]
+    },
+    {
+      "_id": "view:requests-all",
+      "kind": "view",
+      "appId": "approvals",
+      "docType": "request",
+      "title": "All Requests",
+      "columns": [
+        {
+          "field": "payload.title",
+          "label": "Title"
+        },
+        {
+          "field": "payload.amount",
+          "label": "Amount"
+        },
+        {
+          "field": "payload.category",
+          "label": "Category"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "request"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "view:requests-mine",
+      "kind": "view",
+      "appId": "approvals",
+      "docType": "request",
+      "title": "My Requests",
+      "columns": [
+        {
+          "field": "payload.title",
+          "label": "Title"
+        },
+        {
+          "field": "payload.amount",
+          "label": "Amount"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "request"
+        },
+        {
+          "field": "readers",
+          "op": "in",
+          "value": [
+            "person:alice",
+            "group:finance"
+          ]
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "view:pending-approvals",
+      "kind": "view",
+      "appId": "approvals",
+      "docType": "approval",
+      "title": "Pending Approvals",
+      "columns": [
+        {
+          "field": "payload.requestRef",
+          "label": "Request"
+        },
+        {
+          "field": "payload.decision",
+          "label": "Decision"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "approval"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "workflow:request",
+      "kind": "workflow",
+      "appId": "approvals",
+      "docType": "request",
+      "title": "Purchase Approval",
+      "initialState": "draft",
+      "states": [
+        {
+          "name": "draft",
+          "label": "Draft"
+        },
+        {
+          "name": "submitted",
+          "label": "Submitted"
+        },
+        {
+          "name": "approved",
+          "label": "Approved",
+          "final": true
+        },
+        {
+          "name": "rejected",
+          "label": "Rejected",
+          "final": true
+        }
+      ],
+      "transitions": [
+        {
+          "id": "submit",
+          "label": "Submit",
+          "from": "draft",
+          "to": "submitted",
+          "guard": "payload.amount > 0",
+          "action": "audit-transition"
+        },
+        {
+          "id": "approve",
+          "label": "Approve",
+          "from": "submitted",
+          "to": "approved",
+          "requiredRole": "group:finance",
+          "action": "audit-transition"
+        },
+        {
+          "id": "reject",
+          "label": "Reject",
+          "from": "submitted",
+          "to": "rejected",
+          "requiredRole": "group:finance",
+          "action": "audit-transition"
+        }
+      ]
+    }
+  ]
+}

@@ -12,6 +12,15 @@ const fixture: AppTemplateFixture = {
   starterDocTypeTitle: "Expense"
 };
 
+const approvalsFixture: AppTemplateFixture = {
+  fixtureId: "approvals-multi",
+  sourceTemplate: loadTemplateFixture("tests/mcp/agent/fixtures/approvals/template.json"),
+  appId: "agent-approvals",
+  title: "Agent Approvals",
+  starterDocType: "request",
+  starterDocTypeTitle: "Request"
+};
+
 describe("MCP agent testbed", () => {
   it("rewrites a template fixture to an isolated app id and database", () => {
     const rewritten = rewriteTemplateForApp(fixture);
@@ -30,6 +39,23 @@ describe("MCP agent testbed", () => {
 
   it("keeps the rewritten expense fixture valid", () => {
     const rewritten = rewriteTemplateForApp(fixture);
+    expect(validateTemplateDefinitions(rewritten)).toEqual([]);
+  });
+
+  it("rewrites the approvals fixture to an isolated app id and database", () => {
+    const rewritten = rewriteTemplateForApp(approvalsFixture);
+
+    expect(rewritten.appId).toBe("agent-approvals");
+    expect(rewritten.templateId).toBe("agent-approvals:fixture:approvals-multi");
+    expect(rewritten.source).toBe("agent-fixture:approvals-multi");
+    for (const definition of rewritten.definitions) {
+      if ("appId" in definition) expect(definition.appId).toBe("agent-approvals");
+      if (definition.kind === "app") expect(definition.database).toBe("agent_approvals_app");
+    }
+  });
+
+  it("keeps the rewritten approvals fixture valid", () => {
+    const rewritten = rewriteTemplateForApp(approvalsFixture);
     expect(validateTemplateDefinitions(rewritten)).toEqual([]);
   });
 
