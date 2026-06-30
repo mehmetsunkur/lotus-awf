@@ -3,24 +3,21 @@ import { defineConfig } from "@playwright/test";
 /**
  * MCP-over-HTTP e2e config.
  *
- * Boots the Lotus API (via the shared start-api harness and CouchDB pair) and runs the
- * MCP HTTP host in-process inside the spec. Drives the host with the official MCP
- * StreamableHTTP client transport. State is reset through the API before each spec.
+ * Each worker owns an isolated environment via the per-worker harness fixture
+ * (tests/mcp/support/fixtures.ts): a private CouchDB pair (testcontainers) plus a
+ * locally-spawned Express server on a free port. The MCP HTTP host runs in-process
+ * inside the spec, bound to that worker's API, and is driven with the official MCP
+ * StreamableHTTP client transport. globalSetup builds dist/ and pre-pulls the
+ * CouchDB image; there is no shared webServer or fixed port.
  */
 export default defineConfig({
   testDir: "./tests/mcp/http",
   globalSetup: "./tests/e2e/support/global-setup.ts",
-  fullyParallel: false,
-  workers: 1,
+  fullyParallel: true,
+  workers: 2,
   forbidOnly: !!process.env.CI,
   retries: 0,
   reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-report-mcp-http" }]],
   timeout: 45_000,
-  expect: { timeout: 10_000 },
-  webServer: {
-    command: "npx tsx tests/mcp/support/start-api.ts",
-    url: "http://localhost:3001/api/health",
-    timeout: 120_000,
-    reuseExistingServer: true
-  }
+  expect: { timeout: 10_000 }
 });

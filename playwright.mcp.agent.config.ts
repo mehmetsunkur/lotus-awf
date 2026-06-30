@@ -3,13 +3,16 @@ import { defineConfig } from "@playwright/test";
 /**
  * Real-agent MCP acceptance config (opt-in / nightly — NOT on the PR gate).
  *
- * Boots the Lotus API (shared start-api harness + CouchDB pair) and an in-process MCP
- * HTTP host, then drives the actual `claude` CLI against it to build and maintain apps
- * and workflows from natural-language tasks. Specs self-skip when the agent driver is
- * unavailable (no binary / credentials / LOTUS_AGENT_MODEL), so this never blocks a PR.
+ * The per-worker harness fixture (tests/mcp/support/fixtures.ts) provides an isolated
+ * CouchDB pair (testcontainers) + a locally-spawned Express server on a free port; the
+ * spec runs the MCP HTTP host in-process against it and drives the actual `claude` CLI
+ * to build and maintain apps/workflows from natural-language tasks. Specs self-skip when
+ * the agent driver is unavailable (no binary / credentials / LOTUS_AGENT_MODEL), so this
+ * never blocks a PR.
  *
  * Run: `npm run test:mcp:agent` (requires ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN and
- * LOTUS_AGENT_MODEL in the environment). Single worker; retries absorb model stochasticity.
+ * LOTUS_AGENT_MODEL in the environment). Pinned to a single worker so parallel workers
+ * don't multiply live `claude` runs (and cost); retries absorb model stochasticity.
  */
 export default defineConfig({
   testDir: "./tests/mcp/agent",
@@ -22,11 +25,5 @@ export default defineConfig({
   reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-report-mcp-agent" }]],
   // A full agent turn (multiple tool calls + model latency) is far slower than a scripted spec.
   timeout: 180_000,
-  expect: { timeout: 10_000 },
-  webServer: {
-    command: "npx tsx tests/mcp/support/start-api.ts",
-    url: "http://localhost:3001/api/health",
-    timeout: 120_000,
-    reuseExistingServer: true
-  }
+  expect: { timeout: 10_000 }
 });
