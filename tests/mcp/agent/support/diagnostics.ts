@@ -57,12 +57,11 @@ const TOKEN_PATTERNS: Array<[RegExp, string]> = [
 ];
 
 export class AgentDiagnosticsRedactor {
-  private readonly secretValues: string[];
+  private secretValues: string[];
 
   constructor(secretValues: string[]) {
-    this.secretValues = [...new Set(secretValues.filter((value) => value.length >= MIN_SECRET_LENGTH))].sort(
-      (a, b) => b.length - a.length
-    );
+    this.secretValues = [];
+    this.addSecrets(secretValues);
   }
 
   static fromEnv(env: NodeJS.ProcessEnv = process.env, extraSecrets: string[] = []): AgentDiagnosticsRedactor {
@@ -87,6 +86,12 @@ export class AgentDiagnosticsRedactor {
     }
     return redacted;
   }
+
+  addSecrets(secretValues: string[]): void {
+    this.secretValues = [...new Set([...this.secretValues, ...secretValues.filter((value) => value.length >= MIN_SECRET_LENGTH)])].sort(
+      (a, b) => b.length - a.length
+    );
+  }
 }
 
 export type AgentDiagnostics = {
@@ -99,6 +104,7 @@ export type AgentDiagnostics = {
   finalizeExit(payload: unknown): void;
   manifest(): DiagnosticManifestEntry[];
   attachTo(testInfo: TestInfo, ok: boolean): Promise<void>;
+  addSecrets(secretValues: string[]): void;
   redact(text: string): string;
 };
 
@@ -216,6 +222,9 @@ export function createAgentDiagnostics(options: {
           contentType: artifact.contentType
         });
       }
+    },
+    addSecrets(secretValues) {
+      redactor.addSecrets(secretValues);
     },
     redact(text) {
       return redactor.redact(text);
