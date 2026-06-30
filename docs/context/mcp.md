@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `9eb4bd5`
+- Last code review baseline: `60c4846`
 - Last reviewed date: `2026-06-30`
 - Code areas:
   - `src/mcp/**`
@@ -109,9 +109,11 @@ tier, never on the PR gate. It runs the HTTP host in-process and drives real cod
 resulting lotus state (outcome oracle, not the tool-call transcript) — proving an autonomous agent
 can discover and compose the tools to build/maintain apps and workflows. Two scenarios (maintain an
 existing workflow; build a new app end-to-end) run as a **driver matrix** over every `AgentDriver`,
-so each agent is exercised on the same tasks. The agent authenticates to the host with a per-run
+so each agent is exercised on the same tasks. `LOTUS_AGENT_DRIVERS` (comma-separated allowlist of
+driver names — `claude-code`, `codex`; unset or `all` = every driver) selects which agents run,
+regardless of which creds are present. The agent authenticates to the host with a per-run
 `Authorization: Bearer <lotus_session>` token minted after the reset (`mintSessionToken`). Each driver
-self-skips independently, printing the reason via `console.warn`.
+also self-skips independently, printing the reason via `console.warn`.
 
 - **`ClaudeCodeDriver`** — `claude -p` with a temp `--mcp-config` (Bearer header). Reads the
   suite-namespaced `LOTUS_AGENT_CLAUDE_*` vars and maps them onto the provider-native `ANTHROPIC_*`
