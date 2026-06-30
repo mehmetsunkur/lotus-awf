@@ -121,9 +121,13 @@ scenarios install an isolated app through the public MCP/API flow — `lotus_adm
 the agent runs. The current workflow-maintenance scenario uses the packaged expense template as
 `agent-expense` so it can mutate fixture state without depending on the globally seeded `expense`
 app. Create-from-empty scenarios (for example `leave-requests`) intentionally skip fixture install
-and assert that the before-template marker says the app did not exist. Both styles export
-before/after templates and assert exact normalized design-definition diffs, not just final UI/API
-state.
+and assert that the before-template marker says the app did not exist. A multi-docType approvals
+fixture (`tests/mcp/agent/fixtures/approvals/template.json`, installed as `agent-approvals`) carries
+two docTypes (`request` + `approval`) and a branching but loop-free request workflow; its scenario
+tasks the agent with adding a `needs-info` rework cycle (`submitted -> needs-info -> submitted`)
+without breaking the existing approve/reject branch. Test-only fixtures live under
+`tests/mcp/agent/fixtures/` and must not be seeded. Both styles export before/after templates and
+assert exact normalized design-definition diffs, not just final UI/API state.
 
 Every real-agent run writes redacted diagnostics into the Playwright test output and attaches them
 to `playwright-report-mcp-agent`. The default report always includes `manifest.json`, `exit.json`,

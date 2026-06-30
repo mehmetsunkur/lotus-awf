@@ -40,6 +40,16 @@ const EXPENSE_FIXTURE: AppTemplateFixture = {
   starterDocType: "expense",
   starterDocTypeTitle: "Expense"
 };
+// Multi-docType approvals fixture (request + approval). Ships a branching but loop-free
+// workflow so Scenario C can task the agent with adding a `needs-info` rework cycle.
+const APPROVALS_FIXTURE: AppTemplateFixture = {
+  fixtureId: "approvals-multi",
+  sourceTemplate: loadTemplateFixture("tests/mcp/agent/fixtures/approvals/template.json"),
+  appId: "agent-approvals",
+  title: "Agent Approvals",
+  starterDocType: "request",
+  starterDocTypeTitle: "Request"
+};
 
 /**
  * Which agents to run. `LOTUS_AGENT_DRIVERS` is an optional comma-separated allowlist of
@@ -267,6 +277,68 @@ test.describe("MCP real-agent acceptance", () => {
             "workflow:leave"
           ]
         });
+        await diagnostics.attachTo(test.info(), true);
+      });
+
+      // Scenario C — edit a complex, multi-docType workflow.
+      // Approvals fixture: request workflow draft -> submitted -> approved[final] / rejected[final],
+      // plus a separate `approval` docType. The agent must add a rework loop without breaking the
+      // existing branch: a non-final `needs-info` state and the two transitions that cycle through it.
+      test("agent adds a needs-info rework loop to the approvals workflow", async () => {
+        const diagnostics = createDiagnostics(driver);
+        const admin = await oracle("admin");
+        const beforeDesigner = await oracle("designer");
+        await installTemplateFixture(admin, beforeDesigner, APPROVALS_FIXTURE);
+        const before = await tryExportTemplate(beforeDesigner, diagnostics, APPROVALS_FIXTURE.appId, "before");
+        await runAgent(
+          driver,
+          [
+            "You manage a Lotus Notes app via the lotus designer MCP tools.",
+            `The \`${APPROVALS_FIXTURE.appId}\` app has a purchase-request workflow (docType \`request\`).`,
+            "Add a rework loop: a new non-final state named `needs-info` (label \"Needs info\"),",
+            "a transition `request-changes` from `submitted` to `needs-info` (label \"Request changes\"),",
+            "and a transition `resubmit` from `needs-info` back to `submitted` (label \"Resubmit\").",
+            "Leave the existing approve/reject branch intact. Inspect the current workflow first,",
+            "then apply the change and confirm it validates."
+          ].join(" "),
+          ["designer"],
+          diagnostics
+        );
+
+        const designer = await oracle("designer");
+        const defs = await designer.callJsonTool<AppDefinitions>("lotus_designer_get_app_definitions", {
+          appId: APPROVALS_FIXTURE.appId
+        });
+        const workflow = defs.workflows.find((w) => w._id === "workflow:request");
+        expect(workflow, "request workflow should exist").toBeTruthy();
+
+        const needsInfo = workflow!.states.find((s) => s.name === "needs-info");
+        expect(needsInfo, "needs-info state should be added").toBeTruthy();
+        expect(needsInfo!.final ?? false, "needs-info must not be a final state").toBe(false);
+
+        const requestChanges = workflow!.transitions.find((t) => t.from === "submitted" && t.to === "needs-info");
+        expect(requestChanges, "submitted -> needs-info transition should be added").toBeTruthy();
+        const resubmit = workflow!.transitions.find((t) => t.from === "needs-info" && t.to === "submitted");
+        expect(resubmit, "needs-info -> submitted transition should be added").toBeTruthy();
+
+        // The existing approval branch must survive the edit.
+        expect(
+          workflow!.transitions.find((t) => t.from === "submitted" && t.to === "approved"),
+          "approve transition should be preserved"
+        ).toBeTruthy();
+
+        const validation = await designer.callJsonTool<ValidationResult>("lotus_designer_validate_definition", {
+          definition: workflow!
+        });
+        expect(validation.ok, `workflow invalid: ${JSON.stringify(validation.errors)}`).toBe(true);
+        const { diff, validation: templateValidation } = await exportValidateAndDiffTemplate(
+          designer,
+          diagnostics,
+          APPROVALS_FIXTURE.appId,
+          before
+        );
+        expect(templateValidation.ok, `template invalid: ${JSON.stringify(templateValidation.errors)}`).toBe(true);
+        assertTemplateDiff(diff, { changed: ["workflow:request"] });
         await diagnostics.attachTo(test.info(), true);
       });
     });
