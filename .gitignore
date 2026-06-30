@@ -11,6 +11,7 @@ test-results/
 playwright-report/
 playwright-report-mcp/
 playwright-report-mcp-http/
+playwright-report-mcp-agent/
 blob-report/
 
 # Coverage output
