@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `b914963`
+- Last code review baseline: `9eb4bd5`
 - Last reviewed date: `2026-06-30`
 - Code areas:
   - `src/mcp/**`
@@ -113,18 +113,24 @@ so each agent is exercised on the same tasks. The agent authenticates to the hos
 `Authorization: Bearer <lotus_session>` token minted after the reset (`mintSessionToken`). Each driver
 self-skips independently, printing the reason via `console.warn`.
 
-- **`ClaudeCodeDriver`** — `claude -p` with a temp `--mcp-config` (Bearer header). Inherits
-  `ANTHROPIC_BASE_URL`/`ANTHROPIC_AUTH_TOKEN`, scrubs the parent's `CLAUDE_CODE_*` nested-session vars.
-  Usable credential: `ANTHROPIC_API_KEY`, or `ANTHROPIC_AUTH_TOKEN` + `ANTHROPIC_BASE_URL`.
+- **`ClaudeCodeDriver`** — `claude -p` with a temp `--mcp-config` (Bearer header). Reads the
+  suite-namespaced `LOTUS_AGENT_CLAUDE_*` vars and maps them onto the provider-native `ANTHROPIC_*`
+  the CLI reads; each falls back to its `ANTHROPIC_*` counterpart, so inside a Claude Code session
+  (where `ANTHROPIC_*` are pre-injected) it runs with zero extra config. Scrubs the parent's
+  `CLAUDE_CODE_*` nested-session vars. Usable credential: `LOTUS_AGENT_CLAUDE_TOKEN` (or
+  `ANTHROPIC_AUTH_TOKEN`) + a base URL, or `ANTHROPIC_API_KEY`.
 - **`CodexDriver`** — `codex exec` against an isolated `CODEX_HOME` whose `config.toml` declares a
-  `litellm` model provider (`wire_api = "responses"`) and one `mcp_servers` entry per surface using
-  `bearer_token_env_var` (Codex HTTP MCP is Bearer-only). stdin is closed so `codex exec` doesn't hang.
-  Usable credential: `CODEX_AUTH_TOKEN` + `CODEX_BASE_URL`.
+  `litellm` model provider (`wire_api = "responses"`, `env_key = "LOTUS_AGENT_CODEX_TOKEN"`) and one
+  `mcp_servers` entry per surface using `bearer_token_env_var` (Codex HTTP MCP is Bearer-only). stdin
+  is closed so `codex exec` doesn't hang. Usable credential: `LOTUS_AGENT_CODEX_TOKEN` +
+  `LOTUS_AGENT_CODEX_BASE_URL`.
 
-Env contract (required per driver, each self-skips without its own):
-`ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `LOTUS_AGENT_MODEL` (Claude),
-`CODEX_BASE_URL` / `CODEX_AUTH_TOKEN` / `CODEX_MODEL` (Codex); `LOTUS_AGENT_BUDGET_USD` optional
-(Claude cost cap, default `2.00`). All may be supplied via a gitignored `.env` — the Playwright
+Env contract — every suite-specific var is namespaced `LOTUS_AGENT_<DRIVER>_*`; each driver
+self-skips (with a printed reason) without its own:
+`LOTUS_AGENT_CLAUDE_BASE_URL` / `LOTUS_AGENT_CLAUDE_TOKEN` / `LOTUS_AGENT_CLAUDE_MODEL` (Claude; the
+base-url/token fall back to `ANTHROPIC_BASE_URL`/`ANTHROPIC_AUTH_TOKEN`), `LOTUS_AGENT_CLAUDE_BUDGET_USD`
+optional (cost cap, default `2.00`); `LOTUS_AGENT_CODEX_BASE_URL` / `LOTUS_AGENT_CODEX_TOKEN` /
+`LOTUS_AGENT_CODEX_MODEL` (Codex). All may be supplied via a gitignored `.env` — the Playwright
 configs import `tests/support/load-env.ts`, which loads `.env` without overriding any already-set var
 (so inline `VAR=… npm run` and the Claude Code runtime's injected vars still win).
 
