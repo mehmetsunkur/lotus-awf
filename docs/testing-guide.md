@@ -17,6 +17,7 @@
 npm run build        # TypeScript no-emit check + Vite production build
 npm run test:unit    # Vitest shared/runtime unit tests
 npm run test:mcp     # MCP stdio integration tests; needs CouchDB pair + Express API
+npm run test:mcp:agent # Opt-in real-agent MCP acceptance; writes playwright-report-mcp-agent
 npm run test:e2e     # Playwright source-mode runtime tests; starts CouchDB pair
 npm run test:deploy  # M13 deploy artifact gate; requires Docker API access
 make k8s-dry-run     # Kubernetes manifest render check; requires kubectl

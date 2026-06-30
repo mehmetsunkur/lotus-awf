@@ -115,6 +115,17 @@ regardless of which creds are present. The agent authenticates to the host with 
 `Authorization: Bearer <lotus_session>` token minted after the reset (`mintSessionToken`). Each driver
 also self-skips independently, printing the reason via `console.warn`.
 
+Every real-agent run writes redacted diagnostics into the Playwright test output and attaches them
+to `playwright-report-mcp-agent`. The default report always includes `manifest.json`, `exit.json`,
+`events.jsonl`, `spawn.json`, `prompt.txt`, and `final_message.txt`; verbose artifacts such as
+`stdout.log`, `stderr.log`, `raw_result.json`, and generated MCP/client config are attached on
+failure. Set `LOTUS_AGENT_DIAGNOSTICS=full` to attach verbose artifacts for passing runs too. All
+diagnostic text is redacted before it is written: suite tokens, minted `lotus_session` bearers,
+authorization headers, `sk-*` keys, GitHub token shapes, and `REMOTE_AGENT_SECRET_*` values are
+replaced. The artifacts provide local correlation data (run id, model, base URL, timestamps, exit
+code, byte counts, and final text) for matching against LiteLLM logs; they do not by themselves
+prove server-side LiteLLM receipt.
+
 - **`ClaudeCodeDriver`** — `claude -p` with a temp `--mcp-config` (Bearer header). Reads the
   suite-namespaced `LOTUS_AGENT_CLAUDE_*` vars and maps them onto the provider-native `ANTHROPIC_*`
   the CLI reads; each falls back to its `ANTHROPIC_*` counterpart, so inside a Claude Code session
