@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { diffTemplateDefinitions } from "../../../../src/shared/template";
 import { validateTemplateDefinitions } from "../../../../src/shared/template-validation";
 import type { DesignDocument, TemplateArtifact, TemplateDiff, TemplateDiffEntry } from "../../../../src/shared/types";
@@ -23,6 +25,10 @@ type TemplateBeforeSnapshot = { exists: true; template: TemplateArtifact } | { e
 type TemplateValidationResult = { ok: boolean; errors: string[] };
 
 type DefinitionWithAppId = DesignDocument & { appId?: string };
+
+export function loadTemplateFixture(path: string): TemplateArtifact {
+  return JSON.parse(readFileSync(resolve(process.cwd(), path), "utf8")) as TemplateArtifact;
+}
 
 export function rewriteTemplateForApp(fixture: AppTemplateFixture): TemplateArtifact {
   const database = databaseForAppId(fixture.appId);

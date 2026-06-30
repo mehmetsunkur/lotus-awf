@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
-import expenseTemplate from "../../templates/expense/template.json";
 import { validateTemplateDefinitions } from "../../src/shared/template-validation";
-import type { TemplateArtifact, TemplateDiff } from "../../src/shared/types";
-import { assertTemplateDiff, rewriteTemplateForApp, type AppTemplateFixture } from "../mcp/agent/support/testbed";
+import type { TemplateDiff } from "../../src/shared/types";
+import { assertTemplateDiff, loadTemplateFixture, rewriteTemplateForApp, type AppTemplateFixture } from "../mcp/agent/support/testbed";
 
 const fixture: AppTemplateFixture = {
   fixtureId: "expense-basic",
-  sourceTemplate: expenseTemplate as TemplateArtifact,
+  sourceTemplate: loadTemplateFixture("templates/expense/template.json"),
   appId: "agent-expense",
   title: "Agent Expense",
   starterDocType: "expense",

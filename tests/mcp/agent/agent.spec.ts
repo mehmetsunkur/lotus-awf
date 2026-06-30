@@ -6,11 +6,11 @@ import { createAgentDiagnostics, type AgentDiagnostics } from "./support/diagnos
 import {
   assertTemplateDiff,
   exportValidateAndDiffTemplate,
+  loadTemplateFixture,
   installTemplateFixture,
   tryExportTemplate,
   type AppTemplateFixture
 } from "./support/testbed";
-import expenseTemplate from "../../../templates/expense/template.json";
 import type { TemplateArtifact, WorkflowDefinition } from "../../../src/shared/types";
 
 type AppDefinitions = {
@@ -34,7 +34,7 @@ type Surface = "admin" | "designer" | "workspace";
 const ALL_DRIVERS: AgentDriver[] = [new ClaudeCodeDriver(), new CodexDriver()];
 const EXPENSE_FIXTURE: AppTemplateFixture = {
   fixtureId: "expense-basic",
-  sourceTemplate: expenseTemplate as TemplateArtifact,
+  sourceTemplate: loadTemplateFixture("templates/expense/template.json"),
   appId: "agent-expense",
   title: "Agent Expense",
   starterDocType: "expense",
