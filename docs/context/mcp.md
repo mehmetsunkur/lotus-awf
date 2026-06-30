@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `0dd8102`
+- Last code review baseline: `72ba8fa`
 - Last reviewed date: `2026-06-30`
 - Code areas:
   - `src/mcp/**`
@@ -87,14 +87,21 @@ parity**, **ACL / readers**, and **Replication & conflict** govern this subsyste
 - `npm run test:unit`
 - `npm run test:mcp`
 
-`npm run test:mcp` uses `playwright.mcp.config.ts`, starts only the Express API, launches all three
-MCP servers over stdio through the official MCP client transport, and reuses the CouchDB Docker setup
-from browser e2e.
+All three MCP suites share the **per-worker harness fixture** (`tests/mcp/support/fixtures.ts`),
+which mirrors browser e2e: each Playwright worker gets an isolated CouchDB pair (testcontainers) plus
+a locally-spawned Express server on a free port (`startHarness()` in `tests/support/harness.ts`), and
+an auto `resetState` re-seeds between tests. The app-under-test runs as a real local process
+(debuggable), only CouchDB is containerized, and there is no fixed port — so the suites never collide
+with another listener (e.g. a forwarded `:3001`) and no `docker compose up` is required. Specs read
+the worker-scoped `apiBaseURL`.
 
-`npm run test:mcp:http` uses `playwright.mcp.http.config.ts`, runs the HTTP host in-process against
-the same API, and drives it with the official StreamableHTTP client transport. It covers
-unauthenticated rejection, per-session identity isolation (two Basic identities resolve to distinct
-principals), surface routing, and a representative tool call per surface.
+`npm run test:mcp` uses `playwright.mcp.config.ts` (workers:2, fullyParallel), launches all three MCP
+servers over stdio against the worker's API through the official MCP client transport.
+
+`npm run test:mcp:http` uses `playwright.mcp.http.config.ts` (workers:2, fullyParallel), runs the HTTP
+host in-process against the worker's API, and drives it with the official StreamableHTTP client
+transport. It covers unauthenticated rejection, per-session identity isolation (two Basic identities
+resolve to distinct principals), surface routing, and a representative tool call per surface.
 
 `npm run test:mcp:agent` uses `playwright.mcp.agent.config.ts` — an **opt-in / nightly** acceptance
 tier, never on the PR gate. It runs the HTTP host in-process and drives the real `claude` CLI
