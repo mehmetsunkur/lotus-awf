@@ -22,7 +22,32 @@ type ValidationResult = { ok: boolean; errors: Array<{ field: string; message: s
 
 type Surface = "admin" | "designer" | "workspace";
 
-const drivers: AgentDriver[] = [new ClaudeCodeDriver(), new CodexDriver()];
+const ALL_DRIVERS: AgentDriver[] = [new ClaudeCodeDriver(), new CodexDriver()];
+
+/**
+ * Which agents to run. `LOTUS_AGENT_DRIVERS` is an optional comma-separated allowlist of
+ * driver names that selects regardless of which creds are present; unset (or "all") runs
+ * every driver (each still self-skips without its own credentials). Examples:
+ *   LOTUS_AGENT_DRIVERS=codex             -> only codex
+ *   LOTUS_AGENT_DRIVERS=claude-code,codex -> both
+ */
+function selectDrivers(): AgentDriver[] {
+  const want = (process.env.LOTUS_AGENT_DRIVERS ?? "")
+    .split(",")
+    .map((name) => name.trim().toLowerCase())
+    .filter(Boolean);
+  if (want.length === 0 || want.includes("all")) return ALL_DRIVERS;
+  const chosen = ALL_DRIVERS.filter((driver) => want.includes(driver.name));
+  if (chosen.length === 0) {
+    throw new Error(
+      `LOTUS_AGENT_DRIVERS="${process.env.LOTUS_AGENT_DRIVERS}" matched no known drivers ` +
+        `(valid: ${ALL_DRIVERS.map((driver) => driver.name).join(", ")})`
+    );
+  }
+  return chosen;
+}
+
+const drivers = selectDrivers();
 
 test.describe("MCP real-agent acceptance", () => {
   let host: AgentMcpHost;
