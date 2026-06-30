@@ -51,7 +51,13 @@ test.describe("MCP real-agent acceptance", () => {
 
   /** Hand a task to the agent over the given MCP surfaces. Skips the test when unavailable. */
   async function runAgent(prompt: string, surfaces: Surface[]) {
-    test.skip(!driver.isAvailable(), `agent driver unavailable: ${driver.unavailableReason()}`);
+    if (!driver.isAvailable()) {
+      const reason = driver.unavailableReason();
+      // console.warn surfaces the reason in the runner output; the list reporter
+      // otherwise shows a bare "-" with no explanation for the skip.
+      console.warn(`[mcp-agent] skipping "${test.info().title}" — agent driver unavailable: ${reason}`);
+      test.skip(true, `agent driver unavailable: ${reason}`);
+    }
     const mcpServers = Object.fromEntries(
       surfaces.map((surface) => [
         `lotus-${surface}`,

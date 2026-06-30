@@ -1,3 +1,4 @@
+import "./tests/support/load-env";
 import { defineConfig } from "@playwright/test";
 
 /**

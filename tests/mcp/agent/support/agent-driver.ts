@@ -62,8 +62,16 @@ export class ClaudeCodeDriver implements AgentDriver {
     return process.env.LOTUS_AGENT_MODEL?.trim() || undefined;
   }
 
+  /**
+   * Credentials are usable when either a direct ANTHROPIC_API_KEY is set, or a proxy
+   * token (ANTHROPIC_AUTH_TOKEN) is paired with its endpoint (ANTHROPIC_BASE_URL).
+   * A token without a base URL would send a Bearer to api.anthropic.com and fail, so
+   * we treat that as unavailable (skip) rather than letting it run and error out.
+   */
   private hasCredentials(): boolean {
-    return Boolean(process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY);
+    const proxy = Boolean(process.env.ANTHROPIC_AUTH_TOKEN && process.env.ANTHROPIC_BASE_URL);
+    const directApiKey = Boolean(process.env.ANTHROPIC_API_KEY);
+    return proxy || directApiKey;
   }
 
   private binaryPresent(): boolean {
@@ -75,13 +83,18 @@ export class ClaudeCodeDriver implements AgentDriver {
   }
 
   isAvailable(): boolean {
-    return this.binaryPresent() && this.hasCredentials() && Boolean(this.model());
+    return this.binaryPresent() && Boolean(this.model()) && this.hasCredentials();
   }
 
   unavailableReason(): string {
     if (!this.binaryPresent()) return "claude CLI not found on PATH";
-    if (!this.hasCredentials()) return "no ANTHROPIC_AUTH_TOKEN / ANTHROPIC_API_KEY in env";
     if (!this.model()) return "LOTUS_AGENT_MODEL is not set";
+    if (!this.hasCredentials()) {
+      if (process.env.ANTHROPIC_AUTH_TOKEN && !process.env.ANTHROPIC_BASE_URL) {
+        return "ANTHROPIC_AUTH_TOKEN is set but ANTHROPIC_BASE_URL is missing (proxy endpoint required)";
+      }
+      return "no credentials: set ANTHROPIC_API_KEY, or ANTHROPIC_AUTH_TOKEN + ANTHROPIC_BASE_URL";
+    }
     return "";
   }
 
