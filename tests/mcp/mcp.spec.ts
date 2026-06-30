@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./support/fixtures";
 import { connectLotusMcp, type LotusMcpTestClient, type LotusMcpServerKind } from "./support/mcp-client";
 import type { AppInstall, BusinessDocument, PlatformState, SessionState, TemplateArtifact, WorkflowDefinition } from "../../src/shared/types";
 
@@ -13,23 +13,20 @@ test.describe("Lotus MCP server", () => {
   const clients: LotusMcpTestClient[] = [];
   const uniqueId = () => `field-reports-${Date.now().toString(36)}`;
 
-  test.beforeEach(async ({ request }) => {
-    const reset = await request.post("http://localhost:3001/api/reset");
-    expect(reset.ok()).toBeTruthy();
-  });
+  // State reset is handled by the auto `resetState` fixture (tests/mcp/support/fixtures.ts).
 
   test.afterEach(async () => {
     await Promise.all(clients.splice(0).map((client) => client.close()));
   });
 
-  async function connect(kind: LotusMcpServerKind): Promise<LotusMcpTestClient> {
-    const client = await connectLotusMcp(kind);
+  async function connect(kind: LotusMcpServerKind, apiBaseURL: string): Promise<LotusMcpTestClient> {
+    const client = await connectLotusMcp(kind, apiBaseURL);
     clients.push(client);
     return client;
   }
 
-  test("admin surface creates apps and exposes only admin tools", async () => {
-    const mcp = await connect("admin");
+  test("admin surface creates apps and exposes only admin tools", async ({ apiBaseURL }) => {
+    const mcp = await connect("admin", apiBaseURL);
     const tools = await mcp.listTools();
     expect(tools).toContain("lotus_admin_create_app");
     expect(tools).toContain("lotus_admin_update_app_access");
@@ -59,8 +56,8 @@ test.describe("Lotus MCP server", () => {
     expect(access.entries).toContainEqual({ principal: "person:alice", level: "manager" });
   });
 
-  test("designer surface changes app design and exposes only designer tools", async () => {
-    const mcp = await connect("designer");
+  test("designer surface changes app design and exposes only designer tools", async ({ apiBaseURL }) => {
+    const mcp = await connect("designer", apiBaseURL);
     const tools = await mcp.listTools();
     expect(tools).toContain("lotus_designer_create_document_type");
     expect(tools).toContain("lotus_designer_apply_workflow_patch");
@@ -142,8 +139,8 @@ test.describe("Lotus MCP server", () => {
     expect(workflow?.transitions.map((transition) => transition.id)).toContain("archive");
   });
 
-  test("workspace surface works with documents and exposes only workspace tools", async () => {
-    const mcp = await connect("workspace");
+  test("workspace surface works with documents and exposes only workspace tools", async ({ apiBaseURL }) => {
+    const mcp = await connect("workspace", apiBaseURL);
     const tools = await mcp.listTools();
     expect(tools).toContain("lotus_workspace_create_document");
     expect(tools).toContain("lotus_workspace_transition_document");

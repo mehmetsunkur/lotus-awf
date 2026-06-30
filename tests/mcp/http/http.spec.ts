@@ -1,11 +1,9 @@
 import type { Server } from "node:http";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../support/fixtures";
 import { createHttpHost } from "../../../src/mcp/http-server";
 import { httpHostConfigFromEnv } from "../../../src/mcp/http-config";
 import { connectHttpMcp, basicAuth, type LotusHttpMcpClient } from "./support/http-client";
 import type { SessionState } from "../../../src/shared/types";
-
-const API_URL = "http://localhost:3001";
 
 test.describe("Lotus MCP over HTTP", () => {
   let host: ReturnType<typeof createHttpHost>;
@@ -15,8 +13,9 @@ test.describe("Lotus MCP over HTTP", () => {
 
   const surfaceUrl = (surface: string) => `http://localhost:${port}/mcp/${surface}`;
 
-  test.beforeAll(async () => {
-    host = createHttpHost({ ...httpHostConfigFromEnv(), apiUrl: API_URL });
+  // The in-process host binds to this worker's locally-spawned API (worker fixture).
+  test.beforeAll(async ({ apiBaseURL }) => {
+    host = createHttpHost({ ...httpHostConfigFromEnv(), apiUrl: apiBaseURL });
     server = await new Promise<Server>((resolve) => {
       const s = host.app.listen(0, () => resolve(s));
     });
@@ -28,10 +27,7 @@ test.describe("Lotus MCP over HTTP", () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  test.beforeEach(async ({ request }) => {
-    const reset = await request.post(`${API_URL}/api/reset`);
-    expect(reset.ok()).toBeTruthy();
-  });
+  // State reset is handled by the auto `resetState` fixture (tests/mcp/support/fixtures.ts).
 
   test.afterEach(async () => {
     await Promise.all(clients.splice(0).map((client) => client.close()));

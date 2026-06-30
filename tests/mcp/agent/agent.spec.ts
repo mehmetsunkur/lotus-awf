@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../support/fixtures";
 import { startAgentMcpHost, ALICE_AUTH, type AgentMcpHost } from "./support/mcp-host";
 import { connectHttpMcp, type LotusHttpMcpClient } from "../http/support/http-client";
 import { ClaudeCodeDriver, type AgentDriver } from "./support/agent-driver";
@@ -19,7 +19,6 @@ type ValidationResult = { ok: boolean; errors: Array<{ field: string; message: s
  * driver is unavailable. See playwright.mcp.agent.config.ts and the plan for context.
  */
 
-const API_URL = "http://localhost:3001";
 type Surface = "admin" | "designer" | "workspace";
 
 const driver: AgentDriver = new ClaudeCodeDriver();
@@ -28,18 +27,16 @@ test.describe("MCP real-agent acceptance", () => {
   let host: AgentMcpHost;
   const oracles: LotusHttpMcpClient[] = [];
 
-  test.beforeAll(async () => {
-    host = await startAgentMcpHost();
+  // The in-process host binds to this worker's locally-spawned API (worker fixture).
+  test.beforeAll(async ({ apiBaseURL }) => {
+    host = await startAgentMcpHost(apiBaseURL);
   });
 
   test.afterAll(async () => {
     await host.stop();
   });
 
-  test.beforeEach(async ({ request }) => {
-    const reset = await request.post(`${API_URL}/api/reset`);
-    expect(reset.ok()).toBeTruthy();
-  });
+  // State reset is handled by the auto `resetState` fixture (tests/mcp/support/fixtures.ts).
 
   test.afterEach(async () => {
     await Promise.all(oracles.splice(0).map((client) => client.close()));
