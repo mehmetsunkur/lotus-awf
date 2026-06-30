@@ -115,6 +115,16 @@ regardless of which creds are present. The agent authenticates to the host with 
 `Authorization: Bearer <lotus_session>` token minted after the reset (`mintSessionToken`). Each driver
 also self-skips independently, printing the reason via `console.warn`.
 
+Agent scenarios are organized as a small test bed (`tests/mcp/agent/support/testbed.ts`). Fixture
+scenarios install an isolated app through the public MCP/API flow — `lotus_admin_create_app`, then
+`lotus_designer_apply_template` with the fixture template rewritten to the scenario app id — before
+the agent runs. The current workflow-maintenance scenario uses the packaged expense template as
+`agent-expense` so it can mutate fixture state without depending on the globally seeded `expense`
+app. Create-from-empty scenarios (for example `leave-requests`) intentionally skip fixture install
+and assert that the before-template marker says the app did not exist. Both styles export
+before/after templates and assert exact normalized design-definition diffs, not just final UI/API
+state.
+
 Every real-agent run writes redacted diagnostics into the Playwright test output and attaches them
 to `playwright-report-mcp-agent`. The default report always includes `manifest.json`, `exit.json`,
 `events.jsonl`, `spawn.json`, `prompt.txt`, `final_message.txt`, and the oracle-exported app template
