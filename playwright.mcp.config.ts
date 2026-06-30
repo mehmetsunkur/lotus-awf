@@ -9,6 +9,9 @@ import { defineConfig } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./tests/mcp",
+  // The opt-in real-agent suite (tests/mcp/agent) has its own config
+  // (playwright.mcp.agent.config.ts) and must never run under this gate suite.
+  testIgnore: "**/agent/**",
   globalSetup: "./tests/e2e/support/global-setup.ts",
   fullyParallel: false,
   workers: 1,

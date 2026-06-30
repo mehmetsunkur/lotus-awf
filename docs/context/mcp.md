@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `c92220b`
-- Last reviewed date: `2026-06-24`
+- Last code review baseline: `0dd8102`
+- Last reviewed date: `2026-06-30`
 - Code areas:
   - `src/mcp/**`
 - Tests:
@@ -95,6 +95,17 @@ from browser e2e.
 the same API, and drives it with the official StreamableHTTP client transport. It covers
 unauthenticated rejection, per-session identity isolation (two Basic identities resolve to distinct
 principals), surface routing, and a representative tool call per surface.
+
+`npm run test:mcp:agent` uses `playwright.mcp.agent.config.ts` — an **opt-in / nightly** acceptance
+tier, never on the PR gate. It runs the HTTP host in-process and drives the real `claude` CLI
+(`tests/mcp/agent/support/agent-driver.ts`) against it with a natural-language task, asserting the
+resulting lotus state (outcome oracle, not the tool-call transcript) — proving an autonomous agent
+can discover and compose the tools to build/maintain apps and workflows. The driver inherits the
+proxy env (`ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN`) and scrubs the parent's `CLAUDE_CODE_*`
+nested-session vars; it self-skips when the binary, credentials, or `LOTUS_AGENT_MODEL` are absent.
+Env contract: `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `LOTUS_AGENT_MODEL` (required),
+`LOTUS_AGENT_BUDGET_USD` (optional, default `2.00`). The `AgentDriver` interface leaves room for a
+future Codex driver.
 
 ## Local Claude Code Testing
 
