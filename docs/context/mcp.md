@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `de8da8b`
+- Last code review baseline: `b914963`
 - Last reviewed date: `2026-06-30`
 - Code areas:
   - `src/mcp/**`
@@ -104,21 +104,29 @@ transport. It covers unauthenticated rejection, per-session identity isolation (
 resolve to distinct principals), surface routing, and a representative tool call per surface.
 
 `npm run test:mcp:agent` uses `playwright.mcp.agent.config.ts` — an **opt-in / nightly** acceptance
-tier, never on the PR gate. It runs the HTTP host in-process and drives the real `claude` CLI
-(`tests/mcp/agent/support/agent-driver.ts`) against it with a natural-language task, asserting the
+tier, never on the PR gate. It runs the HTTP host in-process and drives real coding-agent CLIs
+(`tests/mcp/agent/support/agent-driver.ts`) against it with natural-language tasks, asserting the
 resulting lotus state (outcome oracle, not the tool-call transcript) — proving an autonomous agent
-can discover and compose the tools to build/maintain apps and workflows. The driver inherits the
-proxy env (`ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN`) and scrubs the parent's `CLAUDE_CODE_*`
-nested-session vars. It self-skips (printing the reason via `console.warn`) when the `claude` binary
-or `LOTUS_AGENT_MODEL` is absent, or when there is no usable credential — a usable credential is
-either `ANTHROPIC_API_KEY`, or `ANTHROPIC_AUTH_TOKEN` paired with `ANTHROPIC_BASE_URL` (a token
-without its endpoint would hit api.anthropic.com and fail, so it skips rather than runs).
+can discover and compose the tools to build/maintain apps and workflows. Two scenarios (maintain an
+existing workflow; build a new app end-to-end) run as a **driver matrix** over every `AgentDriver`,
+so each agent is exercised on the same tasks. The agent authenticates to the host with a per-run
+`Authorization: Bearer <lotus_session>` token minted after the reset (`mintSessionToken`). Each driver
+self-skips independently, printing the reason via `console.warn`.
 
-Env contract: `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `LOTUS_AGENT_MODEL` (required),
-`LOTUS_AGENT_BUDGET_USD` (optional, default `2.00`). These may be supplied via a gitignored `.env` —
-the Playwright configs import `tests/support/load-env.ts`, which loads `.env` without overriding any
-already-set var (so inline `VAR=… npm run` and the Claude Code runtime's injected vars still win).
-The `AgentDriver` interface leaves room for a future Codex driver.
+- **`ClaudeCodeDriver`** — `claude -p` with a temp `--mcp-config` (Bearer header). Inherits
+  `ANTHROPIC_BASE_URL`/`ANTHROPIC_AUTH_TOKEN`, scrubs the parent's `CLAUDE_CODE_*` nested-session vars.
+  Usable credential: `ANTHROPIC_API_KEY`, or `ANTHROPIC_AUTH_TOKEN` + `ANTHROPIC_BASE_URL`.
+- **`CodexDriver`** — `codex exec` against an isolated `CODEX_HOME` whose `config.toml` declares a
+  `litellm` model provider (`wire_api = "responses"`) and one `mcp_servers` entry per surface using
+  `bearer_token_env_var` (Codex HTTP MCP is Bearer-only). stdin is closed so `codex exec` doesn't hang.
+  Usable credential: `CODEX_AUTH_TOKEN` + `CODEX_BASE_URL`.
+
+Env contract (required per driver, each self-skips without its own):
+`ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `LOTUS_AGENT_MODEL` (Claude),
+`CODEX_BASE_URL` / `CODEX_AUTH_TOKEN` / `CODEX_MODEL` (Codex); `LOTUS_AGENT_BUDGET_USD` optional
+(Claude cost cap, default `2.00`). All may be supplied via a gitignored `.env` — the Playwright
+configs import `tests/support/load-env.ts`, which loads `.env` without overriding any already-set var
+(so inline `VAR=… npm run` and the Claude Code runtime's injected vars still win).
 
 ## Local Claude Code Testing
 
