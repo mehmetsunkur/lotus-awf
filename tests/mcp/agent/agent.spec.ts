@@ -3,7 +3,14 @@ import { startAgentMcpHost, ALICE_AUTH, mintSessionToken, type AgentMcpHost } fr
 import { connectHttpMcp, type LotusHttpMcpClient } from "../http/support/http-client";
 import { ClaudeCodeDriver, CodexDriver, type AgentDriver } from "./support/agent-driver";
 import { createAgentDiagnostics, type AgentDiagnostics } from "./support/diagnostics";
-import { diffTemplateDefinitions } from "../../../src/shared/template";
+import {
+  assertTemplateDiff,
+  exportValidateAndDiffTemplate,
+  installTemplateFixture,
+  tryExportTemplate,
+  type AppTemplateFixture
+} from "./support/testbed";
+import expenseTemplate from "../../../templates/expense/template.json";
 import type { TemplateArtifact, WorkflowDefinition } from "../../../src/shared/types";
 
 type AppDefinitions = {
@@ -13,8 +20,6 @@ type AppDefinitions = {
   workflows: WorkflowDefinition[];
 };
 type ValidationResult = { ok: boolean; errors: Array<{ field: string; message: string }> };
-type TemplateValidationResult = { ok: boolean; errors: string[] };
-type TemplateBeforeSnapshot = { exists: true; template: TemplateArtifact } | { exists: false; appId: string; error: string };
 
 /**
  * Real-agent acceptance suite. A coding-agent CLI is given a natural-language task plus the
@@ -27,6 +32,14 @@ type TemplateBeforeSnapshot = { exists: true; template: TemplateArtifact } | { e
 type Surface = "admin" | "designer" | "workspace";
 
 const ALL_DRIVERS: AgentDriver[] = [new ClaudeCodeDriver(), new CodexDriver()];
+const EXPENSE_FIXTURE: AppTemplateFixture = {
+  fixtureId: "expense-basic",
+  sourceTemplate: expenseTemplate as TemplateArtifact,
+  appId: "agent-expense",
+  title: "Agent Expense",
+  starterDocType: "expense",
+  starterDocTypeTitle: "Expense"
+};
 
 /**
  * Which agents to run. `LOTUS_AGENT_DRIVERS` is an optional comma-separated allowlist of
@@ -131,72 +144,6 @@ test.describe("MCP real-agent acceptance", () => {
     return run;
   }
 
-  async function tryExportTemplate(
-    designer: LotusHttpMcpClient,
-    diagnostics: AgentDiagnostics,
-    appId: string,
-    phase: "before" | "after"
-  ): Promise<TemplateBeforeSnapshot> {
-    try {
-      const template = await designer.callJsonTool<TemplateArtifact>("lotus_designer_export_template", {
-        appId,
-        version: `${phase}-${diagnostics.runId}`,
-        source: `mcp-agent-${phase}`
-      });
-      diagnostics.writeJson(`template-${phase}-${appId}.json`, phase === "before" ? "template_before" : "template_after", template, {
-        attach: "always"
-      });
-      return { exists: true, template };
-    } catch (error) {
-      const marker = { exists: false, appId, error: error instanceof Error ? error.message : String(error) };
-      diagnostics.writeJson(`template-${phase}-${appId}.json`, phase === "before" ? "template_before" : "template_after", marker, {
-        attach: "always"
-      });
-      return marker;
-    }
-  }
-
-  async function exportValidateAndDiffTemplate(
-    designer: LotusHttpMcpClient,
-    diagnostics: AgentDiagnostics,
-    appId: string,
-    before: TemplateBeforeSnapshot
-  ): Promise<TemplateArtifact> {
-    const after = await designer.callJsonTool<TemplateArtifact>("lotus_designer_export_template", {
-      appId,
-      version: `after-${diagnostics.runId}`,
-      source: "mcp-agent-after"
-    });
-    diagnostics.writeJson(`template-after-${appId}.json`, "template_after", after, { attach: "always" });
-
-    const validation = await designer.callJsonTool<TemplateValidationResult>("lotus_designer_validate_template", {
-      template: after
-    });
-    diagnostics.writeJson(`template-validation-${appId}.json`, "template_validation", validation, { attach: "always" });
-    expect(validation.ok, `template invalid: ${JSON.stringify(validation.errors)}`).toBe(true);
-
-    const diff =
-      before.exists
-        ? diffTemplateDefinitions(before.template.definitions, after.definitions)
-        : {
-            added: after.definitions.map((definition) => ({ id: definition._id, kind: definition.kind })),
-            removed: [],
-            changed: [],
-            unchanged: []
-          };
-    diagnostics.writeJson(
-      `template-diff-${appId}.json`,
-      "template_diff",
-      {
-        appId,
-        beforeExists: before.exists,
-        diff
-      },
-      { attach: "always" }
-    );
-    return after;
-  }
-
   // Infrastructure check (no agent spend): API + host + reset + Basic auth + MCP read path.
   test("host exposes the designer read tools to an authenticated session", async () => {
     const designer = await oracle("designer");
@@ -212,13 +159,15 @@ test.describe("MCP real-agent acceptance", () => {
       // Seeded expense workflow: draft -> submitted -> approved[final] / rejected[final].
       test("agent extends the expense workflow with a reimbursed step", async () => {
         const diagnostics = createDiagnostics(driver);
+        const admin = await oracle("admin");
         const beforeDesigner = await oracle("designer");
-        const before = await tryExportTemplate(beforeDesigner, diagnostics, "expense", "before");
+        await installTemplateFixture(admin, beforeDesigner, EXPENSE_FIXTURE);
+        const before = await tryExportTemplate(beforeDesigner, diagnostics, EXPENSE_FIXTURE.appId, "before");
         await runAgent(
           driver,
           [
             "You manage a Lotus Notes app via the lotus designer MCP tools.",
-            "Extend the workflow of the `expense` app: add a new final state named `reimbursed`",
+            `Extend the workflow of the \`${EXPENSE_FIXTURE.appId}\` app: add a new final state named \`reimbursed\``,
             "(label \"Reimbursed\") and a transition from the `approved` state to `reimbursed`",
             "labelled \"Reimburse\". Inspect the current workflow first, then apply the change and",
             "confirm it validates."
@@ -229,7 +178,7 @@ test.describe("MCP real-agent acceptance", () => {
 
         const designer = await oracle("designer");
         const defs = await designer.callJsonTool<AppDefinitions>("lotus_designer_get_app_definitions", {
-          appId: "expense"
+          appId: EXPENSE_FIXTURE.appId
         });
         const workflow = defs.workflows.find((w) => w._id === "workflow:expense");
         expect(workflow, "expense workflow should exist").toBeTruthy();
@@ -246,7 +195,14 @@ test.describe("MCP real-agent acceptance", () => {
           definition: workflow!
         });
         expect(validation.ok, `workflow invalid: ${JSON.stringify(validation.errors)}`).toBe(true);
-        await exportValidateAndDiffTemplate(designer, diagnostics, "expense", before);
+        const { diff, validation: templateValidation } = await exportValidateAndDiffTemplate(
+          designer,
+          diagnostics,
+          EXPENSE_FIXTURE.appId,
+          before
+        );
+        expect(templateValidation.ok, `template invalid: ${JSON.stringify(templateValidation.errors)}`).toBe(true);
+        assertTemplateDiff(diff, { changed: ["workflow:expense"] });
         await diagnostics.attachTo(test.info(), true);
       });
 
@@ -291,7 +247,26 @@ test.describe("MCP real-agent acceptance", () => {
           definition: workflow
         });
         expect(validation.ok, `workflow invalid: ${JSON.stringify(validation.errors)}`).toBe(true);
-        await exportValidateAndDiffTemplate(designer, diagnostics, "leave-requests", before);
+        const { diff, validation: templateValidation } = await exportValidateAndDiffTemplate(
+          designer,
+          diagnostics,
+          "leave-requests",
+          before
+        );
+        expect(templateValidation.ok, `template invalid: ${JSON.stringify(templateValidation.errors)}`).toBe(true);
+        assertTemplateDiff(diff, {
+          added: [
+            "acl:rules",
+            "app:config",
+            "audit:policy",
+            "form:leave",
+            "view:leave",
+            "view:leave-all",
+            "view:leave-mine",
+            "view:leave-submitted",
+            "workflow:leave"
+          ]
+        });
         await diagnostics.attachTo(test.info(), true);
       });
     });
