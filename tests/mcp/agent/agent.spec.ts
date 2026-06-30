@@ -1,5 +1,5 @@
 import { test, expect } from "../support/fixtures";
-import { startAgentMcpHost, ALICE_AUTH, type AgentMcpHost } from "./support/mcp-host";
+import { startAgentMcpHost, ALICE_AUTH, mintSessionToken, type AgentMcpHost } from "./support/mcp-host";
 import { connectHttpMcp, type LotusHttpMcpClient } from "../http/support/http-client";
 import { ClaudeCodeDriver, type AgentDriver } from "./support/agent-driver";
 import type { WorkflowDefinition } from "../../../src/shared/types";
@@ -25,10 +25,12 @@ const driver: AgentDriver = new ClaudeCodeDriver();
 
 test.describe("MCP real-agent acceptance", () => {
   let host: AgentMcpHost;
+  let apiUrl: string;
   const oracles: LotusHttpMcpClient[] = [];
 
   // The in-process host binds to this worker's locally-spawned API (worker fixture).
   test.beforeAll(async ({ apiBaseURL }) => {
+    apiUrl = apiBaseURL;
     host = await startAgentMcpHost(apiBaseURL);
   });
 
@@ -58,10 +60,13 @@ test.describe("MCP real-agent acceptance", () => {
       console.warn(`[mcp-agent] skipping "${test.info().title}" — agent driver unavailable: ${reason}`);
       test.skip(true, `agent driver unavailable: ${reason}`);
     }
+    // Mint a fresh Bearer token (after the auto reset seeded the directory). Both drivers
+    // authenticate to the host with it: Claude as a header, Codex via a bearer-token env var.
+    const authorization = `Bearer ${await mintSessionToken(apiUrl)}`;
     const mcpServers = Object.fromEntries(
       surfaces.map((surface) => [
         `lotus-${surface}`,
-        { url: host.surfaceUrl(surface), authorization: ALICE_AUTH }
+        { url: host.surfaceUrl(surface), authorization }
       ])
     );
     const run = await driver.run({ prompt, mcpServers });

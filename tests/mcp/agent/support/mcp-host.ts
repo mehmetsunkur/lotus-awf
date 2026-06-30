@@ -6,6 +6,29 @@ import { basicAuth } from "../../http/support/http-client";
 /** Seeded developer identity the agent authenticates as (src/server/index.ts DEV_PASSWORD). */
 export const ALICE_AUTH = basicAuth("alice", "password123");
 
+/**
+ * Mint a Lotus `lotus_session` token by logging in against the worker's API, so the
+ * agent can authenticate to the MCP host with `Authorization: Bearer <token>`. Both
+ * transports the suite drives accept Bearer (the host resolves the principal from it),
+ * and Codex's HTTP MCP client only supports Bearer — so the agent path is unified on it.
+ * Must be called AFTER `/api/reset` has seeded the directory (the auto resetState fixture).
+ */
+export async function mintSessionToken(
+  apiUrl: string,
+  username = "alice",
+  password = "password123"
+): Promise<string> {
+  const response = await fetch(`${apiUrl}/api/session/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username, password })
+  });
+  if (!response.ok) throw new Error(`Lotus login failed (${response.status}) minting a session token`);
+  const token = /lotus_session=([^;]+)/.exec(response.headers.get("set-cookie") ?? "")?.[1];
+  if (!token) throw new Error("Lotus login succeeded but returned no lotus_session cookie");
+  return token;
+}
+
 export type AgentMcpHost = {
   /** Ephemeral port the host listens on. */
   port: number;
