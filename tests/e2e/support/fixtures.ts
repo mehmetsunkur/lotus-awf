@@ -1,5 +1,5 @@
 import { test as base, expect, type APIRequestContext, type Page } from "@playwright/test";
-import { startHarness, type Harness } from "./worker-harness";
+import { startHarness, type Harness } from "../../support/harness";
 
 /**
  * Page-object helper for the M2 runtime shell. Wraps the data-testid selectors
