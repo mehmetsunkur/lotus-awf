@@ -109,12 +109,6 @@ test.describe("MCP real-agent acceptance", () => {
         { url: host.surfaceUrl(surface), authorization }
       ])
     );
-    const diagnostics = createAgentDiagnostics({
-      rootDir: test.info().outputPath("agent-diagnostics", driver.name),
-      driverName: driver.name,
-      testTitle: test.info().title,
-      extraSecrets: [sessionToken, authorization]
-    });
     diagnostics.event({ event: "session_token_minted", surfaces });
     let run: Awaited<ReturnType<AgentDriver["run"]>>;
     try {
@@ -132,6 +126,7 @@ test.describe("MCP real-agent acceptance", () => {
       throw error;
     }
     // Sanity: the run completed through the configured agent/model path.
+    if (!run.ok) await diagnostics.attachTo(test.info(), false);
     expect(run.ok, `agent run failed: ${run.finalText}`).toBeTruthy();
     return run;
   }
