@@ -1,19 +1,19 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 /**
  * Driver seam for the real-agent acceptance suite. A driver hands a natural-language
  * task plus a set of MCP servers to an autonomous coding agent and returns what the
- * agent produced. Only ClaudeCodeDriver exists today; a CodexDriver can implement the
- * same interface later (plan: out-of-scope follow-up).
+ * agent produced. Two drivers implement it — ClaudeCodeDriver and CodexDriver — and the
+ * spec runs both over the same scenarios via a driver matrix.
  */
 
 export type AgentMcpServer = {
   /** Surface URL, e.g. http://localhost:<port>/mcp/designer. */
   url: string;
-  /** Authorization header value the agent replays (Basic alice:...). */
+  /** Authorization header value the agent replays, e.g. `Bearer <lotus_session>`. */
   authorization: string;
 };
 
@@ -178,6 +178,139 @@ export class ClaudeCodeDriver implements AgentDriver {
         if (code === 0) resolve({ stdout, stderr });
         else reject(new Error(`claude exited ${code}: ${stderr || stdout}`));
       });
+    });
+  }
+}
+
+/** Env var the generated Codex config reads the MCP Bearer token from at exec time. */
+const CODEX_BEARER_ENV = "LOTUS_MCP_BEARER";
+
+/**
+ * Drives the `codex` CLI headlessly against the same MCP HTTP host as Claude.
+ *
+ * Differences from Claude that shaped this driver:
+ * - Codex HTTP MCP authenticates with a Bearer token read from an env var
+ *   (`--bearer-token-env-var` / `bearer_token_env_var`), not arbitrary headers — so the
+ *   agent's `Authorization: Bearer <token>` is unpacked into CODEX_BEARER_ENV.
+ * - Model auth is a custom (LiteLLM) provider written into an isolated CODEX_HOME so the
+ *   user's global ~/.codex config is never touched. `wire_api = "responses"` (Codex
+ *   0.142+ dropped "chat").
+ * - `codex exec` reads stdin until EOF; without a closed stdin it hangs, so stdin is
+ *   /dev/null (stdio "ignore").
+ * - There is no per-run cost flag; the Playwright timeout + small task scope are the cap.
+ */
+export class CodexDriver implements AgentDriver {
+  readonly name = "codex";
+
+  private model(): string | undefined {
+    return process.env.CODEX_MODEL?.trim() || undefined;
+  }
+
+  private baseUrl(): string | undefined {
+    return process.env.CODEX_BASE_URL?.trim() || undefined;
+  }
+
+  private hasCredentials(): boolean {
+    return Boolean(process.env.CODEX_AUTH_TOKEN && this.baseUrl());
+  }
+
+  private binaryPresent(): boolean {
+    try {
+      return spawnSync("codex", ["--version"], { stdio: "ignore" }).status === 0;
+    } catch {
+      return false;
+    }
+  }
+
+  isAvailable(): boolean {
+    return this.binaryPresent() && Boolean(this.model()) && this.hasCredentials();
+  }
+
+  unavailableReason(): string {
+    if (!this.binaryPresent()) return "codex CLI not found on PATH";
+    if (!this.model()) return "CODEX_MODEL is not set";
+    if (!this.hasCredentials()) return "no credentials: set CODEX_AUTH_TOKEN + CODEX_BASE_URL";
+    return "";
+  }
+
+  /** TOML for an isolated CODEX_HOME: LiteLLM provider + one entry per MCP surface. */
+  private configToml(model: string, baseUrl: string, mcpServers: Record<string, AgentMcpServer>): string {
+    const lines = [
+      `model = ${JSON.stringify(model)}`,
+      `model_provider = "litellm"`,
+      ``,
+      `[model_providers.litellm]`,
+      `name = "litellm"`,
+      `base_url = ${JSON.stringify(baseUrl)}`,
+      `env_key = "CODEX_AUTH_TOKEN"`,
+      `wire_api = "responses"`
+    ];
+    for (const [serverName, server] of Object.entries(mcpServers)) {
+      lines.push(``, `[mcp_servers.${serverName}]`, `url = ${JSON.stringify(server.url)}`, `bearer_token_env_var = "${CODEX_BEARER_ENV}"`);
+    }
+    return lines.join("\n") + "\n";
+  }
+
+  async run(task: AgentTask): Promise<AgentRun> {
+    const model = this.model();
+    const baseUrl = this.baseUrl();
+    if (!model || !baseUrl) throw new Error("CODEX_MODEL and CODEX_BASE_URL are required to run the agent");
+
+    // All surfaces share one minted token; unpack it from the Bearer authorization header.
+    const bearer = Object.values(task.mcpServers)[0]?.authorization.replace(/^Bearer\s+/i, "") ?? "";
+
+    const dir = mkdtempSync(join(tmpdir(), "lotus-codex-"));
+    const codexHome = join(dir, "home");
+    const workDir = join(dir, "work");
+    mkdirSync(codexHome);
+    mkdirSync(workDir);
+    writeFileSync(join(codexHome, "config.toml"), this.configToml(model, baseUrl, task.mcpServers));
+    const lastMessagePath = join(dir, "last.txt");
+
+    const args = [
+      "exec",
+      "--dangerously-bypass-approvals-and-sandbox",
+      "--skip-git-repo-check",
+      "--ephemeral",
+      "-C",
+      workDir,
+      "-o",
+      lastMessagePath,
+      task.prompt
+    ];
+
+    try {
+      const env: NodeJS.ProcessEnv = { ...process.env, CODEX_HOME: codexHome, [CODEX_BEARER_ENV]: bearer };
+      const { code, stdout, stderr } = await this.spawnCodex(args, env);
+      let finalText = "";
+      try {
+        finalText = readFileSync(lastMessagePath, "utf8").trim();
+      } catch {
+        // No last-message file written — treated as a failed run below.
+      }
+      return {
+        ok: code === 0 && finalText.length > 0,
+        finalText,
+        raw: { code, stdoutTail: stdout.slice(-2000), stderrTail: stderr.slice(-2000) }
+      };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  // stdio "ignore" on stdin gives codex exec immediate EOF; otherwise it blocks on stdin.
+  private spawnCodex(
+    args: string[],
+    env: NodeJS.ProcessEnv
+  ): Promise<{ code: number | null; stdout: string; stderr: string }> {
+    return new Promise((resolve, reject) => {
+      const child = spawn("codex", args, { env, stdio: ["ignore", "pipe", "pipe"] });
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (chunk) => (stdout += chunk));
+      child.stderr.on("data", (chunk) => (stderr += chunk));
+      child.on("error", reject);
+      child.on("close", (code) => resolve({ code, stdout, stderr }));
     });
   }
 }
