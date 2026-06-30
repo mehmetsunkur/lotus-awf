@@ -3,13 +3,6 @@ import { createHttpHost } from "../../../../src/mcp/http-server";
 import { httpHostConfigFromEnv } from "../../../../src/mcp/http-config";
 import { basicAuth } from "../../http/support/http-client";
 
-/**
- * Lotus API the in-process MCP host proxies to. The agent suite reuses the same
- * docker-compose-backed API on :3001 that the MCP-HTTP suite brings up via
- * `tests/mcp/support/start-api.ts` (see playwright.mcp.agent.config.ts webServer).
- */
-const API_URL = "http://localhost:3001";
-
 /** Seeded developer identity the agent authenticates as (src/server/index.ts DEV_PASSWORD). */
 export const ALICE_AUTH = basicAuth("alice", "password123");
 
@@ -23,13 +16,14 @@ export type AgentMcpHost = {
 };
 
 /**
- * Start an in-process MCP HTTP host on an ephemeral port, bound to the local API.
- * Mirrors the bring-up in tests/mcp/http/http.spec.ts: empty `allowedHosts` keeps the
- * DNS-rebinding guard off so localhost works, and the host authenticates each inbound
- * Authorization header against the Lotus API per session.
+ * Start an in-process MCP HTTP host on an ephemeral port, bound to the given API.
+ * `apiUrl` is this worker's locally-spawned Express server (from the per-worker
+ * harness fixture). Mirrors the bring-up in tests/mcp/http/http.spec.ts: empty
+ * `allowedHosts` keeps the DNS-rebinding guard off so localhost works, and the host
+ * authenticates each inbound Authorization header against the Lotus API per session.
  */
-export async function startAgentMcpHost(): Promise<AgentMcpHost> {
-  const host = createHttpHost({ ...httpHostConfigFromEnv(), apiUrl: API_URL });
+export async function startAgentMcpHost(apiUrl: string): Promise<AgentMcpHost> {
+  const host = createHttpHost({ ...httpHostConfigFromEnv(), apiUrl });
   const server = await new Promise<Server>((resolve) => {
     const s = host.app.listen(0, () => resolve(s));
   });

@@ -25,7 +25,10 @@ function firstText(result: unknown): string {
   return text.text;
 }
 
-export async function connectLotusMcp(kind: LotusMcpServerKind): Promise<LotusMcpTestClient> {
+export async function connectLotusMcp(
+  kind: LotusMcpServerKind,
+  apiUrl: string
+): Promise<LotusMcpTestClient> {
   const client = new Client({ name: "lotus-mcp-e2e", version: "0.1.0" });
   const transport = new StdioClientTransport({
     command: "npx",
@@ -33,7 +36,8 @@ export async function connectLotusMcp(kind: LotusMcpServerKind): Promise<LotusMc
     cwd: process.cwd(),
     env: {
       ...process.env,
-      LOTUS_API_URL: "http://localhost:3001",
+      // Point the spawned stdio server at this worker's locally-spawned API.
+      LOTUS_API_URL: apiUrl,
       LOTUS_USERNAME: "alice",
       LOTUS_PASSWORD: "password123"
     },
