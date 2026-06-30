@@ -46,7 +46,7 @@ describe("MCP agent diagnostics", () => {
     expect(text).toContain("[REDACTED]");
   });
 
-  it("writes redacted artifacts and a manifest for durable report attachments", () => {
+  it("writes redacted artifacts and a manifest for durable report attachments", async () => {
     const diagnostics = createAgentDiagnostics({
       rootDir: tmpRoot(),
       driverName: "codex",
@@ -57,10 +57,13 @@ describe("MCP agent diagnostics", () => {
     diagnostics.writeText("stdout.log", "stdout", "hello super-secret-bearer", { attach: "failure" });
     diagnostics.writeJson("raw_result.json", "raw_result", { token: "super-secret-bearer" });
     diagnostics.finalizeExit({ ok: true, authorization: "Bearer super-secret-bearer" });
+    diagnostics.writeJson("template-after-expense.json", "template_after", { token: "super-secret-bearer" }, { attach: "always" });
+    await diagnostics.attachTo({ attach: async () => {} } as never, true);
 
     const stdout = readFileSync(join(diagnostics.rootDir, "stdout.log"), "utf8");
     const raw = readFileSync(join(diagnostics.rootDir, "raw_result.json"), "utf8");
     const exit = readFileSync(join(diagnostics.rootDir, "exit.json"), "utf8");
+    const template = readFileSync(join(diagnostics.rootDir, "template-after-expense.json"), "utf8");
     const manifest = JSON.parse(readFileSync(join(diagnostics.rootDir, "manifest.json"), "utf8")) as Array<{
       role: string;
       relativePath: string;
@@ -70,8 +73,16 @@ describe("MCP agent diagnostics", () => {
     expect(stdout).not.toContain("super-secret-bearer");
     expect(raw).not.toContain("super-secret-bearer");
     expect(exit).not.toContain("super-secret-bearer");
+    expect(template).not.toContain("super-secret-bearer");
     expect(manifest.map((entry) => entry.relativePath)).toEqual(
-      expect.arrayContaining(["events.jsonl", "spawn.json", "stdout.log", "raw_result.json", "exit.json"])
+      expect.arrayContaining([
+        "events.jsonl",
+        "spawn.json",
+        "stdout.log",
+        "raw_result.json",
+        "exit.json",
+        "template-after-expense.json"
+      ])
     );
     expect(manifest.every((entry) => entry.sha256.length === 64)).toBe(true);
   });

@@ -13,7 +13,11 @@ type DiagnosticRole =
   | "spawn"
   | "stderr"
   | "stdout"
-  | "config";
+  | "config"
+  | "template_before"
+  | "template_after"
+  | "template_diff"
+  | "template_validation";
 
 type AttachPolicy = "always" | "failure" | "full";
 
@@ -178,7 +182,6 @@ export function createAgentDiagnostics(options: {
     },
     finalizeExit(payload) {
       diagnostics.writeJson("exit.json", "exit", payload, { attach: "always" });
-      diagnostics.writeJson("manifest.json", "manifest", diagnostics.manifest(), { attach: "always" });
     },
     manifest() {
       return artifacts
@@ -198,6 +201,7 @@ export function createAgentDiagnostics(options: {
         });
     },
     async attachTo(testInfo, ok) {
+      diagnostics.writeJson("manifest.json", "manifest", diagnostics.manifest(), { attach: "always" });
       const manifestEntry = artifacts.find((artifact) => artifact.role === "manifest");
       const attachable = artifacts.filter((artifact) => {
         if (artifact.role === "manifest") return true;
