@@ -1,6 +1,6 @@
 import { test, expect } from "./support/fixtures";
 
-test.describe("setup.nsf system app", () => {
+test.describe("names.nsf system app", () => {
   test("catalog.nsf uses the standard workspace shell and routed sections", async ({ page }) => {
     await page.goto("/catalog.nsf");
 
@@ -15,15 +15,15 @@ test.describe("setup.nsf system app", () => {
     await expect(page.getByTestId("sample-apps")).toBeVisible();
   });
 
-  test("catalog shows setup.nsf and admins can open the directory console", async ({ page }) => {
+  test("catalog shows names.nsf and admins can open the directory console", async ({ page }) => {
     await page.goto("/catalog.nsf");
 
-    await expect(page.getByTestId("system-app-setup")).toBeVisible();
-    await expect(page.getByTestId("open-setup")).toBeVisible();
+    await expect(page.getByTestId("system-app-names")).toBeVisible();
+    await expect(page.getByTestId("open-names")).toBeVisible();
 
-    await page.getByTestId("open-setup").click();
-    await expect(page).toHaveURL(/\/setup\.nsf\/views\/people$/);
-    await expect(page.getByTestId("setup-directory")).toBeVisible();
+    await page.getByTestId("open-names").click();
+    await expect(page).toHaveURL(/\/names\.nsf\/views\/people$/);
+    await expect(page.getByTestId("names-directory")).toBeVisible();
     await expect(page.getByTestId("runtime-workspace")).toBeVisible();
     await expect(page.getByTestId("runtime-sidebar")).toBeVisible();
     await expect(page.getByTestId("person-row-alice")).toBeVisible();
@@ -32,8 +32,8 @@ test.describe("setup.nsf system app", () => {
   });
 
   test("admins manage people, passwords, groups, and active sessions", async ({ page, playwright, apiBaseURL, app }) => {
-    await page.goto("/setup.nsf");
-    await expect(page.getByTestId("setup-directory")).toBeVisible();
+    await page.goto("/names.nsf");
+    await expect(page.getByTestId("names-directory")).toBeVisible();
     // The directory console issues the same background refresh cascade as the
     // runtime; settle before/between edits so a trailing refresh doesn't reset a
     // field mid-fill or land before a save's effect persists.
@@ -52,7 +52,7 @@ test.describe("setup.nsf system app", () => {
       data: { username: "charlie", password: "password123" }
     });
     expect(charlieLogin.ok()).toBeTruthy();
-    const forbidden = await charlieApi.get("/api/setup/directory");
+    const forbidden = await charlieApi.get("/api/names/directory");
     expect(forbidden.status()).toBe(403);
     await charlieApi.dispose();
 
@@ -93,8 +93,8 @@ test.describe("setup.nsf system app", () => {
   });
 
   test("directory APIs prevent last active admin lockout", async ({ page }) => {
-    await page.goto("/setup.nsf");
-    await expect(page.getByTestId("setup-directory")).toBeVisible();
+    await page.goto("/names.nsf");
+    await expect(page.getByTestId("names-directory")).toBeVisible();
 
     await page.getByTestId("view-tab-view:groups").click();
     await page.getByTestId("group-member-admins-alice").uncheck();

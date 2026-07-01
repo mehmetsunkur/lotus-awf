@@ -7,6 +7,7 @@ describe("app scaffold", () => {
     expect(validateAppId("field-reports")).toEqual([]);
     expect(validateAppId("Bad Slug").map((error) => error.field)).toEqual(["appId"]);
     expect(validateAppId("setup").map((error) => error.message)).toContain('App id "setup" is reserved');
+    expect(validateAppId("names").map((error) => error.message)).toContain('App id "names" is reserved');
   });
 
   test("scaffolds starter app definitions", () => {
