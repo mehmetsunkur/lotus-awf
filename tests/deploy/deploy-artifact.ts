@@ -165,7 +165,9 @@ async function runAssertions() {
   assert.ok(firstRun.systemApps.some((app) => app.appId === "names" && app.route === "/names.nsf"), "names.nsf should be advertised as a system app");
   assert.equal(firstRun.installedApps.length, 0, "fresh deploy should have an empty app catalog");
   assert.equal(firstRun.samples.find((sample) => sample.appId === "expense")?.installed, false, "expense sample should not be installed by default");
-  await request("/api/definitions", { ok: 401 });
+  // ADR-0015: the runtime is app-scoped only — an unscoped business request is
+  // rejected (no default app) rather than resolving to expense.
+  await request("/api/definitions", { ok: 400 });
 
   const configured = await request<{
     setupComplete: boolean;
@@ -252,17 +254,17 @@ async function runAssertions() {
   assert.ok(installed.installedApps.some((app) => app.appId === "expense"), "expense sample install should create an app install record");
   assert.equal(installed.samples.find((sample) => sample.appId === "expense")?.installed, true, "expense sample should be marked installed");
 
-  const definitions = await request<{ forms: Array<{ _id: string }>; views: Array<{ _id: string }> }>("/api/definitions");
+  const definitions = await request<{ forms: Array<{ _id: string }>; views: Array<{ _id: string }> }>("/api/apps/expense/definitions");
   assert.ok(definitions.forms.some((form) => form._id === "form:expense"), "expense form should be installed");
   assert.ok(definitions.views.some((view) => view._id === "view:my-expenses"), "expense view should be installed");
 
-  const seededExpenses = await request<Array<{ _id: string; payload: Record<string, unknown> }>>("/api/documents?docType=expense");
+  const seededExpenses = await request<Array<{ _id: string; payload: Record<string, unknown> }>>("/api/apps/expense/documents?docType=expense");
   assert.ok(
     seededExpenses.some((doc) => doc._id === "doc:expense:stationery" && doc.payload.description === "Stationery"),
     "expense sample data should be installed from the JSON artifact"
   );
 
-  const created = await request<{ _id: string; _rev: string; payload: Record<string, unknown>; state?: string }>("/api/documents", {
+  const created = await request<{ _id: string; _rev: string; payload: Record<string, unknown>; state?: string }>("/api/apps/expense/documents", {
     ok: 201,
     body: {
       docType: "expense",
@@ -276,46 +278,46 @@ async function runAssertions() {
   });
   assert.equal(created.payload.gross, 225.6, "pure compute handler should run in the packaged API");
 
-  const updated = await request<{ payload: Record<string, unknown> }>(`/api/documents/${encodeURIComponent(created._id)}`, {
+  const updated = await request<{ payload: Record<string, unknown> }>(`/api/apps/expense/documents/${encodeURIComponent(created._id)}`, {
     method: "PUT",
     body: { payload: { ...created.payload, amount: 199, description: "Deployment verification updated", category: "travel" } }
   });
   assert.equal(updated.payload.amount, 199, "expense update should persist");
 
-  const direct = await request<{ _id: string; docType: string }>(`/api/documents/${encodeURIComponent(created._id)}`);
+  const direct = await request<{ _id: string; docType: string }>(`/api/apps/expense/documents/${encodeURIComponent(created._id)}`);
   assert.equal(direct._id, created._id, "direct document read should load by id");
   assert.equal(direct.docType, "expense", "direct document read should preserve docType");
 
-  const submitted = await request<{ state: string }>(`/api/documents/${encodeURIComponent(created._id)}/transition`, {
+  const submitted = await request<{ state: string }>(`/api/apps/expense/documents/${encodeURIComponent(created._id)}/transition`, {
     body: { transition: "submit" }
   });
   assert.equal(submitted.state, "submitted", "workflow submit transition should run");
 
-  const approved = await request<{ state: string }>(`/api/documents/${encodeURIComponent(created._id)}/transition`, {
+  const approved = await request<{ state: string }>(`/api/apps/expense/documents/${encodeURIComponent(created._id)}/transition`, {
     body: { transition: "approve" }
   });
   assert.equal(approved.state, "approved", "workflow approve transition should run");
 
-  const searched = await request<Array<{ _id: string }>>("/api/views/view%3Amy-expenses/documents?q=Deployment");
+  const searched = await request<Array<{ _id: string }>>("/api/apps/expense/views/view%3Amy-expenses/documents?q=Deployment");
   assert.ok(searched.some((doc) => doc._id === created._id), "view search should find the created expense");
 
-  const scaffold = await request<{ form: { _id: string }; view: { _id: string } }>("/api/document-types", {
+  const scaffold = await request<{ form: { _id: string }; view: { _id: string } }>("/api/apps/expense/document-types", {
     ok: 201,
     body: { docType: "inspection", title: "Inspection" }
   });
   assert.equal(scaffold.form._id, "form:inspection", "design change should create an inspection form");
   assert.equal(scaffold.view._id, "view:inspection", "design change should create an inspection view");
 
-  const inspection = await request<{ _id: string; docType: string }>("/api/documents", {
+  const inspection = await request<{ _id: string; docType: string }>("/api/apps/expense/documents", {
     ok: 201,
     body: { docType: "inspection", payload: { title: "Pump station check" } }
   });
   assert.equal(inspection.docType, "inspection", "new document type should be usable immediately");
 
-  const inspections = await request<Array<{ _id: string }>>("/api/views/view%3Ainspection/documents");
+  const inspections = await request<Array<{ _id: string }>>("/api/apps/expense/views/view%3Ainspection/documents");
   assert.ok(inspections.some((doc) => doc._id === inspection._id), "scaffolded view should list new documents");
 
-  const workflowScaffold = await request<{ workflow: { _id: string }; views: Array<{ _id: string }> }>("/api/workflows/scaffold", {
+  const workflowScaffold = await request<{ workflow: { _id: string }; views: Array<{ _id: string }> }>("/api/apps/expense/workflows/scaffold", {
     ok: 201,
     body: { docType: "inspection", approverPrincipal: "group:admins" }
   });
@@ -325,31 +327,31 @@ async function runAssertions() {
     "workflow scaffold should create submitted worklist"
   );
 
-  const inspectionSubmitted = await request<{ state: string }>(`/api/documents/${encodeURIComponent(inspection._id)}/transition`, {
+  const inspectionSubmitted = await request<{ state: string }>(`/api/apps/expense/documents/${encodeURIComponent(inspection._id)}/transition`, {
     body: { transition: "submit" }
   });
   assert.equal(inspectionSubmitted.state, "submitted", "scaffolded workflow submit transition should run");
 
-  const inspectionApproved = await request<{ state: string }>(`/api/documents/${encodeURIComponent(inspection._id)}/transition`, {
+  const inspectionApproved = await request<{ state: string }>(`/api/apps/expense/documents/${encodeURIComponent(inspection._id)}/transition`, {
     body: { transition: "approve" }
   });
   assert.equal(inspectionApproved.state, "approved", "scaffolded workflow approve transition should run");
 
-  const agentTick = await request<{ ok: boolean; ran: number }>("/api/agents/run", { method: "POST" });
+  const agentTick = await request<{ ok: boolean; ran: number }>("/api/apps/expense/agents/run", { method: "POST" });
   assert.equal(agentTick.ok, true, "agent tick should complete");
   assert.ok(agentTick.ran >= 1, "packaged runtime should record at least one agent run");
 
-  const auditTick = await request<{ ok: boolean; recorded: number }>("/api/audit/run", { method: "POST" });
+  const auditTick = await request<{ ok: boolean; recorded: number }>("/api/apps/expense/audit/run", { method: "POST" });
   assert.equal(auditTick.ok, true, "audit tick should complete");
   assert.ok(auditTick.recorded >= 1, "packaged runtime should record audit events");
 
-  const template = await request<{ kind: string; definitions: unknown[] }>("/api/templates/export", {
+  const template = await request<{ kind: string; definitions: unknown[] }>("/api/apps/expense/templates/export", {
     body: { version: "deploy-test", source: "deploy-test" }
   });
   assert.equal(template.kind, "template", "template export should return an artifact");
   assert.ok(template.definitions.length >= 1, "template export should include definitions");
 
-  await request("/api/replicate", { method: "POST" });
+  await request("/api/apps/expense/replicate", { method: "POST" });
 }
 
 async function main() {
