@@ -1,0 +1,90 @@
+[
+  {
+    "_id": "doc:department:finance",
+    "kind": "document",
+    "appId": "org",
+    "docType": "department",
+    "createdAt": "2026-07-01T00:00:00.000Z",
+    "updatedAt": "2026-07-01T00:00:00.000Z",
+    "createdBy": "person:alice",
+    "updatedBy": "person:alice",
+    "readers": [
+      "group:admins"
+    ],
+    "authors": [
+      "person:alice"
+    ],
+    "payload": {
+      "name": "Finance",
+      "slug": "finance",
+      "parent": ""
+    }
+  },
+  {
+    "_id": "doc:department:sales",
+    "kind": "document",
+    "appId": "org",
+    "docType": "department",
+    "createdAt": "2026-07-01T00:00:00.000Z",
+    "updatedAt": "2026-07-01T00:00:00.000Z",
+    "createdBy": "person:alice",
+    "updatedBy": "person:alice",
+    "readers": [
+      "group:admins"
+    ],
+    "authors": [
+      "person:alice"
+    ],
+    "payload": {
+      "name": "Sales",
+      "slug": "sales",
+      "parent": ""
+    }
+  },
+  {
+    "_id": "doc:employee:alice",
+    "kind": "document",
+    "appId": "org",
+    "docType": "employee",
+    "createdAt": "2026-07-01T00:00:00.000Z",
+    "updatedAt": "2026-07-01T00:00:00.000Z",
+    "createdBy": "person:alice",
+    "updatedBy": "person:alice",
+    "readers": [
+      "group:admins",
+      "person:alice"
+    ],
+    "authors": [
+      "person:alice"
+    ],
+    "payload": {
+      "person": "person:alice",
+      "title": "Finance Lead",
+      "department": "finance",
+      "manager": ""
+    }
+  },
+  {
+    "_id": "doc:employee:bob",
+    "kind": "document",
+    "appId": "org",
+    "docType": "employee",
+    "createdAt": "2026-07-01T00:00:00.000Z",
+    "updatedAt": "2026-07-01T00:00:00.000Z",
+    "createdBy": "person:alice",
+    "updatedBy": "person:alice",
+    "readers": [
+      "group:admins",
+      "person:bob"
+    ],
+    "authors": [
+      "person:alice"
+    ],
+    "payload": {
+      "person": "person:bob",
+      "title": "Sales Rep",
+      "department": "sales",
+      "manager": "person:alice"
+    }
+  }
+]

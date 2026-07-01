@@ -39,6 +39,13 @@ const SAMPLE_TEMPLATES: Record<string, SampleTemplateFiles> = {
     appId: "expense",
     title: "Expense sample",
     description: "A sample approval app with forms, views, workflow, agents, search, and audit."
+  },
+  "sample:org": {
+    templatePath: "templates/org/template.json",
+    sampleDataPath: "templates/org/sample-data.json",
+    appId: "org",
+    title: "Org sample",
+    description: "Models departments, employees, and reporting lines."
   }
 };
 

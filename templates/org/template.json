@@ -1,0 +1,236 @@
+{
+  "kind": "template",
+  "templateId": "sample:org",
+  "appId": "org",
+  "version": "sample",
+  "createdAt": "2026-07-01T00:00:00.000Z",
+  "createdBy": "system:seed",
+  "source": "templates/org/template.json",
+  "definitions": [
+    {
+      "_id": "acl:rules",
+      "kind": "acl",
+      "appId": "org",
+      "policy": "org.nsf: admins design and manage the organization directory structure.",
+      "entries": [
+        {
+          "principal": "group:admins",
+          "level": "manager"
+        }
+      ]
+    },
+    {
+      "_id": "app:config",
+      "kind": "app",
+      "appId": "org",
+      "title": "Org",
+      "database": "org_app"
+    },
+    {
+      "_id": "audit:policy",
+      "kind": "auditpolicy",
+      "appId": "org",
+      "retentionDays": 365
+    },
+    {
+      "_id": "form:department",
+      "kind": "form",
+      "appId": "org",
+      "docType": "department",
+      "title": "Department",
+      "sections": [
+        {
+          "title": "Department",
+          "fields": [
+            "name",
+            "slug",
+            "parent"
+          ]
+        }
+      ],
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "label": "Name",
+          "required": true,
+          "searchable": true
+        },
+        {
+          "name": "slug",
+          "type": "text",
+          "label": "Slug",
+          "required": true,
+          "searchable": true,
+          "helpText": "URL-safe identifier, e.g. finance. Employees reference this slug.",
+          "validate": [
+            {
+              "expression": "/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(payload.slug || '')",
+              "message": "Slug must be lowercase letters, digits, and dashes"
+            }
+          ]
+        },
+        {
+          "name": "parent",
+          "type": "text",
+          "label": "Parent slug",
+          "helpText": "Slug of the parent department, or blank for a top-level department."
+        }
+      ]
+    },
+    {
+      "_id": "form:employee",
+      "kind": "form",
+      "appId": "org",
+      "docType": "employee",
+      "title": "Employee",
+      "sections": [
+        {
+          "title": "Identity",
+          "fields": [
+            "person",
+            "title"
+          ]
+        },
+        {
+          "title": "Placement",
+          "fields": [
+            "department",
+            "manager"
+          ]
+        }
+      ],
+      "fields": [
+        {
+          "name": "person",
+          "type": "text",
+          "label": "Person",
+          "required": true,
+          "searchable": true,
+          "helpText": "Directory id from names.nsf, e.g. person:alice. Never stores credentials.",
+          "validate": [
+            {
+              "expression": "(payload.person || '').startsWith('person:')",
+              "message": "Person must be a directory id like person:alice"
+            }
+          ]
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "label": "Job title"
+        },
+        {
+          "name": "department",
+          "type": "text",
+          "label": "Department slug",
+          "required": true,
+          "searchable": true,
+          "helpText": "Slug of the employee's department, e.g. finance."
+        },
+        {
+          "name": "manager",
+          "type": "text",
+          "label": "Manager",
+          "helpText": "Directory id of this employee's manager, e.g. person:alice.",
+          "validate": [
+            {
+              "expression": "!payload.manager || payload.manager.startsWith('person:')",
+              "message": "Manager must be a directory id like person:alice"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "_id": "view:departments",
+      "kind": "view",
+      "appId": "org",
+      "docType": "department",
+      "title": "Departments",
+      "columns": [
+        {
+          "field": "payload.name",
+          "label": "Name"
+        },
+        {
+          "field": "payload.slug",
+          "label": "Slug"
+        },
+        {
+          "field": "payload.parent",
+          "label": "Parent"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "department"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "view:employees",
+      "kind": "view",
+      "appId": "org",
+      "docType": "employee",
+      "title": "Employees",
+      "columns": [
+        {
+          "field": "payload.person",
+          "label": "Person"
+        },
+        {
+          "field": "payload.title",
+          "label": "Title"
+        },
+        {
+          "field": "payload.department",
+          "label": "Department"
+        },
+        {
+          "field": "payload.manager",
+          "label": "Manager"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "employee"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    }
+  ]
+}
