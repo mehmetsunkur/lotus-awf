@@ -91,6 +91,10 @@ Supported field behavior:
 - `source`
 - `validate`
 
+Form-level: `defaultReaders` (ADR-0015) — principal ids always added to a new document's
+`readers` beyond the creator (e.g. `["group:finance"]`), so app-specific readers policy lives in
+the template as data rather than in base code.
+
 M1 form documents remain valid.
 
 ## View definitions

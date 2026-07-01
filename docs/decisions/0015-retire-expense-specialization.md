@@ -4,7 +4,9 @@ Date: 2026-07-01
 
 ## Status
 
-Proposed.
+Proposed. Runtime/logic de-specialization implemented and verified (API + unit + 7/8
+API-driven e2e). Client cosmetic genericization and the deploy-test hand-migration remain
+as tracked follow-ups (need a reliable UI/Docker environment to verify).
 
 ## Context
 
@@ -30,10 +32,13 @@ Make expense a **pure installable template** with no structural trace in runtime
 - `resolveBusinessApp` resolves every app (incl. expense) via its `appinstall:*` record — nothing
   assumed. Generic `POST /api/platform/install-sample/:appId` (registry-driven) replaces the
   expense-specific route; `samples[]` is built from the template registry.
-- The unscoped `/api/documents*` routes and the `|| "expense"` default in `appContextFromRequest`
-  are removed — the runtime is **app-scoped only** (`/api/apps/:appId/*`). `createDocument` takes
-  an explicit `appId`. `config.appDb`/`docType="expense"` defaults are removed; callers thread an
-  explicit database. `"expense"` leaves `RESERVED_APP_IDS`.
+- The `|| "expense"` default in `appContextFromRequest` is removed — it now requires an
+  `:appId`, so unscoped business requests no longer resolve to a default app and the runtime is
+  **app-scoped only** (`/api/apps/:appId/*`). (The now-inert unscoped route *strings* are left
+  registered for a follow-up cleanup; they cannot resolve without an app.) `createDocument` takes
+  an explicit `appId`; the `docType="expense"` fallbacks and `getBusinessDocs` default are gone.
+  `"expense"` leaves `RESERVED_APP_IDS`. (`config.appDb` remains only as a dev/scripts default,
+  not a runtime path — a minor residual.)
 - The finance-visibility rule becomes **data**: `FormDefinition.defaultReaders` (validated), read
   by `readersForNewDocument`. The expense template carries `defaultReaders: ["group:finance"]`, so
   behavior is preserved with zero app-specific base code. It stays in `src/shared/access.ts` so
@@ -78,6 +83,12 @@ construction, formulas are not). Fine for first-party templates; needs an execut
 
 ## Follow-ups
 
+- Client cosmetics: genericize the catalog sample card (loop `state.samples`), drop
+  `DEFAULT_EXPENSE_VIEW_ID` and the `route.app === "expense"` branches (UI — verify in a real
+  browser).
+- Deploy test: hand-migrate `tests/deploy/deploy-artifact.ts` to app-scoped routes (mind the
+  404-before-install vs 401 ordering) and verify under Docker.
+- Delete the now-inert unscoped route strings; remove the `config.appDb` dev default.
 - Convert `expense-total-with-tax` to a compute formula; `record-activity` to a formula agent.
 - Async-lane execution deadline (also benefits ADR-0014).
-- Run the multi-lens `review-change` workflow (Tier-3) for this change.
+- Run the multi-lens `review-change` workflow (Tier-3) once the above land.

@@ -58,7 +58,11 @@ the server's own behavior.
 ## Key Flows
 
 - Business app resolution (M21): installed app ids map to `/:appId.nsf`, database `${appId}_app`,
-  and app-scoped APIs under `/api/apps/:appId/*`. Unscoped routes remain Expense aliases.
+  and app-scoped APIs under `/api/apps/:appId/*`. (ADR-0015) The runtime is **app-scoped only**:
+  `appContextFromRequest` requires an `:appId`, `resolveBusinessApp` resolves every app (incl.
+  expense) via its `appinstall` record, and sample install is generic
+  (`POST /api/platform/install-sample/:appId`, registry-driven). Expense is no longer special-cased;
+  `createDocument` takes an explicit `appId`; a form's `defaultReaders` supplies extra new-doc readers.
 - App access editor (M22): `GET/PUT /api/apps/:appId/access` requires app manager access, returns
   sanitized directory people/groups plus `acl:rules.entries`, validates active people/existing
   groups and access levels, normalizes duplicate principals, and writes the app's local `acl:rules`

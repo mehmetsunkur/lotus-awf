@@ -29,7 +29,9 @@ No DOM, no Node/server-only APIs.
 - `src/shared/types.ts` also carries M19 platform shell types: `SystemApp`, `PublicGroup`, and
   `DirectoryState`.
 - `src/shared/access.ts` (M5/M18) — pure helpers for session-derived principal scopes, readable docs,
-  editable docs, derived readers, app ACL levels, and access selectors.
+  editable docs, derived readers, app ACL levels, and access selectors. (ADR-0015)
+  `readersForNewDocument(scope, defaultReaders)` merges a form's `FormDefinition.defaultReaders`
+  (data) instead of a hardcoded `docType === "expense"` rule.
 - `src/shared/formula.ts` (ADR-0014) — the ASYNC evaluation lane. `evaluateFormulaAsync` permits
   `await DbColumn(appId; docType; column)` / `DbLookup(appId; docType; keyColumn; key; valueColumn)`,
   every read ACL-filtered through `canReadDocument`. Distinct from `expression.ts` (the pure sync lane,

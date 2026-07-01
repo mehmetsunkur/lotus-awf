@@ -57,7 +57,10 @@ System apps are always present platform apps, not installable business app recor
   current session.
 - `POST /api/platform/setup` — validates and stores org/domain/admin setup, creates the admin
   Person and `group:admins`, and sets the session cookie.
-- `POST /api/platform/install-sample/expense` — installs the Expense sample after setup.
+- `POST /api/platform/install-sample/:appId` — installs a registered sample template (e.g.
+  `expense`) after setup; generic and registry-driven (ADR-0015). Expense is no longer a base
+  specialization — it resolves and installs like any app; business runtime is app-scoped only
+  (`/api/apps/:appId/*`).
 - `GET /api/session` — returns public session state.
 - `POST /api/session/login` — username/password login; sets the HTTP-only `lotus_session` cookie.
 - `POST /api/session/logout` — clears the session cookie and deletes the session if present.
