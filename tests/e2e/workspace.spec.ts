@@ -39,7 +39,7 @@ test.describe("app workspace shell", () => {
   });
 
   test("direct document routes open a focused document workspace independent of the current view", async ({ page }) => {
-    const vendors = (await page.request.get("/api/documents?docType=vendor").then((response) => response.json())) as Array<{ _id: string }>;
+    const vendors = (await page.request.get("/api/apps/expense/documents?docType=vendor").then((response) => response.json())) as Array<{ _id: string }>;
     const vendorId = vendors[0]._id;
 
     await page.goto(`/expense.nsf/documents/${encodeURIComponent(vendorId)}`);

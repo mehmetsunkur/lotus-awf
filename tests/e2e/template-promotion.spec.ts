@@ -10,7 +10,7 @@ type TemplateArtifact = {
 
 test.describe("template promotion", () => {
   test("exports definitions as a versioned artifact without business documents", async ({ page }) => {
-    const response = await page.request.post("/api/templates/export", {
+    const response = await page.request.post("/api/apps/expense/templates/export", {
       data: { version: "vtest001", source: "e2e" }
     });
     expect(response.ok()).toBeTruthy();
@@ -39,43 +39,43 @@ test.describe("template promotion", () => {
   });
 
   test("diffs and applies a template without touching business documents", async ({ page }) => {
-    const exported = await page.request.post("/api/templates/export", {
+    const exported = await page.request.post("/api/apps/expense/templates/export", {
       data: { version: "vrestore", source: "e2e" }
     });
     const template = (await exported.json()) as TemplateArtifact;
 
-    const beforeDocs = await page.request.get("/api/documents?docType=expense").then((response) => response.json());
+    const beforeDocs = await page.request.get("/api/apps/expense/documents?docType=expense").then((response) => response.json());
     const beforeIds = beforeDocs.map((doc: { _id: string }) => doc._id).sort();
 
-    const definitions = await page.request.get("/api/definitions").then((response) => response.json());
+    const definitions = await page.request.get("/api/apps/expense/definitions").then((response) => response.json());
     const changedView = {
       ...definitions.views.find((view: { _id: string }) => view._id === "view:all-expenses"),
       title: "All Expenses (Promotion Drift)"
     };
-    const save = await page.request.put("/api/definitions/view%3Aall-expenses", { data: changedView });
+    const save = await page.request.put("/api/apps/expense/definitions/view%3Aall-expenses", { data: changedView });
     expect(save.ok()).toBeTruthy();
 
-    const diff = await page.request.post("/api/templates/diff", { data: { template } });
+    const diff = await page.request.post("/api/apps/expense/templates/diff", { data: { template } });
     expect(diff.ok()).toBeTruthy();
     const diffBody = await diff.json();
     expect(diffBody.changed).toContainEqual({ id: "view:all-expenses", kind: "view" });
 
-    const apply = await page.request.post("/api/templates/apply", { data: { template } });
+    const apply = await page.request.post("/api/apps/expense/templates/apply", { data: { template } });
     expect(apply.ok()).toBeTruthy();
     const applyBody = await apply.json();
     expect(applyBody.diff.changed).toContainEqual({ id: "view:all-expenses", kind: "view" });
 
-    const restored = await page.request.get("/api/definitions").then((response) => response.json());
+    const restored = await page.request.get("/api/apps/expense/definitions").then((response) => response.json());
     const restoredTitle = restored.views.find((view: { _id: string }) => view._id === "view:all-expenses").title;
     expect(restoredTitle).toBe("All Expenses");
 
-    const afterDocs = await page.request.get("/api/documents?docType=expense").then((response) => response.json());
+    const afterDocs = await page.request.get("/api/apps/expense/documents?docType=expense").then((response) => response.json());
     const afterIds = afterDocs.map((doc: { _id: string }) => doc._id).sort();
     expect(afterIds).toEqual(beforeIds);
   });
 
   test("rejects invalid template definitions", async ({ page }) => {
-    const exported = await page.request.post("/api/templates/export", {
+    const exported = await page.request.post("/api/apps/expense/templates/export", {
       data: { version: "vinvalid", source: "e2e" }
     });
     const template = (await exported.json()) as TemplateArtifact;
@@ -86,7 +86,7 @@ test.describe("template promotion", () => {
       )
     };
 
-    const apply = await page.request.post("/api/templates/apply", { data: { template: invalid } });
+    const apply = await page.request.post("/api/apps/expense/templates/apply", { data: { template: invalid } });
     expect(apply.status()).toBe(422);
     expect(JSON.stringify(await apply.json())).toContain("A view needs at least one column");
   });

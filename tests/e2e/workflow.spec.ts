@@ -83,7 +83,7 @@ test.describe("workflow lifecycle", () => {
     await app.goto();
 
     // Bob authors and submits an expense he can read; approval is still gated to finance.
-    const created = await bobApi.post("/api/documents", {
+    const created = await bobApi.post("/api/apps/expense/documents", {
       data: {
         docType: "expense",
         payload: {
@@ -96,7 +96,7 @@ test.describe("workflow lifecycle", () => {
     });
     expect(created.ok()).toBeTruthy();
     const id: string = (await created.json())._id;
-    const path = `/api/documents/${encodeURIComponent(id)}/transition`;
+    const path = `/api/apps/expense/documents/${encodeURIComponent(id)}/transition`;
     await bobApi.post(path, { data: { transition: "submit" } });
 
     // person:bob (group:sales) can read it but cannot approve — the server refuses with 422.
@@ -113,14 +113,14 @@ test.describe("workflow lifecycle", () => {
   test("a transition writes only the local replica until an explicit sync", async ({ app, page, serverCouchUrl }) => {
     await app.goto();
 
-    const docs = await page.request.get("/api/documents?docType=expense").then((r) => r.json());
+    const docs = await page.request.get("/api/apps/expense/documents?docType=expense").then((r) => r.json());
     const id: string = docs.find((d: { payload: { description: string } }) => d.payload.description === "Stationery")._id;
 
     // Transitioning hits the local stack only — no server CouchDB round-trip.
-    await page.request.post(`/api/documents/${encodeURIComponent(id)}/transition`, { data: { transition: "submit" } });
+    await page.request.post(`/api/apps/expense/documents/${encodeURIComponent(id)}/transition`, { data: { transition: "submit" } });
 
     // Local reflects the new state immediately.
-    const local = await page.request.get("/api/documents?docType=expense").then((r) => r.json());
+    const local = await page.request.get("/api/apps/expense/documents?docType=expense").then((r) => r.json());
     expect(local.find((d: { _id: string }) => d._id === id).state).toBe("submitted");
 
     // The server replica is still untouched (proves the transition was offline-capable).
@@ -130,7 +130,7 @@ test.describe("workflow lifecycle", () => {
     expect(before.state ?? null).toBeNull();
 
     // Only after an explicit replicate does the server receive the transitioned state.
-    await page.request.post("/api/replicate");
+    await page.request.post("/api/apps/expense/replicate");
     const after = await page.request.get(serverDocUrl, { headers: serverAuth }).then((r) => r.json());
     expect(after.state).toBe("submitted");
   });

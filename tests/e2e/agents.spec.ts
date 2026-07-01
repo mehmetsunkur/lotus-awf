@@ -10,22 +10,22 @@ test.describe("agent runtime", () => {
   test.setTimeout(60_000);
 
   test("a scheduled agent runs on the first tick and records a durable run", async ({ page }) => {
-    const res = await page.request.post("/api/agents/run");
+    const res = await page.request.post("/api/apps/expense/agents/run");
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     expect(body.runs.some((r: { agentId: string; trigger: string }) => r.agentId === "agent:daily-digest" && r.trigger === "schedule")).toBe(true);
 
-    const runs = await page.request.get("/api/agents/runs").then((r) => r.json());
+    const runs = await page.request.get("/api/apps/expense/agents/runs").then((r) => r.json());
     expect(runs.some((r: { agentId: string }) => r.agentId === "agent:daily-digest")).toBe(true);
   });
 
   test("an on-change agent fires for a newly created document", async ({ page }) => {
-    const created = await page.request.post("/api/documents", {
+    const created = await page.request.post("/api/apps/expense/documents", {
       data: { docType: "expense", payload: { amount: 30, description: "Agent trigger", category: "supplies" } }
     });
     const id: string = (await created.json())._id;
 
-    const body = await page.request.post("/api/agents/run").then((r) => r.json());
+    const body = await page.request.post("/api/apps/expense/agents/run").then((r) => r.json());
     expect(
       body.runs.some(
         (r: { agentId: string; trigger: string; sourceId?: string }) =>
@@ -35,19 +35,19 @@ test.describe("agent runtime", () => {
   });
 
   test("a second tick does not re-run already-processed work (durable checkpoint + dedupe)", async ({ page }) => {
-    const first = await page.request.post("/api/agents/run").then((r) => r.json());
+    const first = await page.request.post("/api/apps/expense/agents/run").then((r) => r.json());
     expect(first.ran).toBeGreaterThan(0);
 
-    const runsAfterFirst = await page.request.get("/api/agents/runs").then((r) => r.json());
+    const runsAfterFirst = await page.request.get("/api/apps/expense/agents/runs").then((r) => r.json());
     expect(runsAfterFirst.length).toBeGreaterThan(0);
 
     // Nothing new happened and the scheduled agent is not yet due again.
-    const second = await page.request.post("/api/agents/run").then((r) => r.json());
+    const second = await page.request.post("/api/apps/expense/agents/run").then((r) => r.json());
     expect(second.ran).toBe(0);
   });
 
   test("agent definitions export in the template artifact", async ({ page }) => {
-    const template = await page.request.post("/api/templates/export", { data: {} }).then((r) => r.json());
+    const template = await page.request.post("/api/apps/expense/templates/export", { data: {} }).then((r) => r.json());
     const ids = template.definitions.map((d: { _id: string }) => d._id);
     expect(ids).toContain("agent:daily-digest");
     // Runtime agent state/run docs are never templated.

@@ -24,7 +24,7 @@ test.describe("plugin runtime", () => {
   });
 
   test("the server computes the same value on save (validation parity)", async ({ page }) => {
-    const created = await page.request.post("/api/documents", {
+    const created = await page.request.post("/api/apps/expense/documents", {
       data: { docType: "expense", payload: { amount: 10, description: "Plugin parity", category: "supplies" } }
     });
     expect(created.ok()).toBeTruthy();
@@ -32,10 +32,10 @@ test.describe("plugin runtime", () => {
   });
 
   test("a transition runs its effect handler server-side and logs it", async ({ page }) => {
-    const docs = await page.request.get("/api/documents?docType=expense").then((r) => r.json());
+    const docs = await page.request.get("/api/apps/expense/documents?docType=expense").then((r) => r.json());
     const id: string = docs.find((d: { payload: { description: string } }) => d.payload.description === "Stationery")._id;
 
-    const res = await page.request.post(`/api/documents/${encodeURIComponent(id)}/transition`, {
+    const res = await page.request.post(`/api/apps/expense/documents/${encodeURIComponent(id)}/transition`, {
       data: { transition: "submit" }
     });
     expect(res.ok()).toBeTruthy();

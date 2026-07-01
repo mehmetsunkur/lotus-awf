@@ -215,7 +215,7 @@ export async function getDesignDoc(target: CouchTarget, id: string, db = config.
   return getDoc(target, id, "", db);
 }
 
-export async function getBusinessDocs(target: CouchTarget, docType = "expense", scope?: PrincipalScope, db = config.appDb) {
+export async function getBusinessDocs(target: CouchTarget, docType: string, scope?: PrincipalScope, db = config.appDb) {
   const result = await findDocs<BusinessDocument>(target, {
     selector: {
       kind: "document",

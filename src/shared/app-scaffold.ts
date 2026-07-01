@@ -3,7 +3,9 @@ import { scaffoldDocumentType } from "./scaffold";
 import { fold } from "./search";
 
 const APP_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
-const RESERVED_APP_IDS = new Set(["setup", "names", "catalog", "login", "platform", "expense"]);
+// ADR-0015: "expense" is no longer reserved — it is a pure sample template
+// installed like any other app. Only true platform/system ids stay reserved.
+const RESERVED_APP_IDS = new Set(["setup", "names", "catalog", "login", "platform"]);
 
 export function slugifyAppId(input: string): string {
   return fold(input)

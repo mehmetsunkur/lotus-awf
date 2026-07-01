@@ -640,7 +640,12 @@ async function resolveBusinessApp(appId: string): Promise<BusinessAppContext> {
 }
 
 async function appContextFromRequest(request: Request): Promise<BusinessAppContext> {
-  const appId = routeParam(request.params.appId) || "expense";
+  // ADR-0015: the runtime is app-scoped only — no default app. An unscoped
+  // request (no :appId) is rejected rather than silently resolving to expense.
+  const appId = routeParam(request.params.appId);
+  if (!appId) {
+    throw new CouchError(400, { error: "app_required", reason: "An app id is required (use /api/apps/:appId/…)" });
+  }
   return resolveBusinessApp(appId);
 }
 
@@ -1700,9 +1705,7 @@ app.get(
       workflows: workflows.docs.sort((left, right) => left.title.localeCompare(right.title)),
       user: scope.person,
       roles: principalsFor(scope),
-      accessLevel: scope.accessLevel,
-      form: forms.docs.find((form) => form._id === "form:expense"),
-      view: views.docs.find((view) => view._id === "view:my-expenses")
+      accessLevel: scope.accessLevel
     });
   })
 );
@@ -1817,7 +1820,7 @@ app.get(
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     const scope = await requireAppSession(request, appContext.database);
-    const docType = typeof request.query.docType === "string" ? request.query.docType : "expense";
+    const docType = typeof request.query.docType === "string" ? request.query.docType : "";
     const docs = await getBusinessDocs("local", docType, scope, appContext.database);
     response.json(docs);
   })
@@ -1903,7 +1906,7 @@ app.post(
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     const scope = await requireAppSession(request, appContext.database, "author");
-    const docType = request.body.docType ?? "expense";
+    const docType = request.body.docType ?? "";
     const form = await formForDocType(docType, appContext.database);
     const optionsByField = await selectOptionsForForm(form, scope, appContext.database);
     const payload = applyComputedFields(form, normalizePayload(form, request.body.payload ?? {}));

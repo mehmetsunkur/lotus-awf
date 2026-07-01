@@ -63,12 +63,12 @@ test.describe("authoring studio", () => {
     await page.getByTestId("definition-save").click();
     await expect(page.getByTestId("definition-error")).toContainText("Field name is required");
 
-    const definitions = await page.request.get("/api/definitions").then((response) => response.json());
+    const definitions = await page.request.get("/api/apps/expense/definitions").then((response) => response.json());
     const invalidView = {
       ...definitions.views.find((view: { _id: string }) => view._id === "view:all-expenses"),
       columns: []
     };
-    const refused = await page.request.put("/api/definitions/view%3Aall-expenses", { data: invalidView });
+    const refused = await page.request.put("/api/apps/expense/definitions/view%3Aall-expenses", { data: invalidView });
     expect(refused.status()).toBe(422);
     expect(JSON.stringify(await refused.json())).toContain("A view needs at least one column");
   });
