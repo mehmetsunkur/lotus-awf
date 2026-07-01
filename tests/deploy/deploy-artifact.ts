@@ -71,7 +71,14 @@ async function request<T>(path: string, options: HttpOptions = {}): Promise<T> {
   const expected = Array.isArray(options.ok) ? options.ok : [options.ok ?? 200];
   assert.ok(expected.includes(response.status), `${path} returned ${response.status}, expected ${expected.join("/")}`);
   if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
+  if (response.status >= 400) return undefined as T;
+  const text = await response.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch (error) {
+    const snippet = text.slice(0, 120).replace(/\s+/g, " ");
+    throw new Error(`${path} returned non-JSON ${response.headers.get("content-type") ?? "unknown content type"}: ${snippet}`, { cause: error });
+  }
 }
 
 async function waitFor(path: string, description: string, timeoutMs = 120_000) {
@@ -202,6 +209,11 @@ async function runAssertions() {
     method: "POST",
     ok: 201,
     body: { username: "bob", displayName: "Bob Builder", password: "password123" }
+  });
+  await request("/api/names/groups", {
+    method: "POST",
+    ok: 201,
+    body: { slug: "finance", name: "Finance", members: ["person:admin"] }
   });
 
   const appCreated = await request<{
