@@ -3,7 +3,7 @@ import { scaffoldDocumentType } from "./scaffold";
 import { fold } from "./search";
 
 const APP_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
-const RESERVED_APP_IDS = new Set(["setup", "catalog", "login", "platform", "expense"]);
+const RESERVED_APP_IDS = new Set(["setup", "names", "catalog", "login", "platform", "expense"]);
 
 export function slugifyAppId(input: string): string {
   return fold(input)

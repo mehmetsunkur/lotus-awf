@@ -7,7 +7,7 @@ data:
   API_PORT: "3001"
   APP_DB: expense_app
   PLATFORM_DB: platform_app
-  SETUP_DB: setup_app
+  NAMES_DB: names_app
   APP_AUTO_SETUP: "1"
   TRUST_PROXY: "1"
   COOKIE_SECURE: "1"

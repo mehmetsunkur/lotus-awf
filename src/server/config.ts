@@ -4,7 +4,7 @@ const serverCouchUrl = process.env.SERVER_COUCH_URL ?? "http://admin:password@lo
 export const config = {
   appDb: process.env.APP_DB ?? "expense_app",
   platformDb: process.env.PLATFORM_DB ?? "platform_app",
-  setupDb: process.env.SETUP_DB ?? "setup_app",
+  namesDb: process.env.NAMES_DB ?? "names_app",
   appUser: process.env.APP_USER ?? "person:alice",
   localCouchUrl,
   serverCouchUrl,

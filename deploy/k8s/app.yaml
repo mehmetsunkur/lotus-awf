@@ -50,11 +50,11 @@ spec:
                 configMapKeyRef:
                   name: lotus-config
                   key: PLATFORM_DB
-            - name: SETUP_DB
+            - name: NAMES_DB
               valueFrom:
                 configMapKeyRef:
                   name: lotus-config
-                  key: SETUP_DB
+                  key: NAMES_DB
             - name: APP_AUTO_SETUP
               valueFrom:
                 configMapKeyRef:

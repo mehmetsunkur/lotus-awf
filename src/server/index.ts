@@ -200,7 +200,7 @@ function bestAccessLevel(levels: Array<AccessLevel | undefined>): AccessLevel {
 
 async function groupsForPerson(target: "local" | "server", personId: `person:${string}`): Promise<GroupDocument[]> {
   try {
-    const rows = await allDocsFromDb<GroupDocument>(target, config.setupDb);
+    const rows = await allDocsFromDb<GroupDocument>(target, config.namesDb);
     return rows.rows
       .map((row) => row.doc)
       .filter((doc): doc is GroupDocument => Boolean(doc && doc.kind === "group" && doc.members.includes(personId)));
@@ -221,7 +221,7 @@ function publicGroup(group: GroupDocument): PublicGroup {
 
 async function listPeople(target: "local" | "server" = "local"): Promise<PersonDocument[]> {
   try {
-    const rows = await allDocsFromDb<PersonDocument>(target, config.setupDb);
+    const rows = await allDocsFromDb<PersonDocument>(target, config.namesDb);
     return rows.rows
       .map((row) => row.doc)
       .filter((doc): doc is PersonDocument => Boolean(doc && doc.kind === "person"))
@@ -234,7 +234,7 @@ async function listPeople(target: "local" | "server" = "local"): Promise<PersonD
 
 async function listGroups(target: "local" | "server" = "local"): Promise<GroupDocument[]> {
   try {
-    const rows = await allDocsFromDb<GroupDocument>(target, config.setupDb);
+    const rows = await allDocsFromDb<GroupDocument>(target, config.namesDb);
     return rows.rows
       .map((row) => row.doc)
       .filter((doc): doc is GroupDocument => Boolean(doc && doc.kind === "group"))
@@ -287,7 +287,7 @@ async function sessionStateForRequest(request?: Request): Promise<SessionState> 
   try {
     const session = await getDocFromNamedDb<SessionDocument>("local", config.platformDb, `session:${hashSessionToken(token)}`);
     if (session.expiresAt <= timestamp()) return emptySession();
-    const person = await getDocFromNamedDb<PersonDocument>("local", config.setupDb, session.personId);
+    const person = await getDocFromNamedDb<PersonDocument>("local", config.namesDb, session.personId);
     if (!person.active) return emptySession();
     return sessionStateForPerson(person);
   } catch (error) {
@@ -464,8 +464,8 @@ async function upsertPerson(target: "local" | "server", username: string, displa
   const normalized = normalizeUsername(username);
   const now = timestamp();
   const passwordFields = await hashPassword(password);
-  const existing = await docExistsInDb(target, config.setupDb, personIdForUsername(normalized));
-  const current = existing ? await getDocFromNamedDb<PersonDocument>(target, config.setupDb, personIdForUsername(normalized)) : undefined;
+  const existing = await docExistsInDb(target, config.namesDb, personIdForUsername(normalized));
+  const current = existing ? await getDocFromNamedDb<PersonDocument>(target, config.namesDb, personIdForUsername(normalized)) : undefined;
   const person: PersonDocument = {
     _id: personIdForUsername(normalized),
     kind: "person",
@@ -476,7 +476,7 @@ async function upsertPerson(target: "local" | "server", username: string, displa
     createdAt: current?.createdAt ?? now,
     updatedAt: now
   };
-  await upsertDocInDb(target, config.setupDb, person);
+  await upsertDocInDb(target, config.namesDb, person);
   return person;
 }
 
@@ -484,11 +484,11 @@ async function upsertGroup(target: "local" | "server", id: `group:${string}`, na
   const now = timestamp();
   let createdAt = now;
   try {
-    createdAt = (await getDocFromNamedDb<GroupDocument>(target, config.setupDb, id)).createdAt;
+    createdAt = (await getDocFromNamedDb<GroupDocument>(target, config.namesDb, id)).createdAt;
   } catch (error) {
     if (!(error instanceof CouchError) || error.status !== 404) throw error;
   }
-  await upsertDocInDb<GroupDocument>(target, config.setupDb, {
+  await upsertDocInDb<GroupDocument>(target, config.namesDb, {
     _id: id,
     kind: "group",
     name,
@@ -547,15 +547,15 @@ async function assertActiveAdminExists(nextGroups?: GroupDocument[], nextPeople?
 
 async function writePersonBothTargets(person: PersonDocument): Promise<void> {
   await Promise.all([
-    upsertDocInDb("local", config.setupDb, person),
-    upsertDocInDb("server", config.setupDb, person)
+    upsertDocInDb("local", config.namesDb, person),
+    upsertDocInDb("server", config.namesDb, person)
   ]);
 }
 
 async function writeGroupBothTargets(group: GroupDocument): Promise<void> {
   await Promise.all([
-    upsertDocInDb("local", config.setupDb, group),
-    upsertDocInDb("server", config.setupDb, group)
+    upsertDocInDb("local", config.namesDb, group),
+    upsertDocInDb("server", config.namesDb, group)
   ]);
 }
 
@@ -595,14 +595,14 @@ async function expenseAppInstalled(target: "local" | "server") {
 }
 
 async function seedSetupTarget(target: "local" | "server") {
-  await ensureNamedDb(target, config.setupDb);
-  if (!(await docExistsInDb(target, config.setupDb, "app:config"))) {
-    await putDocInDb<AppConfig>(target, config.setupDb, {
+  await ensureNamedDb(target, config.namesDb);
+  if (!(await docExistsInDb(target, config.namesDb, "app:config"))) {
+    await putDocInDb<AppConfig>(target, config.namesDb, {
       _id: "app:config",
       kind: "app",
       appId: "setup",
       title: "Setup",
-      database: config.setupDb
+      database: config.namesDb
     });
   }
 }
@@ -667,7 +667,7 @@ function systemApps(): SystemApp[] {
     {
       appId: "setup",
       title: "Setup",
-      database: config.setupDb,
+      database: config.namesDb,
       route: "/setup.nsf",
       description: "Directory, groups, and platform administration."
     }
@@ -763,7 +763,7 @@ async function autoSetupPackagedApp() {
   try {
     await Promise.all([waitForCouch("local"), waitForCouch("server")]);
     await Promise.all([seedSetupTarget("local"), seedSetupTarget("server"), seedPlatformTarget("local"), seedPlatformTarget("server")]);
-    console.log(`Installed setup.nsf (${config.setupDb}) and platform catalog (${config.platformDb})`);
+    console.log(`Installed setup.nsf (${config.namesDb}) and platform catalog (${config.platformDb})`);
   } catch (error) {
     console.error("packaged app auto-setup failed", error);
   }
@@ -1231,12 +1231,12 @@ app.get(
     ] = await Promise.all([
       ping("local"),
       ping("server"),
-      dbExists("local", config.setupDb),
-      dbExists("server", config.setupDb),
+      dbExists("local", config.namesDb),
+      dbExists("server", config.namesDb),
       dbExists("local", config.platformDb),
       dbExists("server", config.platformDb),
-      docExistsInDb("local", config.setupDb, "app:config"),
-      docExistsInDb("server", config.setupDb, "app:config"),
+      docExistsInDb("local", config.namesDb, "app:config"),
+      docExistsInDb("server", config.namesDb, "app:config"),
       docExistsInDb("local", config.platformDb, "platform:config"),
       docExistsInDb("server", config.platformDb, "platform:config"),
       platformState(_request)
@@ -1254,7 +1254,7 @@ app.get(
       serverPlatformInstalled;
     response.status(ready ? 200 : 503).json({
       ok: ready,
-      setupDb: config.setupDb,
+      namesDb: config.namesDb,
       platformDb: config.platformDb,
       localReachable,
       serverReachable,
@@ -1288,8 +1288,8 @@ app.post(
       return;
     }
     await Promise.all([
-      deleteDb("local", config.setupDb),
-      deleteDb("server", config.setupDb),
+      deleteDb("local", config.namesDb),
+      deleteDb("server", config.namesDb),
       deleteDb("local", config.platformDb),
       deleteDb("server", config.platformDb)
     ]);
@@ -1374,7 +1374,7 @@ app.post(
       return;
     }
     try {
-      const person = await getDocFromNamedDb<PersonDocument>("local", config.setupDb, personIdForUsername(username));
+      const person = await getDocFromNamedDb<PersonDocument>("local", config.namesDb, personIdForUsername(username));
       if (!person.active || !(await verifyPassword(password, person))) {
         response.status(401).json({ error: "invalid_login", reason: "Invalid username or password" });
         return;
@@ -1418,7 +1418,7 @@ app.post(
     if (!username) errors.push({ field: "username", message: "Username is required" });
     if (!displayName) errors.push({ field: "displayName", message: "Display name is required" });
     if (password.length < 8) errors.push({ field: "password", message: "Password must be at least 8 characters" });
-    if (username && (await docExistsInDb("local", config.setupDb, personIdForUsername(username)))) {
+    if (username && (await docExistsInDb("local", config.namesDb, personIdForUsername(username)))) {
       errors.push({ field: "username", message: "Username already exists" });
     }
     if (errors.length) {
@@ -1439,7 +1439,7 @@ app.put(
   asyncRoute(async (request, response) => {
     await requireSession(request, "manager");
     const username = normalizeUsername(routeParam(request.params.username));
-    const existing = await getDocFromNamedDb<PersonDocument>("local", config.setupDb, personIdForUsername(username));
+    const existing = await getDocFromNamedDb<PersonDocument>("local", config.namesDb, personIdForUsername(username));
     const displayName = String(request.body.displayName ?? existing.displayName).trim();
     const active = typeof request.body.active === "boolean" ? request.body.active : existing.active;
     if (!displayName) {
@@ -1466,7 +1466,7 @@ app.post(
       response.status(422).json({ error: "directory_validation_failed", errors: [{ field: "password", message: "Password must be at least 8 characters" }] });
       return;
     }
-    const existing = await getDocFromNamedDb<PersonDocument>("local", config.setupDb, personIdForUsername(username));
+    const existing = await getDocFromNamedDb<PersonDocument>("local", config.namesDb, personIdForUsername(username));
     const passwordFields = await hashPassword(password);
     const next: PersonDocument = { ...existing, ...passwordFields, updatedAt: timestamp() };
     await writePersonBothTargets(next);
@@ -1487,7 +1487,7 @@ app.post(
     if (!slug) errors.push({ field: "slug", message: "Group slug is required" });
     if (!name) errors.push({ field: "name", message: "Group name is required" });
     const id = groupIdForSlug(slug);
-    if (slug && (await docExistsInDb("local", config.setupDb, id))) {
+    if (slug && (await docExistsInDb("local", config.namesDb, id))) {
       errors.push({ field: "slug", message: "Group already exists" });
     }
     if (errors.length) {
@@ -1509,7 +1509,7 @@ app.put(
   asyncRoute(async (request, response) => {
     await requireSession(request, "manager");
     const slug = normalizeGroupSlug(routeParam(request.params.slug));
-    const existing = await getDocFromNamedDb<GroupDocument>("local", config.setupDb, groupIdForSlug(slug));
+    const existing = await getDocFromNamedDb<GroupDocument>("local", config.namesDb, groupIdForSlug(slug));
     const name = String(request.body.name ?? existing.name).trim();
     const members = Array.isArray(request.body.members)
       ? Array.from(new Set(request.body.members.map((member: unknown) => String(member)).filter((member: string) => member.startsWith("person:")))) as Array<`person:${string}`>
