@@ -105,11 +105,11 @@ type RouteState = {
 };
 
 const DEFAULT_EXPENSE_VIEW_ID = "view:my-expenses";
-const DEFAULT_SETUP_VIEW_ID = "view:people";
+const DEFAULT_NAMES_VIEW_ID = "view:people";
 const DEFAULT_CATALOG_VIEW_ID = "view:system-apps";
 const ACCESS_PANEL_ID = "acl:access";
-const SYSTEM_APP_ROUTES = new Set(["setup", "catalog"]);
-const SETUP_VIEW_IDS = [DEFAULT_SETUP_VIEW_ID, "view:groups", "view:installed-apps"];
+const SYSTEM_APP_ROUTES = new Set(["setup", "names", "catalog"]);
+const NAMES_VIEW_IDS = [DEFAULT_NAMES_VIEW_ID, "view:groups", "view:installed-apps"];
 const CATALOG_VIEW_IDS = [DEFAULT_CATALOG_VIEW_ID, "view:installed-apps", "view:sample-templates"];
 
 const routeForPath = (path: string): PlatformRoute => {
@@ -130,7 +130,7 @@ const workflowIdFromDocType = (docType: string) => `workflow:${docType}`;
 const docTypeFromDefinitionId = (id: string) => id.replace(/^(form|workflow):/, "");
 
 const defaultViewForApp = (app: PlatformRoute) => {
-  if (app === "setup") return DEFAULT_SETUP_VIEW_ID;
+  if (app === "names") return DEFAULT_NAMES_VIEW_ID;
   if (app === "catalog") return DEFAULT_CATALOG_VIEW_ID;
   return DEFAULT_EXPENSE_VIEW_ID;
 };
@@ -1627,7 +1627,7 @@ function AppCatalog({
   message,
   selectedViewId,
   onSelectView,
-  onOpenSetup,
+  onOpenNames,
   onInstallExpense,
   onOpenExpense,
   onOpenApp,
@@ -1640,7 +1640,7 @@ function AppCatalog({
   message: string;
   selectedViewId: string;
   onSelectView: (viewId: string) => void;
-  onOpenSetup: () => void;
+  onOpenNames: () => void;
   onInstallExpense: () => void;
   onOpenExpense: () => void;
   onOpenApp: (appId: string) => void;
@@ -1698,9 +1698,9 @@ function AppCatalog({
                     <strong>{app.title}</strong>
                     <span>{app.database}</span>
                     <span>{app.description}</span>
-                    {app.appId === "setup" && (
-                      <button className="primary" onClick={onOpenSetup} disabled={busy} data-testid="open-setup">
-                        <Database size={16} /> Open setup.nsf
+                    {app.appId === "names" && (
+                      <button className="primary" onClick={onOpenNames} disabled={busy} data-testid="open-names">
+                        <Database size={16} /> Open names.nsf
                       </button>
                     )}
                   </article>
@@ -1850,10 +1850,10 @@ function DirectoryConsole({
   };
 
   return (
-    <main className="shell catalogShell" data-testid="setup-directory">
+    <main className="shell catalogShell" data-testid="names-directory">
       <header className="topbar">
         <div>
-          <p className="kicker">setup.nsf</p>
+          <p className="kicker">names.nsf</p>
           <h1>Directory Console</h1>
         </div>
         <div className="statusCluster">
@@ -2093,7 +2093,7 @@ function App() {
   }, []);
 
   const refreshDirectory = React.useCallback(async () => {
-    setDirectory(await api<SetupDirectoryState>("/api/setup/directory"));
+    setDirectory(await api<SetupDirectoryState>("/api/names/directory"));
   }, []);
 
   const refreshAccess = React.useCallback(async () => {
@@ -2155,6 +2155,12 @@ function App() {
       navigateApp("login", true);
       return;
     }
+    // setup.nsf is the first-run wizard only; once setup is complete it is not a
+    // standing app — send stray navigations to the names.nsf directory.
+    if (platformState.setupComplete && platformState.session.authenticated && route.app === "setup") {
+      navigateApp("names", true);
+      return;
+    }
     if (platformState.setupComplete && platformState.session.authenticated && route.app === "login") {
       navigateApp("catalog", true);
     }
@@ -2162,13 +2168,13 @@ function App() {
 
   React.useEffect(() => {
     if (!platformState?.setupComplete || !platformState.session.authenticated) return;
-    if (route.app === "setup") {
+    if (route.app === "names") {
       if (route.nsf.kind === "home") {
-        navigateNsf({ kind: "view", viewId: DEFAULT_SETUP_VIEW_ID }, true, "setup");
+        navigateNsf({ kind: "view", viewId: DEFAULT_NAMES_VIEW_ID }, true, "names");
         return;
       }
-      if (route.nsf.kind !== "view" || !SETUP_VIEW_IDS.includes(route.nsf.viewId)) {
-        navigateNsf({ kind: "view", viewId: DEFAULT_SETUP_VIEW_ID }, true, "setup");
+      if (route.nsf.kind !== "view" || !NAMES_VIEW_IDS.includes(route.nsf.viewId)) {
+        navigateNsf({ kind: "view", viewId: DEFAULT_NAMES_VIEW_ID }, true, "names");
       }
     }
     if (route.app === "catalog") {
@@ -2183,19 +2189,19 @@ function App() {
   }, [navigateNsf, platformState?.session.authenticated, platformState?.setupComplete, route.app, route.nsf]);
 
   React.useEffect(() => {
-    if (!platformState?.setupComplete || !platformState.session.authenticated || route.app !== "setup") return;
+    if (!platformState?.setupComplete || !platformState.session.authenticated || route.app !== "names") return;
     let cancelled = false;
-    setMessage("Open setup.nsf...");
-    api<SetupDirectoryState>("/api/setup/directory")
+    setMessage("Open names.nsf...");
+    api<SetupDirectoryState>("/api/names/directory")
       .then((nextDirectory) => {
         if (cancelled) return;
         setDirectory(nextDirectory);
-        setMessage("Open setup.nsf complete.");
+        setMessage("Open names.nsf complete.");
       })
       .catch((error) => {
         if (cancelled) return;
         setDirectory(undefined);
-        setMessage(error instanceof Error ? error.message : "Open setup.nsf failed.");
+        setMessage(error instanceof Error ? error.message : "Open names.nsf failed.");
       });
     return () => {
       cancelled = true;
@@ -2419,21 +2425,21 @@ function App() {
   }
 
   if (!isBusinessApp(route.app)) {
-    if (route.app === "setup") {
+    if (route.app === "names") {
       const runDirectory = (label: string, task: () => Promise<void>) => run(label, task, { refreshAfter: false });
-      const setupViewId = route.nsf.kind === "view" && SETUP_VIEW_IDS.includes(route.nsf.viewId) ? route.nsf.viewId : DEFAULT_SETUP_VIEW_ID;
+      const namesViewId = route.nsf.kind === "view" && NAMES_VIEW_IDS.includes(route.nsf.viewId) ? route.nsf.viewId : DEFAULT_NAMES_VIEW_ID;
       return (
         <DirectoryConsole
           directory={directory}
           busy={busy}
           message={message}
-          selectedViewId={setupViewId}
-          onSelectView={(viewId) => navigateNsf({ kind: "view", viewId }, false, "setup")}
+          selectedViewId={namesViewId}
+          onSelectView={(viewId) => navigateNsf({ kind: "view", viewId }, false, "names")}
           onBack={() => navigateApp("catalog")}
           onRefresh={() => runDirectory("Refresh directory", refreshDirectory)}
           onCreatePerson={(payload) =>
             runDirectory("Create person", async () => {
-              const result = await api<{ directory: SetupDirectoryState }>("/api/setup/people", {
+              const result = await api<{ directory: SetupDirectoryState }>("/api/names/people", {
                 method: "POST",
                 body: JSON.stringify(payload)
               });
@@ -2442,7 +2448,7 @@ function App() {
           }
           onUpdatePerson={(person, payload) =>
             runDirectory("Save person", async () => {
-              const result = await api<{ directory: SetupDirectoryState }>(`/api/setup/people/${encodeURIComponent(person.username)}`, {
+              const result = await api<{ directory: SetupDirectoryState }>(`/api/names/people/${encodeURIComponent(person.username)}`, {
                 method: "PUT",
                 body: JSON.stringify(payload)
               });
@@ -2451,7 +2457,7 @@ function App() {
           }
           onResetPassword={(person, password) =>
             runDirectory("Reset password", async () => {
-              const result = await api<{ directory: SetupDirectoryState }>(`/api/setup/people/${encodeURIComponent(person.username)}/password`, {
+              const result = await api<{ directory: SetupDirectoryState }>(`/api/names/people/${encodeURIComponent(person.username)}/password`, {
                 method: "POST",
                 body: JSON.stringify({ password })
               });
@@ -2460,7 +2466,7 @@ function App() {
           }
           onCreateGroup={(payload) =>
             runDirectory("Create group", async () => {
-              const result = await api<{ directory: SetupDirectoryState }>("/api/setup/groups", {
+              const result = await api<{ directory: SetupDirectoryState }>("/api/names/groups", {
                 method: "POST",
                 body: JSON.stringify(payload)
               });
@@ -2469,7 +2475,7 @@ function App() {
           }
           onUpdateGroup={(group, payload) =>
             runDirectory("Save group", async () => {
-              const result = await api<{ directory: SetupDirectoryState }>(`/api/setup/groups/${encodeURIComponent(group._id.replace(/^group:/, ""))}`, {
+              const result = await api<{ directory: SetupDirectoryState }>(`/api/names/groups/${encodeURIComponent(group._id.replace(/^group:/, ""))}`, {
                 method: "PUT",
                 body: JSON.stringify(payload)
               });
@@ -2487,7 +2493,7 @@ function App() {
         message={message}
         selectedViewId={catalogViewId}
         onSelectView={(viewId) => navigateNsf({ kind: "view", viewId }, false, "catalog")}
-        onOpenSetup={() => navigateApp("setup")}
+        onOpenNames={() => navigateApp("names")}
         onRefresh={() => run("Refresh catalog", refreshPlatform, { refreshAfter: false })}
         onLogout={() =>
           run(
