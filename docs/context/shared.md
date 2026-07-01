@@ -107,7 +107,7 @@ validated by the shared validator) so a brand-new type is reachable in the runti
 the pair local-first.
 
 M19 adds platform/system-app shell types. `SystemApp` records are not `appinstall:*` documents; they
-describe always-present system apps such as `setup.nsf`. `SetupDirectoryState` is sanitized and must
+describe always-present system apps such as `names.nsf`. `SetupDirectoryState` is sanitized and must
 not grow server-only password/session fields.
 
 M22 adds shared app-access editor payloads. The server owns validation and writes `acl:rules`; the

@@ -105,7 +105,7 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 
 ## Deployable artifact
 
-- The deploy artifact must run without a source bind mount or watch process: Docker builds from `package-lock.json`, serves the built client from Express, auto-installs setup/platform control databases for deploy compose, exposes readiness that checks both CouchDB replicas and first-run platform readiness, and `npm run test:deploy` must exercise setup/catalog plus runtime/design operations through HTTP without a manual setup click.
+- The deploy artifact must run without a source bind mount or watch process: Docker builds from `package-lock.json`, serves the built client from Express, auto-installs names/platform control databases for deploy compose, exposes readiness that checks both CouchDB replicas and first-run platform readiness, and `npm run test:deploy` must exercise setup/catalog plus runtime/design operations through HTTP without a manual setup click.
   - Paths: `Dockerfile`, `deploy/**`, `package.json`, `src/server/index.ts`, `tests/deploy/**`
 
 ## Index & query

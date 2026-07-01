@@ -31,10 +31,11 @@ resolution panel, and M18 login/logout.
 
 ## Key Flows
 
-- Boot (M14/M19/M20/M21) → `GET /api/platform/state` → route/render `/setup.nsf`,
-  `/catalog.nsf`, or an installed business app such as `/expense.nsf` / `/:appId.nsf`. If setup is
-  complete but no session is authenticated, route/render `/login.nsf`. After setup, `/setup.nsf`
-  opens the authenticated Directory Console in the standard NSF workspace.
+- Boot (M14/M19/M20/M21, ADR-0012) → `GET /api/platform/state` → when setup is incomplete render the
+  `/setup.nsf` first-run wizard; otherwise route/render `/catalog.nsf`, `/names.nsf`, or an installed
+  business app such as `/expense.nsf` / `/:appId.nsf`. If setup is complete but no session is
+  authenticated, route/render `/login.nsf`. After setup, `/names.nsf` opens the authenticated
+  Directory Console in the standard NSF workspace and `/setup.nsf` redirects there.
 - Login/logout (M18) → login form posts to `POST /api/session/login`; logout posts to
   `POST /api/session/logout`, refreshes platform state, and returns to login. The session cookie is
   HTTP-only, so the client only observes session state through API responses.
@@ -51,11 +52,11 @@ resolution panel, and M18 login/logout.
 - Sample install (M14) → catalog `POST /api/platform/install-sample/expense`, then the user can open
   the existing Expense runtime. Catalog-created apps (M21) use `POST /api/platform/apps`, then open
   through `/:appId.nsf`.
-- System app shell (M20) → `/catalog.nsf` and post-setup `/setup.nsf` use the same left-navigation /
+- System app shell (M20) → `/catalog.nsf` and `/names.nsf` use the same left-navigation /
   right-content workspace as business apps. Catalog sections are System Apps, Installed Apps, and
-  Sample Templates; setup sections are People, Groups, and Installed Apps.
-- Directory Console (M19/M20) → catalog System apps card opens `/setup.nsf/views/people`; the console
-  fetches `GET /api/setup/directory` and calls manager-only People/Groups APIs. It renders only public
+  Sample Templates; names sections are People, Groups, and Installed Apps.
+- Directory Console (M19/M20, ADR-0012) → catalog System apps card opens `/names.nsf/views/people`; the console
+  fetches `GET /api/names/directory` and calls manager-only People/Groups APIs. It renders only public
   person data, groups, and installed-app summaries inside the standard workspace.
 - Edit → shared `validatePayload` runs client-side → `POST/PUT /api/documents` (local replica).
 - Compute (M7) → `applyComputedFields` (shared) derives `compute` fields from the live draft, offline;
@@ -119,7 +120,7 @@ the host `fs.inotify` `EMFILE` limit.
 - Removing/renaming a `data-testid` relied on by e2e specs.
 - Reading or storing the session token in client state; the browser should only receive public
   session state from the API.
-- Treating system apps as removable business app installs; `setup.nsf` comes from
+- Treating system apps as removable business app installs; `names.nsf` comes from
   `PlatformState.systemApps`.
 - Reintroducing one-off full-page system app layouts; first-party `.nsf` apps should use the M20
   standard workspace unless a later ADR carves out an exception.
