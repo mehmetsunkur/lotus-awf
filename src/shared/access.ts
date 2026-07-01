@@ -20,11 +20,15 @@ export function canEditDocument(doc: BusinessDocument, scope: PrincipalScope): b
   return doc.authors.includes(scope.person);
 }
 
-export function readersForNewDocument(scope: PrincipalScope, docType: string): string[] {
+export function readersForNewDocument(scope: PrincipalScope, defaultReaders: string[] = []): string[] {
   const readers = principalsFor(scope);
-  // Expenses need finance visibility for approval even when a non-finance user
-  // creates them offline. Other document types stay actor-scoped by default.
-  if (docType === "expense" && !readers.includes("group:finance")) readers.push("group:finance");
+  // ADR-0015: a form may declare `defaultReaders` (data) so new documents get the
+  // extra visibility their app needs — e.g. an expense form grants `group:finance`
+  // so finance can approve docs created (even offline) by a non-finance user. No
+  // app-specific rule lives in the base; the policy travels with the template.
+  for (const principal of defaultReaders) {
+    if (!readers.includes(principal)) readers.push(principal);
+  }
   return readers;
 }
 

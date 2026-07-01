@@ -122,6 +122,11 @@ export function validateFormDefinition(definition: FormDefinition): ValidationEr
     if (fieldNames.has(field.name)) errors.push(error(`fields.${index}.name`, `Duplicate field name: ${field.name}`));
     fieldNames.add(field.name);
   }
+  if (definition.defaultReaders !== undefined) {
+    if (!Array.isArray(definition.defaultReaders) || !definition.defaultReaders.every((p) => nonEmpty(p))) {
+      errors.push(error("defaultReaders", "defaultReaders must be an array of principal ids"));
+    }
+  }
   for (const [sectionIndex, section] of (definition.sections ?? []).entries()) {
     if (!nonEmpty(section.title)) errors.push(error(`sections.${sectionIndex}.title`, "Section title is required"));
     for (const fieldName of section.fields) {

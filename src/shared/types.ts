@@ -90,6 +90,13 @@ export type FormDefinition = {
   title: string;
   sections?: FormSection[];
   fields: FormField[];
+  /**
+   * ADR-0015: principals ALWAYS added to a new document's `readers` beyond the
+   * creator's own (e.g. `["group:finance"]` so finance can approve). Optional and
+   * back-compatible — absent means creator-scoped. Keeps app-specific readers
+   * policy in the template as data, not in base code.
+   */
+  defaultReaders?: string[];
 };
 
 export type ViewColumn = {

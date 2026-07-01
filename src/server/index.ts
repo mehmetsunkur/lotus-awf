@@ -1920,9 +1920,10 @@ app.post(
       response.status(422).json({ error: "validation_failed", errors });
       return;
     }
-    const readers = readersForNewDocument(scope, docType);
+    const readers = readersForNewDocument(scope, form.defaultReaders);
     // M12: stamp the document generically so any scaffolded docType is correct
-    // (was hardcoded to expense/vendor); readers come from the access policy.
+    // (was hardcoded to expense/vendor); readers come from the form's data policy
+    // (ADR-0015: `defaultReaders`), not an app-specific rule in base.
     const doc = createDocument(docType, payload, scopeUser(scope), readers);
     const result = await putDoc("local", { ...doc, appId: appContext.appId }, appContext.database);
     response.status(201).json({ ...doc, appId: appContext.appId, _rev: result.rev });

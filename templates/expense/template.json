@@ -64,6 +64,7 @@
       "appId": "expense",
       "docType": "expense",
       "title": "Expense",
+      "defaultReaders": ["group:finance"],
       "sections": [
         {
           "title": "Spend",

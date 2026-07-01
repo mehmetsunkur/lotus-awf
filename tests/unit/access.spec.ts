@@ -69,15 +69,15 @@ describe("canEditDocument", () => {
 });
 
 describe("readersForNewDocument", () => {
-  it("adds group:finance for expenses so finance can approve", () => {
-    expect(readersForNewDocument(scope(), "expense")).toContain("group:finance");
+  it("adds a form's defaultReaders so extra principals can see new docs", () => {
+    expect(readersForNewDocument(scope(), ["group:finance"])).toContain("group:finance");
   });
-  it("does not duplicate group:finance when already present", () => {
-    const readers = readersForNewDocument(scope({ groups: ["group:finance"] }), "expense");
+  it("does not duplicate a defaultReader already carried by the creator", () => {
+    const readers = readersForNewDocument(scope({ groups: ["group:finance"] }), ["group:finance"]);
     expect(readers.filter((r) => r === "group:finance")).toHaveLength(1);
   });
-  it("leaves other document types actor-scoped", () => {
-    expect(readersForNewDocument(scope(), "vendor")).not.toContain("group:finance");
+  it("is creator-scoped when the form declares no defaultReaders", () => {
+    expect(readersForNewDocument(scope())).not.toContain("group:finance");
   });
 });
 
