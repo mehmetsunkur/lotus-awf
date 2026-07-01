@@ -28,7 +28,7 @@ import type {
   PlatformState,
   PublicGroup,
   PublicPerson,
-  SampleApp,
+  AppTemplate,
   SessionDocument,
   SessionState,
   SelectOptionsByField,
@@ -90,7 +90,7 @@ import {
 } from "./couch";
 import { config } from "./config";
 import { createDocument, createExpenseDoc, seedDocuments } from "./seed-data";
-import { listSampleTemplates, sampleTemplateDocuments, sampleTemplateForApp } from "./template-registry";
+import { listSampleTemplates, loadSampleTemplate, sampleTemplateForApp } from "./template-registry";
 import { validateTemplateDefinitions } from "../shared/template-validation";
 import {
   clearSessionCookie,
@@ -667,12 +667,10 @@ async function platformState(request?: Request): Promise<PlatformState> {
     installedApps(),
     sessionStateForRequest(request)
   ]);
-  const samples: SampleApp[] = listSampleTemplates().map((sample) => ({
-    appId: sample.appId,
+  const availableTemplates: AppTemplate[] = listSampleTemplates().map((sample) => ({
+    id: sample.appId,
     title: sample.title,
-    database: databaseForAppId(sample.appId),
-    description: sample.description,
-    installed: apps.some((app) => app.appId === sample.appId)
+    description: sample.description
   }));
   return {
     setupComplete: platform.setupComplete,
@@ -682,7 +680,7 @@ async function platformState(request?: Request): Promise<PlatformState> {
     session,
     systemApps: systemApps(),
     installedApps: apps,
-    samples
+    availableTemplates
   };
 }
 
@@ -707,23 +705,25 @@ function appInstallRecord(
 }
 
 /**
- * Install a packaged sample template into an app database (ADR-0015): seed the
- * design + sample docs, ensure the standard indexes, and record the install.
- * Generic — no per-app code; the app id / title / templateId come from the registry.
+ * Instantiate a bundled template as an app under the CHOSEN appId (Level 2). A
+ * template is a portable design: its docs are re-stamped with the target appId,
+ * and `app:config` gets the target database/title. The template's own appId is
+ * just an authored default — one template can deploy as many apps.
  */
-async function installSampleApp(
-  target: "local" | "server",
-  appId: string,
-  title: string,
+function instantiateTemplate(
   templateId: string,
-  installedBy: string,
-  installedAt: string
-) {
+  appId: string,
+  title: string
+): { definitions: DesignDocument[]; documents: BusinessDocument[] } {
+  const { template, sampleData } = loadSampleTemplate(templateId);
   const database = databaseForAppId(appId);
-  await ensureDb(target, database);
-  await bulkDocs(target, sampleTemplateDocuments(templateId), database);
-  await ensureIndexes(target, database);
-  await upsertDocInDb(target, config.platformDb, appInstallRecord(appId, title, database, installedAt, installedBy, templateId));
+  const definitions = template.definitions.map((doc) =>
+    doc._id === "app:config"
+      ? ({ ...doc, appId, title: title.trim() || (doc as AppConfig).title, database } as DesignDocument)
+      : ({ ...doc, appId } as DesignDocument)
+  );
+  const documents = sampleData.map((doc) => ({ ...doc, appId }) as BusinessDocument);
+  return { definitions, documents };
 }
 
 async function completeDevPlatformSetup(target: "local" | "server") {
@@ -1583,30 +1583,8 @@ app.put(
   })
 );
 
-app.post(
-  // ADR-0015: generic sample install by app id (e.g. "expense"), driven entirely by
-  // the template registry — no per-app route or code.
-  "/api/platform/install-sample/:appId",
-  asyncRoute(async (request, response) => {
-    const scope = await requireSession(request, "manager");
-    const state = await platformState(request);
-    if (!state.setupComplete) {
-      response.status(409).json({ error: "setup_required", reason: "Complete setup before installing sample apps" });
-      return;
-    }
-    const sample = sampleTemplateForApp(routeParam(request.params.appId));
-    if (!sample) {
-      response.status(404).json({ error: "unknown_sample", reason: `No sample template for app: ${routeParam(request.params.appId)}` });
-      return;
-    }
-
-    const existing = await docExistsInDb("local", config.platformDb, `appinstall:${sample.appId}`);
-    const installedAt = timestamp();
-    await installSampleApp("local", sample.appId, sample.title, sample.templateId, scopeUser(scope), installedAt);
-    await installSampleApp("server", sample.appId, sample.title, sample.templateId, scopeUser(scope), installedAt);
-    response.status(existing ? 200 : 201).json(await platformState(request));
-  })
-);
+// ADR-0016: no dedicated sample-install route. A template is deployed as an app
+// via POST /api/platform/apps { appId, title, fromTemplate } (see below).
 
 app.post(
   "/api/platform/apps",
@@ -1620,21 +1598,29 @@ app.post(
 
     const appId = (typeof request.body.appId === "string" ? request.body.appId : "").trim();
     const title = (typeof request.body.title === "string" ? request.body.title : "").trim();
-    const docType = (typeof request.body.docType === "string" ? request.body.docType : "").trim();
-    const docTypeTitle = (typeof request.body.docTypeTitle === "string" ? request.body.docTypeTitle : "").trim();
-    const errors = [
-      ...validateAppId(appId),
-      ...validateDocType(docType).map((error) => ({ ...error, field: error.field === "docType" ? "docType" : error.field }))
-    ];
+    // Level 2: create a blank app OR instantiate a bundled template as this app.
+    const fromTemplate = (typeof request.body.fromTemplate === "string" ? request.body.fromTemplate : "").trim();
+    const template = fromTemplate ? sampleTemplateForApp(fromTemplate) : undefined;
+
+    const errors = [...validateAppId(appId)];
     if (!title) errors.push({ field: "title", message: "App title is required" });
-    if (!docTypeTitle) errors.push({ field: "docTypeTitle", message: "Document type title is required" });
+    let docType = "";
+    let docTypeTitle = "";
+    if (fromTemplate) {
+      if (!template) errors.push({ field: "fromTemplate", message: `Unknown template: ${fromTemplate}` });
+    } else {
+      docType = (typeof request.body.docType === "string" ? request.body.docType : "").trim();
+      docTypeTitle = (typeof request.body.docTypeTitle === "string" ? request.body.docTypeTitle : "").trim();
+      errors.push(...validateDocType(docType));
+      if (!docTypeTitle) errors.push({ field: "docTypeTitle", message: "Document type title is required" });
+    }
     if (errors.length) {
       response.status(422).json({ error: "app_validation_failed", errors });
       return;
     }
 
     const database = databaseForAppId(appId);
-    const install = appInstallRecord(appId, title, database, timestamp(), scopeUser(scope));
+    const install = appInstallRecord(appId, title, database, timestamp(), scopeUser(scope), template ? template.templateId : "blank:app");
     const [installExists, localDbExists, serverDbExists] = await Promise.all([
       docExistsInDb("local", config.platformDb, install._id),
       dbExists("local", database),
@@ -1645,27 +1631,30 @@ app.post(
       return;
     }
 
-    const definitions = scaffoldBlankApp(appId, title, docType, docTypeTitle, scopeUser(scope), database);
+    const built = template
+      ? instantiateTemplate(template.templateId, appId, title)
+      : { definitions: scaffoldBlankApp(appId, title, docType, docTypeTitle, scopeUser(scope), database), documents: [] as BusinessDocument[] };
     const definitionErrors = validateTemplateDefinitions({
       kind: "template",
-      templateId: `blank:${appId}`,
+      templateId: template ? template.templateId : `blank:${appId}`,
       appId,
       version: "created",
       createdAt: timestamp(),
       createdBy: scopeUser(scope),
       source: "catalog",
-      definitions
+      definitions: built.definitions
     });
     if (definitionErrors.length) {
       response.status(422).json({ error: "definition_validation_failed", errors: definitionErrors });
       return;
     }
 
+    const seedDocs = [...built.definitions, ...built.documents];
     await Promise.all([ensureNamedDb("local", database), ensureNamedDb("server", database)]);
     await Promise.all([ensureIndexes("local", database), ensureIndexes("server", database)]);
     await Promise.all([
-      bulkDocs("local", definitions, database),
-      bulkDocs("server", definitions, database)
+      bulkDocs("local", seedDocs, database),
+      bulkDocs("server", seedDocs, database)
     ]);
     await Promise.all([
       upsertDocInDb("local", config.platformDb, install),

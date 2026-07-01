@@ -60,9 +60,12 @@ the server's own behavior.
 - Business app resolution (M21): installed app ids map to `/:appId.nsf`, database `${appId}_app`,
   and app-scoped APIs under `/api/apps/:appId/*`. (ADR-0015) The runtime is **app-scoped only**:
   `appContextFromRequest` requires an `:appId`, `resolveBusinessApp` resolves every app (incl.
-  expense) via its `appinstall` record, and sample install is generic
-  (`POST /api/platform/install-sample/:appId`, registry-driven). Expense is no longer special-cased;
-  `createDocument` takes an explicit `appId`; a form's `defaultReaders` supplies extra new-doc readers.
+  expense) via its `appinstall` record. Expense is no longer special-cased; `createDocument` takes
+  an explicit `appId`; a form's `defaultReaders` supplies extra new-doc readers. (ADR-0016) Apps are
+  created via `POST /api/platform/apps` — blank (`docType`/`docTypeTitle`) or from a bundled template
+  (`fromTemplate`); `instantiateTemplate` re-stamps the template's docs to the chosen appId (templates
+  are appId-agnostic). `platformState.availableTemplates` lists bundled templates; there is no
+  `install-sample` route or `samples[]`.
 - App access editor (M22): `GET/PUT /api/apps/:appId/access` requires app manager access, returns
   sanitized directory people/groups plus `acl:rules.entries`, validates active people/existing
   groups and access levels, normalizes duplicate principals, and writes the app's local `acl:rules`
@@ -140,12 +143,12 @@ the server's own behavior.
   stale `_rev`, compares by definition id, and applies add/update changes to **local** Couch without
   touching business docs. Runtime `agentrun:*` / `agent:state` / `auditevent:*` / `audit:state` docs
   are NOT packaged.
-- JSON sample templates (M17): the built-in Expense sample is installed from `sample:expense`, backed
-  by `templates/expense/template.json` (design docs) and `templates/expense/sample-data.json`
-  (optional demo business docs). The server validates the template artifact, validates each design
-  doc, rejects runtime/business docs from the design template, and keeps `seedDocuments()` as a
-  compatibility wrapper over the same artifacts. M18 also seeds sample directory records (Alice,
-  Bob, `group:finance`, `group:sales`) around the same install/reset paths.
+- JSON templates (M17/ADR-0016): bundled templates (`templates/expense/*`) are packaged design +
+  demo docs. `instantiateTemplate` re-stamps them to a chosen appId when deploying via
+  `POST /api/platform/apps { fromTemplate }`; `seedDocuments()` remains a dev/scripts wrapper. The
+  server validates the template artifact and each design doc, rejecting runtime/business docs from
+  the design set. M18 also seeds sample directory records (Alice, Bob, `group:finance`,
+  `group:sales`) around the reset path.
 - Sync: `POST /api/replicate` → scoped `replicateBidirectional` → local `_purge` of server-revoked
   docs → `reconcileStates` reports concurrent state divergence; conflicts surfaced via
   `/api/conflicts`. Resolve accepts `chosenRev` to elect the winning revision's state.

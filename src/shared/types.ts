@@ -396,12 +396,15 @@ export type SystemApp = {
   description: string;
 };
 
-export type SampleApp = {
-  appId: string;
+/**
+ * A bundled, appId-agnostic template the deployment ships (ADR-0016). Instantiated
+ * as an app of the operator's choosing via `POST /api/platform/apps { fromTemplate }`.
+ * Replaces the old "sample app" concept — a template is a design, not a fixed app.
+ */
+export type AppTemplate = {
+  id: string;
   title: string;
-  database: string;
   description: string;
-  installed: boolean;
 };
 
 export type PlatformState = {
@@ -412,7 +415,7 @@ export type PlatformState = {
   session: SessionState;
   systemApps: SystemApp[];
   installedApps: AppInstall[];
-  samples: SampleApp[];
+  availableTemplates: AppTemplate[];
 };
 
 export type DirectoryState = {

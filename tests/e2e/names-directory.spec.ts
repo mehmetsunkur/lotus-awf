@@ -12,7 +12,7 @@ test.describe("names.nsf system app", () => {
 
     await page.getByTestId("view-tab-view:sample-templates").click();
     await expect(page).toHaveURL(/\/catalog\.nsf\/views\/sample-templates$/);
-    await expect(page.getByTestId("sample-apps")).toBeVisible();
+    await expect(page.getByTestId("available-templates")).toBeVisible();
   });
 
   test("catalog shows names.nsf and admins can open the directory console", async ({ page }) => {

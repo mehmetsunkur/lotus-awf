@@ -49,9 +49,10 @@ resolution panel, and M18 login/logout.
 - First-run setup (M14/M18) → `POST /api/platform/setup` stores org/domain/admin, creates the admin
   Person and `group:admins`, sets a session cookie, then catalog renders with no business apps
   installed.
-- Sample install (M14/ADR-0015) → the catalog sample card loops over `state.samples`; installing calls
-  the generic `POST /api/platform/install-sample/:appId`, then the app opens through `/:appId.nsf`.
-  Catalog-created apps (M21) use `POST /api/platform/apps`, then open the same way.
+- Deploy from template (M14/ADR-0016) → the catalog "Templates" section loops over
+  `state.availableTemplates`; "Deploy" calls `POST /api/platform/apps { appId, title, fromTemplate }`
+  (instantiate the template as an app), "Open" navigates to an already-deployed one. Blank apps
+  (M21) use the same endpoint without `fromTemplate`. All open through `/:appId.nsf`.
 - System app shell (M20) → `/catalog.nsf` and `/names.nsf` use the same left-navigation /
   right-content workspace as business apps. Catalog sections are System Apps, Installed Apps, and
   Sample Templates; names sections are People, Groups, and Installed Apps.

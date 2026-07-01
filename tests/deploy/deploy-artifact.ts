@@ -158,13 +158,13 @@ async function runAssertions() {
     session: { authenticated: boolean };
     systemApps: Array<{ appId: string; route: string }>;
     installedApps: unknown[];
-    samples: Array<{ appId: string; installed: boolean }>;
+    availableTemplates: Array<{ id: string }>;
   }>("/api/platform/state");
   assert.equal(firstRun.setupComplete, false, "fresh deploy should start in setup mode");
   assert.equal(firstRun.session.authenticated, false, "fresh deploy should not have an authenticated session");
   assert.ok(firstRun.systemApps.some((app) => app.appId === "names" && app.route === "/names.nsf"), "names.nsf should be advertised as a system app");
   assert.equal(firstRun.installedApps.length, 0, "fresh deploy should have an empty app catalog");
-  assert.equal(firstRun.samples.find((sample) => sample.appId === "expense")?.installed, false, "expense sample should not be installed by default");
+  assert.ok(firstRun.availableTemplates.some((template) => template.id === "expense"), "the expense template should be available to deploy (ADR-0016)");
   // ADR-0015: the runtime is app-scoped only. Unscoped business routes no longer
   // exist (404), and an app-scoped route for an uninstalled app resolves to 404 —
   // expense is not privileged on a fresh deploy.
@@ -249,12 +249,15 @@ async function runAssertions() {
   assert.ok(appTemplate.definitions.some((definition) => definition._id === "form:report"), "created app template should include starter design");
   assert.equal(appTemplate.definitions.some((definition) => definition.kind === "document"), false, "created app template should exclude business docs");
 
+  // ADR-0016: deploy the expense template as an app via the generic create-app path.
   const installed = await request<{
     installedApps: Array<{ appId: string }>;
-    samples: Array<{ appId: string; installed: boolean }>;
-  }>("/api/platform/install-sample/expense", { method: "POST", ok: 201 });
-  assert.ok(installed.installedApps.some((app) => app.appId === "expense"), "expense sample install should create an app install record");
-  assert.equal(installed.samples.find((sample) => sample.appId === "expense")?.installed, true, "expense sample should be marked installed");
+  }>("/api/platform/apps", {
+    method: "POST",
+    ok: 201,
+    body: { appId: "expense", title: "Expense", fromTemplate: "expense" }
+  });
+  assert.ok(installed.installedApps.some((app) => app.appId === "expense"), "deploying the expense template should create an app install record");
 
   const definitions = await request<{ forms: Array<{ _id: string }>; views: Array<{ _id: string }> }>("/api/apps/expense/definitions");
   assert.ok(definitions.forms.some((form) => form._id === "form:expense"), "expense form should be installed");

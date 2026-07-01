@@ -1650,7 +1650,7 @@ function AppCatalog({
   selectedViewId,
   onSelectView,
   onOpenNames,
-  onInstallSample,
+  onDeployTemplate,
   onOpenApp,
   onCreateApp,
   onRefresh,
@@ -1662,7 +1662,7 @@ function AppCatalog({
   selectedViewId: string;
   onSelectView: (viewId: string) => void;
   onOpenNames: () => void;
-  onInstallSample: (appId: string) => void;
+  onDeployTemplate: (templateId: string, title: string) => void;
   onOpenApp: (appId: string) => void;
   onCreateApp: (payload: { appId: string; title: string; docType: string; docTypeTitle: string }) => void;
   onRefresh: () => void;
@@ -1675,7 +1675,7 @@ function AppCatalog({
   const sections = [
     { id: "view:system-apps", title: "System Apps" },
     { id: "view:installed-apps", title: "Installed Apps" },
-    { id: "view:sample-templates", title: "Sample Templates" }
+    { id: "view:sample-templates", title: "Templates" }
   ];
 
   return (
@@ -1779,28 +1779,31 @@ function AppCatalog({
             </section>
           )}
           {selectedViewId === "view:sample-templates" && (
-            <section className="band" data-testid="sample-apps">
+            <section className="band" data-testid="available-templates">
               <div className="sectionHeader">
                 <div>
-                  <p className="kicker">Samples</p>
-                  <h2>Available templates</h2>
+                  <p className="kicker">Templates</p>
+                  <h2>Deploy an app from a template</h2>
                 </div>
               </div>
-              {state.samples.map((sample) => (
-                <article className="definitionCard" data-testid={`sample-${sample.appId}`} key={sample.appId}>
-                  <strong>{sample.title}</strong>
-                  <span>{sample.description}</span>
-                  {sample.installed ? (
-                    <button className="primary" onClick={() => onOpenApp(sample.appId)} disabled={busy} data-testid={`open-${sample.appId}-sample`}>
-                      <List size={16} /> Open
-                    </button>
-                  ) : (
-                    <button className="primary" onClick={() => onInstallSample(sample.appId)} disabled={busy} data-testid={`install-${sample.appId}-sample`}>
-                      <Database size={16} /> Install
-                    </button>
-                  )}
-                </article>
-              ))}
+              {state.availableTemplates.map((template) => {
+                const deployed = state.installedApps.some((app) => app.appId === template.id);
+                return (
+                  <article className="definitionCard" data-testid={`template-${template.id}`} key={template.id}>
+                    <strong>{template.title}</strong>
+                    <span>{template.description}</span>
+                    {deployed ? (
+                      <button className="primary" onClick={() => onOpenApp(template.id)} disabled={busy} data-testid={`open-${template.id}`}>
+                        <List size={16} /> Open
+                      </button>
+                    ) : (
+                      <button className="primary" onClick={() => onDeployTemplate(template.id, template.title)} disabled={busy} data-testid={`deploy-${template.id}`}>
+                        <Database size={16} /> Deploy
+                      </button>
+                    )}
+                  </article>
+                );
+              })}
             </section>
           )}
         </div>
@@ -2230,9 +2233,7 @@ function App() {
 
   React.useEffect(() => {
     if (!platformState || !isBusinessApp(route.app) || !platformState.session.authenticated) return;
-    const appInstalled =
-      platformState.installedApps.some((app) => app.appId === route.app) ||
-      platformState.samples.some((sample) => sample.appId === route.app && sample.installed);
+    const appInstalled = platformState.installedApps.some((app) => app.appId === route.app);
     if (!appInstalled) {
       navigateApp("catalog", true);
       return;
@@ -2548,13 +2549,15 @@ function App() {
             { refreshAfter: false }
           )
         }
-        onInstallSample={(appId) =>
+        onDeployTemplate={(templateId, title) =>
           run(
-            "Install sample",
+            "Deploy from template",
             async () => {
+              // ADR-0016: deploy the template as an app (default appId = template id).
               setPlatformState(
-                await api<PlatformState>(`/api/platform/install-sample/${encodeURIComponent(appId)}`, {
-                  method: "POST"
+                await api<PlatformState>("/api/platform/apps", {
+                  method: "POST",
+                  body: JSON.stringify({ appId: templateId, title, fromTemplate: templateId })
                 })
               );
             },
