@@ -27,7 +27,7 @@ No DOM, no Node/server-only APIs.
   `PersonDocument`, `GroupDocument`, `SessionDocument`, `SessionState`, `AccessLevel`, and M22
   app-access editor payloads.
 - `src/shared/types.ts` also carries M19 platform shell types: `SystemApp`, `PublicGroup`, and
-  `SetupDirectoryState`.
+  `DirectoryState`.
 - `src/shared/access.ts` (M5/M18) — pure helpers for session-derived principal scopes, readable docs,
   editable docs, derived readers, app ACL levels, and access selectors.
 - `src/shared/validation.ts` — `validatePayload`, `applyFormDefaults`, `normalizePayload`, `isFieldRequired/Visible/ReadOnly`.
@@ -107,7 +107,7 @@ validated by the shared validator) so a brand-new type is reachable in the runti
 the pair local-first.
 
 M19 adds platform/system-app shell types. `SystemApp` records are not `appinstall:*` documents; they
-describe always-present system apps such as `names.nsf`. `SetupDirectoryState` is sanitized and must
+describe always-present system apps such as `names.nsf`. `DirectoryState` is sanitized and must
 not grow server-only password/session fields.
 
 M22 adds shared app-access editor payloads. The server owns validation and writes `acl:rules`; the

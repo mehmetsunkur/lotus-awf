@@ -37,7 +37,7 @@ import type {
   PublicPerson,
   ReplicationStatus,
   SelectOptionsByField,
-  SetupDirectoryState,
+  DirectoryState,
   ViewDefinition,
   ViewFilter,
   ViewSort,
@@ -1808,7 +1808,7 @@ function DirectoryConsole({
   onCreateGroup,
   onUpdateGroup
 }: {
-  directory?: SetupDirectoryState;
+  directory?: DirectoryState;
   busy: boolean;
   message: string;
   selectedViewId: string;
@@ -2019,7 +2019,7 @@ function DirectoryConsole({
 
 function App() {
   const [platformState, setPlatformState] = React.useState<PlatformState>();
-  const [directory, setDirectory] = React.useState<SetupDirectoryState>();
+  const [directory, setDirectory] = React.useState<DirectoryState>();
   const [route, setRoute] = React.useState<RouteState>(() => routeStateForPath(window.location.pathname));
   const [status, setStatus] = React.useState<ReplicationStatus>();
   const [definitions, setDefinitions] = React.useState<Definitions>();
@@ -2093,7 +2093,7 @@ function App() {
   }, []);
 
   const refreshDirectory = React.useCallback(async () => {
-    setDirectory(await api<SetupDirectoryState>("/api/names/directory"));
+    setDirectory(await api<DirectoryState>("/api/names/directory"));
   }, []);
 
   const refreshAccess = React.useCallback(async () => {
@@ -2192,7 +2192,7 @@ function App() {
     if (!platformState?.setupComplete || !platformState.session.authenticated || route.app !== "names") return;
     let cancelled = false;
     setMessage("Open names.nsf...");
-    api<SetupDirectoryState>("/api/names/directory")
+    api<DirectoryState>("/api/names/directory")
       .then((nextDirectory) => {
         if (cancelled) return;
         setDirectory(nextDirectory);
@@ -2439,7 +2439,7 @@ function App() {
           onRefresh={() => runDirectory("Refresh directory", refreshDirectory)}
           onCreatePerson={(payload) =>
             runDirectory("Create person", async () => {
-              const result = await api<{ directory: SetupDirectoryState }>("/api/names/people", {
+              const result = await api<{ directory: DirectoryState }>("/api/names/people", {
                 method: "POST",
                 body: JSON.stringify(payload)
               });
@@ -2448,7 +2448,7 @@ function App() {
           }
           onUpdatePerson={(person, payload) =>
             runDirectory("Save person", async () => {
-              const result = await api<{ directory: SetupDirectoryState }>(`/api/names/people/${encodeURIComponent(person.username)}`, {
+              const result = await api<{ directory: DirectoryState }>(`/api/names/people/${encodeURIComponent(person.username)}`, {
                 method: "PUT",
                 body: JSON.stringify(payload)
               });
@@ -2457,7 +2457,7 @@ function App() {
           }
           onResetPassword={(person, password) =>
             runDirectory("Reset password", async () => {
-              const result = await api<{ directory: SetupDirectoryState }>(`/api/names/people/${encodeURIComponent(person.username)}/password`, {
+              const result = await api<{ directory: DirectoryState }>(`/api/names/people/${encodeURIComponent(person.username)}/password`, {
                 method: "POST",
                 body: JSON.stringify({ password })
               });
@@ -2466,7 +2466,7 @@ function App() {
           }
           onCreateGroup={(payload) =>
             runDirectory("Create group", async () => {
-              const result = await api<{ directory: SetupDirectoryState }>("/api/names/groups", {
+              const result = await api<{ directory: DirectoryState }>("/api/names/groups", {
                 method: "POST",
                 body: JSON.stringify(payload)
               });
@@ -2475,7 +2475,7 @@ function App() {
           }
           onUpdateGroup={(group, payload) =>
             runDirectory("Save group", async () => {
-              const result = await api<{ directory: SetupDirectoryState }>(`/api/names/groups/${encodeURIComponent(group._id.replace(/^group:/, ""))}`, {
+              const result = await api<{ directory: DirectoryState }>(`/api/names/groups/${encodeURIComponent(group._id.replace(/^group:/, ""))}`, {
                 method: "PUT",
                 body: JSON.stringify(payload)
               });

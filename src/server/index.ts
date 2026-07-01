@@ -32,7 +32,7 @@ import type {
   SessionDocument,
   SessionState,
   SelectOptionsByField,
-  SetupDirectoryState,
+  DirectoryState,
   SystemApp,
   TemplateArtifact,
   ViewDefinition,
@@ -245,7 +245,7 @@ async function listGroups(target: "local" | "server" = "local"): Promise<GroupDo
   }
 }
 
-async function setupDirectoryState(): Promise<SetupDirectoryState> {
+async function directoryState(): Promise<DirectoryState> {
   const [people, groups, apps] = await Promise.all([listPeople(), listGroups(), installedApps()]);
   return {
     people: people.map(publicPerson),
@@ -1403,7 +1403,7 @@ app.get(
   "/api/names/directory",
   asyncRoute(async (request, response) => {
     await requireSession(request, "manager");
-    response.json(await setupDirectoryState());
+    response.json(await directoryState());
   })
 );
 
@@ -1430,7 +1430,7 @@ app.post(
       upsertPerson("local", username, displayName, password),
       upsertPerson("server", username, displayName, password)
     ]);
-    response.status(201).json({ person: publicPerson(localPerson), directory: await setupDirectoryState() });
+    response.status(201).json({ person: publicPerson(localPerson), directory: await directoryState() });
   })
 );
 
@@ -1452,7 +1452,7 @@ app.put(
     await assertActiveAdminExists(undefined, people);
     await writePersonBothTargets(next);
     if (!next.active) await deleteSessionsForPerson(next._id);
-    response.json({ person: publicPerson(next), directory: await setupDirectoryState() });
+    response.json({ person: publicPerson(next), directory: await directoryState() });
   })
 );
 
@@ -1470,7 +1470,7 @@ app.post(
     const passwordFields = await hashPassword(password);
     const next: PersonDocument = { ...existing, ...passwordFields, updatedAt: timestamp() };
     await writePersonBothTargets(next);
-    response.json({ person: publicPerson(next), directory: await setupDirectoryState() });
+    response.json({ person: publicPerson(next), directory: await directoryState() });
   })
 );
 
@@ -1500,7 +1500,7 @@ app.post(
     const groups = [...(await listGroups()), group];
     await assertActiveAdminExists(groups);
     await writeGroupBothTargets(group);
-    response.status(201).json({ group: publicGroup(group), directory: await setupDirectoryState() });
+    response.status(201).json({ group: publicGroup(group), directory: await directoryState() });
   })
 );
 
@@ -1523,7 +1523,7 @@ app.put(
     const groups = (await listGroups()).map((group) => (group._id === next._id ? next : group));
     await assertActiveAdminExists(groups);
     await writeGroupBothTargets(next);
-    response.json({ group: publicGroup(next), directory: await setupDirectoryState() });
+    response.json({ group: publicGroup(next), directory: await directoryState() });
   })
 );
 

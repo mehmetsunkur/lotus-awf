@@ -402,7 +402,7 @@ export type PlatformState = {
   samples: SampleApp[];
 };
 
-export type SetupDirectoryState = {
+export type DirectoryState = {
   people: PublicPerson[];
   groups: PublicGroup[];
   installedApps: AppInstall[];
