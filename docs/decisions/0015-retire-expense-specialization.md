@@ -4,9 +4,11 @@ Date: 2026-07-01
 
 ## Status
 
-Proposed. Runtime/logic de-specialization implemented and verified (API + unit + 7/8
-API-driven e2e). Client cosmetic genericization and the deploy-test hand-migration remain
-as tracked follow-ups (need a reliable UI/Docker environment to verify).
+Proposed. Runtime/logic de-specialization, the client catalog genericization, the
+deploy-test migration, and the inert unscoped-route-string removal are all implemented
+(verified via tsc + unit + API-driven e2e; the UI-tab e2e and Docker deploy run only in a
+reliable environment). Remaining follow-ups: the `config.appDb` dev/scripts default and the
+two compiled sample handlers.
 
 ## Context
 
@@ -83,12 +85,8 @@ construction, formulas are not). Fine for first-party templates; needs an execut
 
 ## Follow-ups
 
-- Client cosmetics: genericize the catalog sample card (loop `state.samples`), drop
-  `DEFAULT_EXPENSE_VIEW_ID` and the `route.app === "expense"` branches (UI — verify in a real
-  browser).
-- Deploy test: hand-migrate `tests/deploy/deploy-artifact.ts` to app-scoped routes (mind the
-  404-before-install vs 401 ordering) and verify under Docker.
-- Delete the now-inert unscoped route strings; remove the `config.appDb` dev default.
+- Remove the `config.appDb` dev/scripts/demo default (high-churn across ~44 signatures +
+  `scripts/*` + demo routes; not a runtime path — deferred until it can be verified end-to-end).
 - Convert `expense-total-with-tax` to a compute formula; `record-activity` to a formula agent.
 - Async-lane execution deadline (also benefits ADR-0014).
 - Run the multi-lens `review-change` workflow (Tier-3) once the above land.
