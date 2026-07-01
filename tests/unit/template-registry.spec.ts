@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadSampleTemplate, sampleTemplateDocuments, validateTemplateDefinitions } from "../../src/server/template-registry";
+import { listSampleTemplates, loadSampleTemplate, sampleTemplateDocuments, validateTemplateDefinitions } from "../../src/server/template-registry";
 import { seedDocuments } from "../../src/server/seed-data";
 import type { BusinessDocument, TemplateArtifact } from "../../src/shared/types";
 
@@ -17,6 +17,39 @@ describe("sample template registry", () => {
       "doc:expense:train-ticket",
       "doc:vendor:national-rail",
       "doc:vendor:paper-market"
+    ]);
+  });
+
+  it("lists and loads the Org template as design docs plus separate sample data", () => {
+    expect(listSampleTemplates()).toEqual(
+      expect.arrayContaining([
+        {
+          templateId: "sample:org",
+          appId: "org",
+          title: "Org sample",
+          description: "Models departments, employees, and reporting lines."
+        }
+      ])
+    );
+
+    const sample = loadSampleTemplate("sample:org");
+
+    expect(sample.template.templateId).toBe("sample:org");
+    expect(sample.template.definitions.every((definition) => definition.kind !== "document")).toBe(true);
+    expect(sample.template.definitions.map((definition) => definition._id).sort()).toEqual([
+      "acl:rules",
+      "app:config",
+      "audit:policy",
+      "form:department",
+      "form:employee",
+      "view:departments",
+      "view:employees"
+    ]);
+    expect(sample.sampleData.map((doc) => doc._id).sort()).toEqual([
+      "doc:department:finance",
+      "doc:department:sales",
+      "doc:employee:alice",
+      "doc:employee:bob"
     ]);
   });
 

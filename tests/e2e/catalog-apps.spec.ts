@@ -74,6 +74,36 @@ test.describe("catalog-created apps", () => {
     expect(duplicate.status()).toBe(409);
   });
 
+  test("deploys the org template as a normal app", async ({ page }) => {
+    const state = await page.request.get("/api/platform/state").then((response) => response.json());
+    expect(state.availableTemplates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "org",
+          title: "Org sample",
+          description: "Models departments, employees, and reporting lines."
+        })
+      ])
+    );
+
+    const created = await page.request.post("/api/platform/apps", {
+      data: { appId: "org", title: "Org", fromTemplate: "org" }
+    });
+    expect(created.status()).toBe(201);
+
+    const definitions = await page.request.get("/api/apps/org/definitions").then((response) => response.json());
+    expect(definitions.appConfig).toMatchObject({ appId: "org", title: "Org", database: "org_app" });
+    expect(definitions.forms.map((form: { _id: string }) => form._id)).toEqual(expect.arrayContaining(["form:department", "form:employee"]));
+    expect(definitions.views.map((view: { _id: string }) => view._id)).toEqual(expect.arrayContaining(["view:departments", "view:employees"]));
+
+    const departments = await page.request.get("/api/apps/org/documents?docType=department").then((response) => response.json());
+    expect(departments.map((doc: { _id: string }) => doc._id)).toEqual(expect.arrayContaining(["doc:department:finance", "doc:department:sales"]));
+
+    const directory = await page.request.get("/api/names/directory").then((response) => response.json());
+    expect(directory.groups.map((group: { _id: string }) => group._id)).not.toContain("group:org-dept-finance");
+    expect(directory.groups.map((group: { _id: string }) => group._id)).not.toContain("group:org-managers");
+  });
+
   test("managers grant app access without widening existing document visibility", async ({ page, bobApi }) => {
     await page.request.post("/api/platform/apps", {
       data: { appId: "shared-reports", title: "Shared Reports", docType: "report", docTypeTitle: "Report" }
