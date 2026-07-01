@@ -46,10 +46,9 @@ out of the system-app catalog once `setupComplete` is true.
 - Positive: `person:*`/`group:*` and password hashes live in a purpose-named database.
 - Negative: a breaking change — `SETUP_DB`/`setup_app` and the `/api/setup/*` directory routes are
   removed; deploy config, the directory console, and the setup/directory e2e all move in lockstep.
-- Negative: existing deployments must copy the `setup_app` directory into `names_app` (dev installs
-  simply re-seed).
+  There are no live deployments yet, so no data migration is required — a fresh install seeds
+  `names_app` directly.
 
 ## Follow-Ups
 
 - Deploy artifact auto-installs and readiness-checks `names_app`; `npm run test:deploy` exercises it.
-- Document the one-time `setup_app` → `names_app` copy for live upgrades.

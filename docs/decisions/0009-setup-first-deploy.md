@@ -4,7 +4,8 @@ Date: 2026-06-18
 
 ## Status
 
-Accepted
+Accepted — the setup-first deploy flow still holds, but the directory control database was renamed
+from `setup_app` to `names_app` (`names.nsf`) by ADR-0012.
 
 ## Context
 
