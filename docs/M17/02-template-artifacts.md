@@ -2,11 +2,13 @@
 
 ## Files
 
-The Expense sample is stored as:
+Bundled templates are stored as paired design and sample-data artifacts:
 
 ```text
 templates/expense/template.json
 templates/expense/sample-data.json
+templates/org/template.json
+templates/org/sample-data.json
 ```
 
 `template.json` is a `TemplateArtifact` with design definitions only.
@@ -53,7 +55,9 @@ not declared in the handler manifest for the matching kind.
 
 ## Install Semantics
 
-Installing `sample:expense` writes the template definitions and sample records to the local and server
-Expense databases, then records `appinstall:expense` in `platform_app`.
+ADR-0016 replaced fixed sample installs with generic app creation from bundled templates. Creating an
+app with `POST /api/platform/apps { appId, title, fromTemplate }` loads the matching bundled template,
+re-stamps its definitions and sample records to the chosen app id, writes them to local and server app
+databases, then records `appinstall:<appId>` in `platform_app`.
 
 Template promotion APIs remain design-only: export, diff, and apply do not package sample data.

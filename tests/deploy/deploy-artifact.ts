@@ -165,6 +165,7 @@ async function runAssertions() {
   assert.ok(firstRun.systemApps.some((app) => app.appId === "names" && app.route === "/names.nsf"), "names.nsf should be advertised as a system app");
   assert.equal(firstRun.installedApps.length, 0, "fresh deploy should have an empty app catalog");
   assert.ok(firstRun.availableTemplates.some((template) => template.id === "expense"), "the expense template should be available to deploy (ADR-0016)");
+  assert.ok(firstRun.availableTemplates.some((template) => template.id === "org"), "the org template should be available to deploy");
   // ADR-0015: the runtime is app-scoped only. Unscoped business routes no longer
   // exist (404), and an app-scoped route for an uninstalled app resolves to 404 —
   // expense is not privileged on a fresh deploy.
@@ -267,6 +268,21 @@ async function runAssertions() {
   assert.ok(
     seededExpenses.some((doc) => doc._id === "doc:expense:stationery" && doc.payload.description === "Stationery"),
     "expense sample data should be installed from the JSON artifact"
+  );
+
+  const orgInstalled = await request<{
+    installedApps: Array<{ appId: string }>;
+  }>("/api/platform/apps", {
+    method: "POST",
+    ok: 201,
+    body: { appId: "org", title: "Org", fromTemplate: "org" }
+  });
+  assert.ok(orgInstalled.installedApps.some((app) => app.appId === "org"), "deploying the org template should create an app install record");
+
+  const seededDepartments = await request<Array<{ _id: string; payload: Record<string, unknown> }>>("/api/apps/org/documents?docType=department");
+  assert.ok(
+    seededDepartments.some((doc) => doc._id === "doc:department:finance" && doc.payload.name === "Finance"),
+    "org sample data should be installed from the JSON artifact"
   );
 
   const created = await request<{ _id: string; _rev: string; payload: Record<string, unknown>; state?: string }>("/api/apps/expense/documents", {

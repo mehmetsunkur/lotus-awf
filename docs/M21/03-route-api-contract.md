@@ -61,3 +61,15 @@ Unscoped existing routes remain aliases for `expense`.
 ```
 
 The endpoint requires manager access and returns updated platform state.
+
+The same endpoint can instantiate a bundled template:
+
+```json
+{
+  "appId": "org",
+  "title": "Org",
+  "fromTemplate": "org"
+}
+```
+
+Bundled templates are portable; their authored `appId` is re-stamped to the requested `appId`.

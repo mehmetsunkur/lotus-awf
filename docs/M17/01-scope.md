@@ -24,5 +24,7 @@
 
 M17 uses a filesystem-backed registry for built-in samples. The initial registry contains
 `sample:expense`, backed by `templates/expense/template.json` and `templates/expense/sample-data.json`.
-The install route still installs demo data because it is a sample install, but reusable template
-promotion remains design-only.
+The bundled registry also includes `sample:org`, backed by `templates/org/template.json` and
+`templates/org/sample-data.json`, as an ordinary organization-structure template.
+Creating an app from a bundled template installs demo data, but reusable template promotion remains
+design-only.
