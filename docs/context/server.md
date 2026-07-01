@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `8793300`
-- Last reviewed date: `2026-06-24`
+- Last code review baseline: `6ddb929`
+- Last reviewed date: `2026-07-01`
 - Code areas:
   - `src/server/**`
   - `scripts/**`
@@ -90,8 +90,8 @@ the server's own behavior.
 - Directory/session (M18/M19, ADR-0012): `person:*` and `group:*` live in `names_app` (the
   `names.nsf` directory); `session:*` lives in `platform_app`. `POST /api/session/login` sets the HTTP-only `lotus_session` cookie, and
   `requireSession()` resolves the request to a principal scope before protected routes run. M19 adds
-  manager-only `/api/setup/directory`, `/api/setup/people*`, and `/api/setup/groups*` APIs; responses
-  are sanitized and never expose password hashes/salts or session tokens.
+  manager-only `/api/names/directory`, `/api/names/people*`, and `/api/names/groups*` APIs (ADR-0012);
+  responses are sanitized and never expose password hashes/salts or session tokens.
 - Access (M5/M18): current principals come from the authenticated session (`person:<username>`,
   direct groups, plus any explicit principals) and app-level `acl:rules` entries grant
   `reader`/`author`/`editor`/`designer`/`manager`. Business reads match document `readers`, payload
@@ -175,6 +175,7 @@ this subsystem.
 - `docs/decisions/0003-mango-index-strategy.md`
 - `docs/decisions/0008-deployable-docker-artifact.md`
 - `docs/decisions/0010-directory-and-session-auth.md`
+- `docs/decisions/0012-names-directory-split.md`
 - `docs/M5/02-access-policy.md`
 - `docs/M5/03-replication-purge.md`
 - `docs/M6/02-template-contract.md`

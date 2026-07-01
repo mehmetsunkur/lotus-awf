@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `78e6778`
-- Last reviewed date: `2026-06-22`
+- Last code review baseline: `6ddb929`
+- Last reviewed date: `2026-07-01`
 - Code areas:
   - `src/client/**`
 - Tests:
@@ -107,6 +107,7 @@ See `docs/invariants.md`: **Validation parity**, **Offline editing**, **Form lay
 - `docs/decisions/0001-definitions-as-data.md`
 - `docs/decisions/0002-offline-first-dual-couchdb.md`
 - `docs/decisions/0010-directory-and-session-auth.md`
+- `docs/decisions/0012-names-directory-split.md`
 
 ## Tests
 
