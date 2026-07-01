@@ -4,7 +4,10 @@ Date: 2026-07-01
 
 ## Status
 
-Proposed. Phase 1 (read-side formula fields) implemented; Phases 2–3 pending.
+Accepted for the **read side** (Phase 1 — formula fields — implemented). The **write side
+is parked**: we are NOT committing to formula-defined agents. Whether the write side should be
+formula-agents or a safer **declarative derivation rule** is an open question, revisited when a
+concrete need (e.g. org.nsf as pure data) is scheduled. See "Write side (deferred, undecided)".
 
 ## Context
 
@@ -14,8 +17,9 @@ replicated definitions, not in the base binary. The org.nsf prototype (ADR-0013,
 (`deriveOrgGroups`/`reconcileDerivedGroups`, an `org` appId) into `src/server`/`src/shared`.
 
 To let apps like org.nsf ship as pure data, the base needs two *generic* capabilities:
-1. **Cross-database reads in the formula language** — Notes-style `@DbColumn`/`@DbLookup`.
-2. **Formula-defined agents** — data-declared triggered logic that reads/writes across DBs.
+1. **Cross-database reads in the formula language** — Notes-style `@DbColumn`/`@DbLookup`. (This ADR.)
+2. **A data-driven reactive-*write* mechanism** — so derive-and-materialize logic is data, not
+   base code. Needed for org.nsf, but its form is deferred and undecided (see status).
 
 A spike (`docs/spikes/formula-dblookup-findings.md`) validated the risks: ACL scoping is
 clean via the shared access helpers; async is containable with a two-lane engine; offline is
@@ -41,20 +45,32 @@ through `canReadDocument`/`principalsFor` and resolve the **local replica** (off
 eventual consistency). The sandbox keeps the deny-list; `await` is permitted; a broken
 formula fails closed to `undefined`.
 
+Scoping is **row-level `readers`**, deliberately: a lookup returns exactly the rows whose
+`readers` the caller carries, in any app. It does NOT additionally gate on the target app's
+`acl:rules` app-level access — a document's `readers` is the authority on who may see it, and
+the same row-level model already governs views, search, and select-option sourcing. (If a
+future need calls for app-level gating on cross-app reads, add it in `makeDbReader`.)
+
 **Where lookups are allowed:** async, tolerant contexts only — formula fields (Phase 1),
 formula view columns (later), agent formulas (Phase 2). Never the sync lane; enforced by
 `validateFormulaField`, which routes formula fields around the sync `validateExpression`.
 
-**Formula-defined agents (Phase 2).** `AgentDefinition` gains a `formula` variant beside the
-compiled `handler` name. It is evaluated in `runAgentsOnce` under an app-scoped
-**`service:<appId>` principal**; the formula returns a desired write-set that the runtime
-materializes ACL-checked with reconcile/prune, local-only best-effort offline (lifting the
-held org prototype's `reconcileDerivedGroups`).
+**Write side (deferred, undecided).** The read side stands on its own. A *write* mechanism is
+still needed eventually to let an app (e.g. org.nsf) derive-and-materialize data across DBs as
+pure data, but the form is intentionally left open:
 
-**`service:<appId>` security model (Phase 2).** Installing an app records the explicit
-cross-DB grants its service principal needs (e.g. org grants `service:org` the `names_app`
-group write). `appAccessLevel`/`canReadDocument` recognize service principals via those
-declared grants — the minimum authority for the agent to do its job, auditable per app.
+- *Formula-defined agents* — an agent whose logic is a formula returning a write-set, run under
+  an app-scoped `service:<appId>` principal. Most general, but executes author-supplied code
+  that WRITES server-side (a larger security/DoS surface than the read lane, whose own fail-open
+  and unbounded-loop risks are noted below), and formula is an awkward language for producing a
+  document set + reconcile/prune.
+- *Declarative derivation rule* — a data spec (source query + group-by key + target-doc template
+  + reconcile policy) interpreted by a generic base engine. Non-Turing-complete, so most of the
+  code-execution risk disappears; a clean fit for the group/rollup-materialization case, but less
+  general than formula-agents.
+
+Current lean: the declarative rule for the common case, keeping formula-agents only if a future
+app needs arbitrary triggered writes. Not decided here.
 
 ## Alternatives considered
 
@@ -65,9 +81,9 @@ declared grants — the minimum authority for the agent to do its job, auditable
 3. **Declarative pre-resolve (Model B)** — deferred: keeps the hot path sync/cacheable, but
    only handles static dependencies. Start with inline-async (simpler, Notes-like); add
    pre-resolve later as an optimization.
-4. **Triggering-actor / installer principal for agents** — rejected: derivations must read
-   rows the actor can't (all employees), and scheduled agents have no actor. Hence
-   `service:<appId>`.
+4. **Triggering-actor / installer principal for agents** — noted for the deferred write side:
+   derivations must read rows the actor can't (all employees) and scheduled agents have no actor,
+   so an app-scoped `service:<appId>` is the leading candidate *if* formula-agents are chosen.
 
 ## Consequences
 
@@ -78,13 +94,19 @@ declared grants — the minimum authority for the agent to do its job, auditable
   it is blank offline — acceptable because it is display-only; the editable/validate/save path
   stays fully offline (formula fields are excluded from the payload lifecycle).
 - Negative: the async lane widens the sandbox slightly (permits `await`); the deny-list still
-  holds. A real parser is a later hardening.
+  holds. The read path fails closed on any blocked-token/compile/runtime error, and authoring
+  rejects unparseable formulas, so a broken formula neither 500s the endpoint nor drops sibling
+  values (`resolveFormulaFields` uses `Promise.allSettled`).
+- Known limitation: a token-clean unbounded loop (`while(true)`) is not preventable by the
+  deny-list and would hang the request (same as the pre-existing sync lane). A hard execution
+  deadline needs a worker/VM and is deferred; do not expose the async lane to untrusted authors
+  until then.
 - Negative: `@DbColumn`/`@DbLookup` read-then-filter; N+1 is bounded by a per-request memo and
   by preferring set-based `@DbColumn`. Indexed-view-backed reads are a later optimization.
 
 ## Follow-ups
 
-- Phase 2: `AgentDefinition` formula variant + `service:<appId>` principal + reconcile/prune.
-- Phase 3: re-express org.nsf as pure data (template + formula agent); confirm base carries no
-  app-specific code. Stretch: retire the expense base specialization the same way.
-- Run the multi-lens `review-change` workflow (Tier-3 substrate) each phase.
+- Read side hardening (later): execution deadline for the async lane; indexed-view-backed reads.
+- Write side (only when scheduled): decide declarative derivation rule vs formula-agents, then
+  design it in a follow-up ADR. Re-expressing org.nsf as pure data is the first consumer.
+- Run the multi-lens `review-change` workflow (Tier-3 substrate) for any write-side work.

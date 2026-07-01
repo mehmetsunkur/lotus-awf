@@ -9,7 +9,7 @@ import type {
   WorkflowTransition
 } from "./types";
 import { evaluateBoolean } from "./expression";
-import { formulaBlockedToken } from "./formula";
+import { formulaBlockedToken, formulaSyntaxError } from "./formula";
 import { findHandler, handlerHasKind } from "./handlers/manifest";
 import type { AgentDefinition, AuditPolicy, HandlerKind } from "./types";
 
@@ -87,7 +87,13 @@ function validateField(field: FormField, index: number): ValidationError[] {
       errors.push(error(`${prefix}.formula`, "A formula field requires a formula"));
     } else {
       const bad = formulaBlockedToken(field.formula);
-      if (bad) errors.push(error(`${prefix}.formula`, `Formula contains a blocked token: ${bad}`));
+      if (bad) {
+        errors.push(error(`${prefix}.formula`, `Formula contains a blocked token: ${bad}`));
+      } else {
+        // Reject an unparseable formula here so it can never reach the read path.
+        const syntax = formulaSyntaxError(field.formula);
+        if (syntax) errors.push(error(`${prefix}.formula`, `Formula is not valid: ${syntax}`));
+      }
     }
   } else if (field.formula !== undefined) {
     errors.push(error(`${prefix}.formula`, "Only formula fields may set a formula"));

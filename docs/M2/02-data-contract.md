@@ -76,6 +76,8 @@ Supported field types:
 - `date`
 - `boolean`
 - `select`
+- `formula` (ADR-0014) — read-only, server-resolved via the async formula lane
+  (`@DbColumn`/`@DbLookup`), and excluded from the stored payload.
 
 Supported field behavior:
 

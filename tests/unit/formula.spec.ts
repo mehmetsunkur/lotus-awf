@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateFormulaAsync, formulaBlockedToken, type DbReader } from "../../src/shared/formula";
+import { evaluateFormulaAsync, formulaBlockedToken, formulaSyntaxError, type DbReader } from "../../src/shared/formula";
 import { validateFormDefinition } from "../../src/shared/definition-validation";
 import { normalizePayload, validatePayload } from "../../src/shared/validation";
 import type { PrincipalScope } from "../../src/shared/access";
@@ -60,14 +60,18 @@ describe("formula async lane — @DbColumn/@DbLookup", () => {
     expect(value).toBe("sales");
   });
 
-  it("fails closed to undefined on a broken formula", async () => {
+  it("fails closed to undefined on a runtime error", async () => {
     expect(await evaluateFormulaAsync("await DbColumn('org','employee','payload.person').nope.nope", { scope: scope("person:alice"), read })).toBeUndefined();
   });
 
-  it("rejects sandbox-escape tokens", async () => {
-    expect(formulaBlockedToken("(() => x)()")).toBe("=>");
+  it("NEVER throws: a blocked token or a syntax error fails closed to undefined", async () => {
+    // The read path must not throw — that would 500 the endpoint and drop the batch.
+    expect(await evaluateFormulaAsync("process.exit()", { scope: scope("person:alice"), read })).toBeUndefined();
+    expect(await evaluateFormulaAsync("payload.a (", { scope: scope("person:alice"), read })).toBeUndefined();
+    // formulaBlockedToken/formulaSyntaxError still report the reason for authoring.
     expect(formulaBlockedToken("process.exit()")).toBe("process");
-    await expect(evaluateFormulaAsync("process.exit()", { scope: scope("person:alice"), read })).rejects.toThrow(/blocked token/);
+    expect(formulaSyntaxError("payload.a (")).toBeTruthy();
+    expect(formulaSyntaxError("payload.a")).toBeUndefined();
   });
 });
 
@@ -103,6 +107,11 @@ describe("formula field — definition validation & payload lifecycle", () => {
   it("rejects a formula set on a non-formula field", () => {
     const errors = validateFormDefinition(form("payload.x", "text"));
     expect(errors.some((e) => e.field === "fields.1.formula")).toBe(true);
+  });
+
+  it("rejects a syntactically-invalid formula at authoring (keeps it off the read path)", () => {
+    const errors = validateFormDefinition(form("payload.a ("));
+    expect(errors.some((e) => e.field === "fields.1.formula" && /not valid/.test(e.message))).toBe(true);
   });
 
   it("excludes formula fields from the stored payload and skips their required/validation checks", () => {

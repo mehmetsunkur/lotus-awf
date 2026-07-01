@@ -57,15 +57,45 @@ export function formulaBlockedToken(formula: string): string | undefined {
   return blockedTokens.find((token) => formula.includes(token));
 }
 
+function compileFormula(formula: string) {
+  return AsyncFunction(
+    "payload",
+    "doc",
+    "user",
+    "now",
+    "DbColumn",
+    "DbLookup",
+    `"use strict"; return (${formula});`
+  );
+}
+
+/**
+ * A syntax (compile) error for a formula, or undefined if it compiles. Exported so
+ * authoring validation rejects an unparseable formula BEFORE it can reach the read
+ * path — the read path itself also fails closed, but rejecting at authoring keeps a
+ * broken formula out of the document entirely.
+ */
+export function formulaSyntaxError(formula: string): string | undefined {
+  try {
+    compileFormula(formula);
+    return undefined;
+  } catch (cause) {
+    return cause instanceof Error ? cause.message : "Invalid formula";
+  }
+}
+
 /**
  * Evaluate a formula in the async lane. The generated function is `async` so a
  * formula may `await DbColumn(...)` / `await DbLookup(...)` inline. Both readers
  * filter through `canReadDocument` against `ctx.scope` before returning anything.
+ *
+ * NEVER throws: a blocked token, a compile error, or a runtime error all fail
+ * closed to `undefined`, so one broken formula can neither break the read path nor
+ * (with `Promise.allSettled` at the call site) drop its siblings' values.
  */
 export async function evaluateFormulaAsync(formula: string | undefined, ctx: FormulaContext): Promise<unknown> {
   if (!formula?.trim()) return undefined;
-  const bad = formulaBlockedToken(formula);
-  if (bad) throw new Error(`Formula contains a blocked token: ${bad}`);
+  if (formulaBlockedToken(formula)) return undefined; // authoring validation surfaces the reason
 
   // @DbColumn(appId; docType; column) — the column across every readable row.
   const DbColumn = async (appId: string, docType: string, column: string): Promise<unknown[]> => {
@@ -86,20 +116,11 @@ export async function evaluateFormulaAsync(formula: string | undefined, ctx: For
     return hit ? getPath(hit, valueColumn) : undefined;
   };
 
-  const fn = AsyncFunction(
-    "payload",
-    "doc",
-    "user",
-    "now",
-    "DbColumn",
-    "DbLookup",
-    `"use strict"; return (${formula});`
-  );
   try {
+    // Compile INSIDE the try: a syntactically-invalid formula must fail closed too.
+    const fn = compileFormula(formula);
     return await fn(ctx.payload ?? {}, ctx.doc ?? {}, ctx.user ?? "", ctx.now ?? "", DbColumn, DbLookup);
   } catch {
-    // Fail closed to undefined, mirroring pure-handler semantics — a broken
-    // formula shows no value, it never breaks the read path.
     return undefined;
   }
 }

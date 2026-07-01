@@ -1225,17 +1225,21 @@ async function resolveFormulaFields(
   const fields = form.fields.filter((field) => field.type === "formula" && field.formula);
   if (!fields.length) return {};
   const read = makeDbReader();
-  const entries = await Promise.all(
-    fields.map(async (field) => {
-      const value = await evaluateFormulaAsync(field.formula, {
+  // allSettled + fail-closed eval: one bad formula can never reject the batch and
+  // drop its siblings' values (defence in depth — evaluateFormulaAsync never throws).
+  const results = await Promise.allSettled(
+    fields.map((field) =>
+      evaluateFormulaAsync(field.formula, {
         payload: doc.payload,
         doc: doc as unknown as Record<string, unknown>,
         user: scope.person,
         scope,
         read
-      });
-      return [field.name, value] as const;
-    })
+      })
+    )
+  );
+  const entries = fields.map(
+    (field, index) => [field.name, results[index].status === "fulfilled" ? results[index].value : undefined] as const
   );
   return Object.fromEntries(entries);
 }
