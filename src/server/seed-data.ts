@@ -5,18 +5,19 @@ import { sampleTemplateDocuments } from "./template-registry";
 
 const now = () => new Date().toISOString();
 
-/** Generic business-document constructor (M12) — stamps the given docType/_id. */
+/** Generic business-document constructor (M12) — stamps the given appId/docType/_id. */
 export function createDocument(
   docType: string,
   payload: Record<string, unknown>,
   user = config.appUser,
-  readers = [user]
+  readers = [user],
+  appId = ""
 ): BusinessDocument {
   const timestamp = now();
   return {
     _id: `doc:${docType}:${ulid()}`,
     kind: "document",
-    appId: "expense",
+    appId,
     docType,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -33,7 +34,7 @@ export function createExpenseDoc(
   user = config.appUser,
   readers = ["person:alice", "group:finance"]
 ): BusinessDocument {
-  return createDocument("expense", payload, user, readers);
+  return createDocument("expense", payload, user, readers, "expense");
 }
 
 export function createVendorDoc(
@@ -41,7 +42,7 @@ export function createVendorDoc(
   user = config.appUser,
   readers = ["person:alice", "group:finance"]
 ): BusinessDocument {
-  return createDocument("vendor", payload, user, readers);
+  return createDocument("vendor", payload, user, readers, "expense");
 }
 
 export function seedDocuments(): Array<

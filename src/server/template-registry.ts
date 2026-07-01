@@ -11,6 +11,18 @@ import type {
 type SampleTemplateFiles = {
   templatePath: string;
   sampleDataPath: string;
+  /** App this template installs as, and its catalog metadata. Drives the generic
+   *  install endpoint and the platform `samples[]` list — no per-app base code. */
+  appId: string;
+  title: string;
+  description: string;
+};
+
+export type SampleTemplateInfo = {
+  templateId: string;
+  appId: string;
+  title: string;
+  description: string;
 };
 
 export type SampleTemplate = {
@@ -23,9 +35,28 @@ export { validateTemplateDefinitions };
 const SAMPLE_TEMPLATES: Record<string, SampleTemplateFiles> = {
   "sample:expense": {
     templatePath: "templates/expense/template.json",
-    sampleDataPath: "templates/expense/sample-data.json"
+    sampleDataPath: "templates/expense/sample-data.json",
+    appId: "expense",
+    title: "Expense sample",
+    description: "A sample approval app with forms, views, workflow, agents, search, and audit."
   }
 };
+
+/** Catalog metadata for every registered sample — drives the generic install
+ *  endpoint and platform `samples[]` without hardcoding any app in base logic. */
+export function listSampleTemplates(): SampleTemplateInfo[] {
+  return Object.entries(SAMPLE_TEMPLATES).map(([templateId, files]) => ({
+    templateId,
+    appId: files.appId,
+    title: files.title,
+    description: files.description
+  }));
+}
+
+/** Resolve a sample by the app id it installs as (e.g. "expense" → "sample:expense"). */
+export function sampleTemplateForApp(appId: string): SampleTemplateInfo | undefined {
+  return listSampleTemplates().find((sample) => sample.appId === appId);
+}
 
 const projectPath = (relativePath: string) => path.resolve(process.cwd(), relativePath);
 

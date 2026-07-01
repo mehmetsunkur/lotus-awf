@@ -90,6 +90,7 @@ import {
 } from "./couch";
 import { config } from "./config";
 import { createDocument, createExpenseDoc, seedDocuments } from "./seed-data";
+import { listSampleTemplates, sampleTemplateDocuments, sampleTemplateForApp } from "./template-registry";
 import { validateTemplateDefinitions } from "../shared/template-validation";
 import {
   clearSessionCookie,
@@ -570,29 +571,10 @@ async function seedDevDirectory(target: "local" | "server", adminUser = "alice",
   await upsertGroup(target, "group:sales", "Sales", [bob._id]);
 }
 
-async function seedExpenseSampleDirectory(target: "local" | "server", currentPerson?: `person:${string}`) {
-  await seedNamesTarget(target);
-  const alice = await upsertPerson(target, "alice", "Alice Finance", DEV_PASSWORD);
-  const bob = await upsertPerson(target, "bob", "Bob Sales", DEV_PASSWORD);
-  const financeMembers = Array.from(new Set([alice._id, currentPerson].filter(Boolean))) as Array<`person:${string}`>;
-  await upsertGroup(target, "group:finance", "Finance", financeMembers);
-  await upsertGroup(target, "group:sales", "Sales", [bob._id]);
-}
-
 async function ensureIndexes(target: "local" | "server", db = config.appDb) {
   await createIndex(target, "m2-kind-docType-updatedAt", ["kind", "docType", "updatedAt"], db);
   await createIndex(target, "m2-readers", ["readers"], db);
   await createIndex(target, "m3-docType-state-updatedAt", ["docType", "state", "updatedAt"], db);
-}
-
-async function expenseAppInstalled(target: "local" | "server") {
-  try {
-    await getDoc<AppConfig>(target, "app:config");
-    return true;
-  } catch (error) {
-    if (error instanceof CouchError && error.status === 404) return false;
-    return false;
-  }
 }
 
 async function seedNamesTarget(target: "local" | "server") {
@@ -648,9 +630,8 @@ async function installedApp(appId: string): Promise<AppInstall | undefined> {
 }
 
 async function resolveBusinessApp(appId: string): Promise<BusinessAppContext> {
-  if (appId === "expense") {
-    return { appId: "expense", title: "Expense sample", database: config.appDb };
-  }
+  // Every business app — including the expense sample — resolves via its install
+  // record; nothing is assumed in base (ADR-0015).
   const install = await installedApp(appId);
   if (!install) {
     throw new CouchError(404, { error: "app_not_found", reason: `Unknown app: ${appId}` });
@@ -676,21 +657,18 @@ function systemApps(): SystemApp[] {
 }
 
 async function platformState(request?: Request): Promise<PlatformState> {
-  const [platform, apps, expenseInstalled, session] = await Promise.all([
+  const [platform, apps, session] = await Promise.all([
     platformConfig(),
     installedApps(),
-    expenseAppInstalled("local"),
     sessionStateForRequest(request)
   ]);
-  const samples: SampleApp[] = [
-    {
-      appId: "expense",
-      title: "Expense sample",
-      database: config.appDb,
-      description: "A sample approval app with forms, views, workflow, agents, search, and audit.",
-      installed: apps.some((app) => app.appId === "expense") || expenseInstalled
-    }
-  ];
+  const samples: SampleApp[] = listSampleTemplates().map((sample) => ({
+    appId: sample.appId,
+    title: sample.title,
+    database: databaseForAppId(sample.appId),
+    description: sample.description,
+    installed: apps.some((app) => app.appId === sample.appId)
+  }));
   return {
     setupComplete: platform.setupComplete,
     orgName: platform.orgName,
@@ -703,34 +681,44 @@ async function platformState(request?: Request): Promise<PlatformState> {
   };
 }
 
-function expenseInstallRecord(installedAt = timestamp(), installedBy = "person:alice"): AppInstall {
-  return {
-    _id: "appinstall:expense",
-    kind: "appinstall",
-    appId: "expense",
-    title: "Expense sample",
-    database: config.appDb,
-    templateId: "sample:expense",
-    installedAt,
-    installedBy
-  };
-}
-
-function appInstallRecord(appId: string, title: string, database: string, installedAt = timestamp(), installedBy = "person:alice"): AppInstall {
+function appInstallRecord(
+  appId: string,
+  title: string,
+  database: string,
+  installedAt = timestamp(),
+  installedBy = "person:alice",
+  templateId = "blank:app"
+): AppInstall {
   return {
     _id: `appinstall:${appId}`,
     kind: "appinstall",
     appId,
     title,
     database,
-    templateId: "blank:app",
+    templateId,
     installedAt,
     installedBy
   };
 }
 
-async function markExpenseInstalled(target: "local" | "server") {
-  await upsertDocInDb(target, config.platformDb, expenseInstallRecord());
+/**
+ * Install a packaged sample template into an app database (ADR-0015): seed the
+ * design + sample docs, ensure the standard indexes, and record the install.
+ * Generic — no per-app code; the app id / title / templateId come from the registry.
+ */
+async function installSampleApp(
+  target: "local" | "server",
+  appId: string,
+  title: string,
+  templateId: string,
+  installedBy: string,
+  installedAt: string
+) {
+  const database = databaseForAppId(appId);
+  await ensureDb(target, database);
+  await bulkDocs(target, sampleTemplateDocuments(templateId), database);
+  await ensureIndexes(target, database);
+  await upsertDocInDb(target, config.platformDb, appInstallRecord(appId, title, database, installedAt, installedBy, templateId));
 }
 
 async function completeDevPlatformSetup(target: "local" | "server") {
@@ -748,7 +736,14 @@ async function completeDevPlatformSetup(target: "local" | "server") {
     createdAt: now,
     updatedAt: now
   });
-  await markExpenseInstalled(target);
+  // Dev/e2e convenience: the expense sample DB is seeded by seedTarget; record it
+  // as installed so it resolves like any catalog app (ADR-0015). No expense-specific
+  // helper — the generic install record + template registry drive it.
+  await upsertDocInDb(
+    target,
+    config.platformDb,
+    appInstallRecord("expense", "Expense sample", databaseForAppId("expense"), now, "person:alice", "sample:expense")
+  );
 }
 
 async function waitForCouch(target: "local" | "server", attempts = 60) {
@@ -1584,7 +1579,9 @@ app.put(
 );
 
 app.post(
-  "/api/platform/install-sample/expense",
+  // ADR-0015: generic sample install by app id (e.g. "expense"), driven entirely by
+  // the template registry — no per-app route or code.
+  "/api/platform/install-sample/:appId",
   asyncRoute(async (request, response) => {
     const scope = await requireSession(request, "manager");
     const state = await platformState(request);
@@ -1592,22 +1589,17 @@ app.post(
       response.status(409).json({ error: "setup_required", reason: "Complete setup before installing sample apps" });
       return;
     }
+    const sample = sampleTemplateForApp(routeParam(request.params.appId));
+    if (!sample) {
+      response.status(404).json({ error: "unknown_sample", reason: `No sample template for app: ${routeParam(request.params.appId)}` });
+      return;
+    }
 
-    const [localInstalled, serverInstalled] = await Promise.all([expenseAppInstalled("local"), expenseAppInstalled("server")]);
-    await Promise.all([
-      seedExpenseSampleDirectory("local", scope.person as `person:${string}`),
-      seedExpenseSampleDirectory("server", scope.person as `person:${string}`)
-    ]);
-    // M17: seedTarget installs the packaged `sample:expense` JSON template plus sample data.
-    if (!localInstalled) await seedTarget("local");
-    if (!serverInstalled) await seedTarget("server");
-
+    const existing = await docExistsInDb("local", config.platformDb, `appinstall:${sample.appId}`);
     const installedAt = timestamp();
-    const install = expenseInstallRecord(installedAt, scopeUser(scope));
-    const existing = await docExistsInDb("local", config.platformDb, install._id);
-    const localResult = await upsertDocInDb("local", config.platformDb, install);
-    await upsertDocInDb("server", config.platformDb, install);
-    response.status(existing ? 200 : 201).json({ ...(await platformState(request)), rev: localResult.rev });
+    await installSampleApp("local", sample.appId, sample.title, sample.templateId, scopeUser(scope), installedAt);
+    await installSampleApp("server", sample.appId, sample.title, sample.templateId, scopeUser(scope), installedAt);
+    response.status(existing ? 200 : 201).json(await platformState(request));
   })
 );
 
@@ -1924,9 +1916,9 @@ app.post(
     // M12: stamp the document generically so any scaffolded docType is correct
     // (was hardcoded to expense/vendor); readers come from the form's data policy
     // (ADR-0015: `defaultReaders`), not an app-specific rule in base.
-    const doc = createDocument(docType, payload, scopeUser(scope), readers);
-    const result = await putDoc("local", { ...doc, appId: appContext.appId }, appContext.database);
-    response.status(201).json({ ...doc, appId: appContext.appId, _rev: result.rev });
+    const doc = createDocument(docType, payload, scopeUser(scope), readers, appContext.appId);
+    const result = await putDoc("local", doc, appContext.database);
+    response.status(201).json({ ...doc, _rev: result.rev });
   })
 );
 
