@@ -4,7 +4,8 @@ Date: 2026-06-22
 
 ## Status
 
-Accepted
+Accepted — directory storage location superseded by ADR-0012 (`person:*`/`group:*` moved from
+`setup_app` to `names_app` / `names.nsf`). The session-auth model below still holds.
 
 ## Context
 

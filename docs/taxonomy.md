@@ -35,7 +35,7 @@ Classes map to the path-tagged aspects in `docs/invariants.md`.
 | Validation & expressions | Shared rules + portable evaluator | parity (client+API), eval safety, determinism | `docs/context/shared.md` |
 | Replication & conflict | Bidirectional CouchDB sync + resolution | `_rev`/`_conflicts`, push/pull | `docs/context/server.md` |
 | Access control | Filtered replication by `readers`/`authors` | ACL leak surface | `docs/context/server.md` |
-| Identity & sessions | Directory people/groups, login, session cookies, app ACL levels | setup.nsf directory, `person:*`, `group:*`, `session:*` | `docs/context/server.md`, `docs/context/client.md`, `docs/context/shared.md` |
+| Identity & sessions | Directory people/groups, login, session cookies, app ACL levels | names.nsf directory (`names_app`), `person:*`, `group:*`, `session:*` | `docs/context/server.md`, `docs/context/client.md`, `docs/context/shared.md` |
 | Offline-first | Local-replica editing with no server round-trip | local vs server CouchDB | `docs/context/server.md`, `docs/context/client.md` |
 | Query & indexing | Mango selectors + indexes for views | `use_index`, index triplication | `docs/context/server.md` |
 | Deployment & packaging | Built platform artifact and deploy topology | Docker image, deploy compose, readiness, artifact gate | `docs/context/server.md` |

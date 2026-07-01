@@ -88,7 +88,7 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 
 ## Identity & sessions
 
-- Protected API routes must resolve the current actor from an authenticated HTTP-only session cookie, never from client-supplied principal ids or stale fixed-user config; password hashes stay on `person:*` docs in `setup_app`, session tokens are stored only as hashes in `platform_app`, public session payloads must not expose hashes/tokens, and app ACL levels must be checked through shared access helpers.
+- Protected API routes must resolve the current actor from an authenticated HTTP-only session cookie, never from client-supplied principal ids or stale fixed-user config; password hashes stay on `person:*` docs in `names_app` (the `names.nsf` directory), session tokens are stored only as hashes in `platform_app`, public session payloads must not expose hashes/tokens, and app ACL levels must be checked through shared access helpers.
   - Paths: `src/server/auth.ts`, `src/server/index.ts`, `src/shared/access.ts`, `src/shared/types.ts`, `src/client/main.tsx`, `tests/e2e/**`, `tests/deploy/**`
 
 ## MCP agent interface
