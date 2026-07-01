@@ -1272,7 +1272,7 @@ app.get(
 );
 
 app.post(
-  "/api/names/seed",
+  "/api/setup",
   asyncRoute(async (request, response) => {
     await requireSession(request, "manager");
     await Promise.all([seedTarget("local"), seedTarget("server")]);
