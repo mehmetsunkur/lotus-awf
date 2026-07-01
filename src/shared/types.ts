@@ -9,7 +9,7 @@ export type AppConfig = {
   database: string;
 };
 
-export type FieldType = "text" | "textarea" | "number" | "date" | "boolean" | "select";
+export type FieldType = "text" | "textarea" | "number" | "date" | "boolean" | "select" | "formula";
 
 export type ExpressionRule = {
   expression: string;
@@ -61,6 +61,12 @@ export type FormField = {
    * field is read-only in the runtime and recomputed on both client and server.
    */
   compute?: string;
+  /**
+   * ADR-0014: a `type: "formula"` field's value is derived by evaluating this
+   * async-lane formula (may call `@DbColumn`/`@DbLookup`) server-side, ACL-scoped.
+   * Read-only, never stored in the document payload. Optional and back-compatible.
+   */
+  formula?: string;
   /**
    * M9: opt this field into full-text search. Optional and back-compatible —
    * when absent, text-ish fields (`text`/`textarea`/`select`) are searchable by

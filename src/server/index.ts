@@ -56,6 +56,7 @@ import {
   stripDefinitionRev
 } from "../shared/template";
 import { applyComputedFields, normalizePayload, validatePayload } from "../shared/validation";
+import { evaluateFormulaAsync, type DbReader } from "../shared/formula";
 import { applyTransition, currentState } from "../shared/workflow";
 import { agentIsDue, agentIsEnabled, agentMatchesChange, agentRunKey } from "../shared/agents";
 import { searchDocuments } from "../shared/search";
@@ -1188,6 +1189,57 @@ function getPath(source: Record<string, unknown>, path: string): unknown {
   }, source);
 }
 
+/**
+ * ADR-0014: a `DbReader` for the async formula lane. Reads the LOCAL replica only
+ * (offline-first, no server round-trip), returning ALL rows of a docType — the
+ * formula lane applies the single ACL filter (`canReadDocument`) against the
+ * caller's scope. A per-call memo bounds N+1 when several formulas hit the same
+ * source. Unknown/uninstalled target apps read as empty.
+ */
+function makeDbReader(): DbReader {
+  const memo = new Map<string, Promise<BusinessDocument[]>>();
+  return (appId, docType) => {
+    const key = `${appId}:${docType}`;
+    let pending = memo.get(key);
+    if (!pending) {
+      pending = (async () => {
+        try {
+          const app = await resolveBusinessApp(appId);
+          return await getBusinessDocs("local", docType, undefined, app.database);
+        } catch {
+          return [];
+        }
+      })();
+      memo.set(key, pending);
+    }
+    return pending;
+  };
+}
+
+/** Resolve a document's `type: "formula"` fields, ACL-scoped to `scope`. */
+async function resolveFormulaFields(
+  form: FormDefinition,
+  doc: BusinessDocument,
+  scope: PrincipalScope
+): Promise<Record<string, unknown>> {
+  const fields = form.fields.filter((field) => field.type === "formula" && field.formula);
+  if (!fields.length) return {};
+  const read = makeDbReader();
+  const entries = await Promise.all(
+    fields.map(async (field) => {
+      const value = await evaluateFormulaAsync(field.formula, {
+        payload: doc.payload,
+        doc: doc as unknown as Record<string, unknown>,
+        user: scope.person,
+        scope,
+        read
+      });
+      return [field.name, value] as const;
+    })
+  );
+  return Object.fromEntries(entries);
+}
+
 app.get(
   "/api/health",
   asyncRoute(async (_request, response) => {
@@ -1813,6 +1865,30 @@ app.get(
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     response.json(await getReadableDocument(routeParam(request.params.id), await requireAppSession(request, appContext.database), appContext.database));
+  })
+);
+
+app.get(
+  // ADR-0014: resolved values for a document's `type: "formula"` fields. Kept off
+  // the document/list read paths — the client fetches this only when a form has
+  // formula fields. ACL-scoped to the caller both to read the document and inside
+  // each lookup (canReadDocument), so it can never widen visibility.
+  ["/api/documents/:id/formulas", "/api/apps/:appId/documents/:id/formulas"],
+  asyncRoute(async (request, response) => {
+    const appContext = await appContextFromRequest(request);
+    const scope = await requireAppSession(request, appContext.database);
+    const doc = await getReadableDocument(routeParam(request.params.id), scope, appContext.database);
+    let form: FormDefinition;
+    try {
+      form = await formForDocType(doc.docType, appContext.database);
+    } catch (error) {
+      if (error instanceof CouchError && error.status === 404) {
+        response.json({});
+        return;
+      }
+      throw error;
+    }
+    response.json(await resolveFormulaFields(form, doc, scope));
   })
 );
 

@@ -605,6 +605,7 @@ function DocumentForm({
   form,
   selected,
   optionsByField,
+  formulaValues = {},
   workflow,
   user,
   roles,
@@ -617,6 +618,8 @@ function DocumentForm({
   form: FormDefinition;
   selected?: BusinessDocument;
   optionsByField: SelectOptionsByField;
+  // ADR-0014: server-resolved values for the selected doc's formula fields.
+  formulaValues?: Record<string, unknown>;
   workflow?: WorkflowDefinition;
   user: string;
   roles: string[];
@@ -682,6 +685,7 @@ function DocumentForm({
                   doc={selected}
                   draft={normalized}
                   optionsByField={optionsByField}
+                  formulaValue={formulaValues[field.name]}
                   testIdPrefix={preview ? "preview-field" : "field"}
                   onChange={(value) => setDraft((current) => ({ ...current, [field.name]: value }))}
                 />
@@ -720,6 +724,7 @@ function FieldEditor({
   doc,
   draft,
   optionsByField,
+  formulaValue,
   onChange,
   testIdPrefix = "field"
 }: {
@@ -727,6 +732,8 @@ function FieldEditor({
   doc?: BusinessDocument;
   draft: Draft;
   optionsByField: SelectOptionsByField;
+  // ADR-0014: server-resolved value for a `type: "formula"` field (async lane).
+  formulaValue?: unknown;
   onChange: (value: unknown) => void;
   // M11: the studio preview reuses this renderer; a distinct prefix keeps its
   // field testids from colliding with the live runtime form's `field-*` ids.
@@ -738,6 +745,18 @@ function FieldEditor({
   const required = isFieldRequired(field, doc, draft);
   const options = field.options ?? optionsByField[field.name] ?? [];
   const testId = `${testIdPrefix}-${field.name}`;
+
+  // ADR-0014: formula fields are read-only and resolved server-side (they may do
+  // ACL-scoped cross-DB reads that cannot run in the browser); display only.
+  if (field.type === "formula") {
+    return (
+      <label>
+        <span>{field.label}</span>
+        <output data-testid={testId} className="formulaValue">{displayValue(formulaValue)}</output>
+        {field.helpText ? <small>{field.helpText}</small> : null}
+      </label>
+    );
+  }
 
   return (
     <label className={field.type === "boolean" ? "checkboxLine" : ""}>
@@ -2043,6 +2062,7 @@ function App() {
   const searchQueryRef = React.useRef("");
   // M10: audit trail for the selected document (read-only, server-recorded).
   const [auditEvents, setAuditEvents] = React.useState<AuditEvent[]>([]);
+  const [formulaValues, setFormulaValues] = React.useState<Record<string, unknown>>({});
   const selectedIdRef = React.useRef<string | undefined>(undefined);
   const lastOpenedNsfRouteRef = React.useRef("");
 
@@ -2360,6 +2380,28 @@ function App() {
       cancelled = true;
     };
   }, [businessApiBase, selectedId, documents]);
+
+  // ADR-0014: resolve the selected document's formula fields server-side (they may
+  // do ACL-scoped cross-DB reads that can't run in the browser). Display-only; the
+  // editable path stays fully offline. Skipped when the form has no formula fields.
+  React.useEffect(() => {
+    const hasFormula = Boolean(selectedForm?.fields.some((field) => field.type === "formula" && field.formula));
+    if (!selectedId || !hasFormula) {
+      setFormulaValues({});
+      return;
+    }
+    let cancelled = false;
+    api<Record<string, unknown>>(`${businessApiBase}/documents/${encodeURIComponent(selectedId)}/formulas`)
+      .then((values) => {
+        if (!cancelled) setFormulaValues(values);
+      })
+      .catch(() => {
+        if (!cancelled) setFormulaValues({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [businessApiBase, selectedId, selectedForm, documents]);
 
   const shellActions = {
     status,
@@ -2681,6 +2723,7 @@ function App() {
                     form={selectedForm}
                     selected={isCreateRoute ? undefined : selected}
                     optionsByField={optionsByField}
+                    formulaValues={isCreateRoute ? {} : formulaValues}
                     workflow={isCreateRoute ? undefined : selectedWorkflow}
                     user={definitions.user}
                     roles={definitions.roles}
@@ -2754,6 +2797,7 @@ function App() {
                     form={selectedForm}
                     selected={selected}
                     optionsByField={optionsByField}
+                    formulaValues={formulaValues}
                     workflow={selectedWorkflow}
                     user={definitions.user}
                     roles={definitions.roles}

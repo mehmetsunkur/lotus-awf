@@ -92,6 +92,11 @@ the server's own behavior.
   `requireSession()` resolves the request to a principal scope before protected routes run. M19 adds
   manager-only `/api/names/directory`, `/api/names/people*`, and `/api/names/groups*` APIs (ADR-0012);
   responses are sanitized and never expose password hashes/salts or session tokens.
+- Formula fields (ADR-0014): `GET /api/apps/:appId/documents/:id/formulas` resolves a document's
+  `type: "formula"` fields via `resolveFormulaFields` → `evaluateFormulaAsync` (the async lane). A
+  per-request `DbReader` reads the LOCAL replica of the target app (`resolveBusinessApp` → `getBusinessDocs`,
+  memoized) and returns all rows; the formula lane applies the single ACL filter (`canReadDocument`).
+  Kept off the document/list read paths; the client fetches it only when a form has formula fields.
 - Access (M5/M18): current principals come from the authenticated session (`person:<username>`,
   direct groups, plus any explicit principals) and app-level `acl:rules` entries grant
   `reader`/`author`/`editor`/`designer`/`manager`. Business reads match document `readers`, payload
@@ -176,6 +181,7 @@ this subsystem.
 - `docs/decisions/0008-deployable-docker-artifact.md`
 - `docs/decisions/0010-directory-and-session-auth.md`
 - `docs/decisions/0012-names-directory-split.md`
+- `docs/decisions/0014-formula-language-and-agents.md`
 - `docs/M5/02-access-policy.md`
 - `docs/M5/03-replication-purge.md`
 - `docs/M6/02-template-contract.md`

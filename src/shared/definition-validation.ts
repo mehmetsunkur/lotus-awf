@@ -9,10 +9,11 @@ import type {
   WorkflowTransition
 } from "./types";
 import { evaluateBoolean } from "./expression";
+import { formulaBlockedToken } from "./formula";
 import { findHandler, handlerHasKind } from "./handlers/manifest";
 import type { AgentDefinition, AuditPolicy, HandlerKind } from "./types";
 
-const FIELD_TYPES = new Set(["text", "textarea", "number", "date", "boolean", "select"]);
+const FIELD_TYPES = new Set(["text", "textarea", "number", "date", "boolean", "select", "formula"]);
 const FILTER_OPS = new Set(["eq", "ne", "gt", "gte", "lt", "lte", "in"]);
 const SORT_DIRECTIONS = new Set(["asc", "desc"]);
 
@@ -78,6 +79,19 @@ function validateField(field: FormField, index: number): ValidationError[] {
     errors.push(...validateExpression(rule.expression, `${prefix}.validate.${ruleIndex}.expression`));
   }
   errors.push(...validateHandlerRef(field.compute, "pure", `${prefix}.compute`));
+  if (field.type === "formula") {
+    // ADR-0014: a formula field carries an async-lane formula, resolved server-side.
+    // Validate presence + sandbox posture here; it must NOT go through the sync
+    // `validateExpression` lane (that lane forbids `await` and has no DB functions).
+    if (!nonEmpty(field.formula)) {
+      errors.push(error(`${prefix}.formula`, "A formula field requires a formula"));
+    } else {
+      const bad = formulaBlockedToken(field.formula);
+      if (bad) errors.push(error(`${prefix}.formula`, `Formula contains a blocked token: ${bad}`));
+    }
+  } else if (field.formula !== undefined) {
+    errors.push(error(`${prefix}.formula`, "Only formula fields may set a formula"));
+  }
   if (field.searchable !== undefined && typeof field.searchable !== "boolean") {
     errors.push(error(`${prefix}.searchable`, "Field searchable must be a boolean"));
   }

@@ -61,6 +61,10 @@ resolution panel, and M18 login/logout.
 - Edit → shared `validatePayload` runs client-side → `POST/PUT /api/documents` (local replica).
 - Compute (M7) → `applyComputedFields` (shared) derives `compute` fields from the live draft, offline;
   computed fields render read-only and recompute as inputs change.
+- Formula fields (ADR-0014) → a `type: "formula"` field renders read-only (`<output>`), its value fetched
+  from `GET .../documents/:id/formulas` when the selected form has formula fields (server-resolved,
+  ACL-scoped, may read other apps). Excluded from the editable draft/validation/payload, so the edit path
+  stays offline; the derived value is display-only and blank offline.
 - Transition (M3) → `WorkflowBar` renders `availableTransitions` (shared engine) → `POST
   /api/documents/:id/transition` → refresh.
 - Authoring (M4/M16) → Designer workspace left pane lists forms/views/workflows; structured controls
@@ -108,6 +112,7 @@ See `docs/invariants.md`: **Validation parity**, **Offline editing**, **Form lay
 - `docs/decisions/0002-offline-first-dual-couchdb.md`
 - `docs/decisions/0010-directory-and-session-auth.md`
 - `docs/decisions/0012-names-directory-split.md`
+- `docs/decisions/0014-formula-language-and-agents.md`
 
 ## Tests
 

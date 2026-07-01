@@ -30,6 +30,12 @@ No DOM, no Node/server-only APIs.
   `DirectoryState`.
 - `src/shared/access.ts` (M5/M18) — pure helpers for session-derived principal scopes, readable docs,
   editable docs, derived readers, app ACL levels, and access selectors.
+- `src/shared/formula.ts` (ADR-0014) — the ASYNC evaluation lane. `evaluateFormulaAsync` permits
+  `await DbColumn(appId; docType; column)` / `DbLookup(appId; docType; keyColumn; key; valueColumn)`,
+  every read ACL-filtered through `canReadDocument`. Distinct from `expression.ts` (the pure sync lane,
+  which forbids lookups). `formulaBlockedToken` gates the sandbox at authoring time. `type: "formula"`
+  form fields carry a `formula` string, are read-only, server-resolved, and excluded from the payload
+  (`isPayloadField` in `validation.ts`).
 - `src/shared/validation.ts` — `validatePayload`, `applyFormDefaults`, `normalizePayload`, `isFieldRequired/Visible/ReadOnly`.
 - `src/shared/definition-validation.ts` (M4) — shared validators for `form:*`, `view:*`, and
   `workflow:*` documents before local definition writes.

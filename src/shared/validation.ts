@@ -9,9 +9,18 @@ export function defaultValueForField(field: FormField): unknown {
   return "";
 }
 
+/**
+ * ADR-0014: formula (`type: "formula"`) fields are read-only, server-resolved, and
+ * never stored in the payload, so every payload lifecycle step skips them.
+ */
+export function isPayloadField(field: FormField): boolean {
+  return field.type !== "formula";
+}
+
 export function applyFormDefaults(form: FormDefinition, payload: Record<string, unknown>) {
   const next = { ...payload };
   for (const field of form.fields) {
+    if (!isPayloadField(field)) continue;
     if (next[field.name] === undefined) {
       next[field.name] = defaultValueForField(field);
     }
@@ -58,12 +67,14 @@ export function isFieldRequired(field: FormField, doc: BusinessDocument | undefi
 export function normalizePayload(form: FormDefinition, payload: Record<string, unknown>) {
   const withDefaults = applyFormDefaults(form, payload);
   return Object.fromEntries(
-    form.fields.map((field) => {
-      const value = withDefaults[field.name];
-      if (field.type === "number") return [field.name, Number(value || 0)];
-      if (field.type === "boolean") return [field.name, Boolean(value)];
-      return [field.name, value ?? ""];
-    })
+    form.fields
+      .filter(isPayloadField)
+      .map((field) => {
+        const value = withDefaults[field.name];
+        if (field.type === "number") return [field.name, Number(value || 0)];
+        if (field.type === "boolean") return [field.name, Boolean(value)];
+        return [field.name, value ?? ""];
+      })
   );
 }
 
@@ -77,6 +88,7 @@ export function validatePayload(
   const normalized = normalizePayload(form, payload);
 
   for (const field of form.fields) {
+    if (!isPayloadField(field)) continue; // formula fields are read-only, not user input
     if (!isFieldVisible(field, doc, normalized)) continue;
     const value = normalized[field.name];
 
