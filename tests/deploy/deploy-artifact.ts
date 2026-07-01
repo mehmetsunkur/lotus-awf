@@ -130,14 +130,15 @@ async function retry<T>(description: string, action: () => Promise<T>, timeoutMs
 
 async function runAssertions() {
   await waitFor("/api/health", "app liveness");
-  await waitFor("/api/ready", "setup.nsf readiness");
+  await waitFor("/api/ready", "names.nsf readiness");
 
   const root = await fetch(baseUrl);
   assert.equal(root.status, 200, "built client should be served by the app container");
   assert.match(await root.text(), /<div id="root"><\/div>/, "built client HTML should include the React root");
   for (const route of [
     "/setup.nsf",
-    "/setup.nsf/views/people",
+    "/names.nsf",
+    "/names.nsf/views/people",
     "/login.nsf",
     "/catalog.nsf",
     "/catalog.nsf/views/system-apps",
@@ -161,7 +162,7 @@ async function runAssertions() {
   }>("/api/platform/state");
   assert.equal(firstRun.setupComplete, false, "fresh deploy should start in setup mode");
   assert.equal(firstRun.session.authenticated, false, "fresh deploy should not have an authenticated session");
-  assert.ok(firstRun.systemApps.some((app) => app.appId === "setup" && app.route === "/setup.nsf"), "setup.nsf should be advertised as a system app");
+  assert.ok(firstRun.systemApps.some((app) => app.appId === "names" && app.route === "/names.nsf"), "names.nsf should be advertised as a system app");
   assert.equal(firstRun.installedApps.length, 0, "fresh deploy should have an empty app catalog");
   assert.equal(firstRun.samples.find((sample) => sample.appId === "expense")?.installed, false, "expense sample should not be installed by default");
   await request("/api/definitions", { ok: 401 });
@@ -186,13 +187,13 @@ async function runAssertions() {
   assert.equal(configured.setupComplete, true, "setup should complete");
   assert.equal(configured.session.authenticated, true, "setup should create an authenticated admin session");
   assert.equal(configured.session.person?.username, "admin", "setup session should belong to the admin person");
-  assert.ok(configured.systemApps.some((app) => app.appId === "setup" && app.route === "/setup.nsf"), "setup.nsf should stay visible after setup");
+  assert.ok(configured.systemApps.some((app) => app.appId === "names" && app.route === "/names.nsf"), "names.nsf should stay visible after setup");
   assert.equal(configured.orgName, "Deploy Test Org", "org name should persist");
   assert.equal(configured.domainName, "deploy.test", "domain name should persist");
   assert.equal(configured.adminUser, "admin", "admin username should persist");
   assert.equal(configured.installedApps.length, 0, "setup should still land on an empty app catalog");
 
-  await request("/api/setup/people", {
+  await request("/api/names/people", {
     method: "POST",
     ok: 201,
     body: { username: "bob", displayName: "Bob Builder", password: "password123" }
