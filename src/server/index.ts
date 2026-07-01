@@ -560,7 +560,7 @@ async function writeGroupBothTargets(group: GroupDocument): Promise<void> {
 }
 
 async function seedDevDirectory(target: "local" | "server", adminUser = "alice", adminPassword = DEV_PASSWORD) {
-  await seedSetupTarget(target);
+  await seedNamesTarget(target);
   const alice = await upsertPerson(target, "alice", "Alice Finance", adminUser === "alice" ? adminPassword : DEV_PASSWORD);
   const bob = await upsertPerson(target, "bob", "Bob Sales", DEV_PASSWORD);
   if (adminUser !== "alice") await upsertPerson(target, adminUser, adminUser, adminPassword);
@@ -570,7 +570,7 @@ async function seedDevDirectory(target: "local" | "server", adminUser = "alice",
 }
 
 async function seedExpenseSampleDirectory(target: "local" | "server", currentPerson?: `person:${string}`) {
-  await seedSetupTarget(target);
+  await seedNamesTarget(target);
   const alice = await upsertPerson(target, "alice", "Alice Finance", DEV_PASSWORD);
   const bob = await upsertPerson(target, "bob", "Bob Sales", DEV_PASSWORD);
   const financeMembers = Array.from(new Set([alice._id, currentPerson].filter(Boolean))) as Array<`person:${string}`>;
@@ -594,14 +594,14 @@ async function expenseAppInstalled(target: "local" | "server") {
   }
 }
 
-async function seedSetupTarget(target: "local" | "server") {
+async function seedNamesTarget(target: "local" | "server") {
   await ensureNamedDb(target, config.namesDb);
   if (!(await docExistsInDb(target, config.namesDb, "app:config"))) {
     await putDocInDb<AppConfig>(target, config.namesDb, {
       _id: "app:config",
       kind: "app",
-      appId: "setup",
-      title: "Setup",
+      appId: "names",
+      title: "Directory",
       database: config.namesDb
     });
   }
@@ -665,11 +665,11 @@ async function appContextFromRequest(request: Request): Promise<BusinessAppConte
 function systemApps(): SystemApp[] {
   return [
     {
-      appId: "setup",
-      title: "Setup",
+      appId: "names",
+      title: "Directory",
       database: config.namesDb,
-      route: "/setup.nsf",
-      description: "Directory, groups, and platform administration."
+      route: "/names.nsf",
+      description: "People, groups, and directory administration."
     }
   ];
 }
@@ -734,7 +734,7 @@ async function markExpenseInstalled(target: "local" | "server") {
 
 async function completeDevPlatformSetup(target: "local" | "server") {
   const now = timestamp();
-  await seedSetupTarget(target);
+  await seedNamesTarget(target);
   await seedPlatformTarget(target);
   await seedDevDirectory(target);
   await upsertDocInDb<PlatformConfig>(target, config.platformDb, {
@@ -762,8 +762,8 @@ async function autoSetupPackagedApp() {
   if (!config.autoSetup) return;
   try {
     await Promise.all([waitForCouch("local"), waitForCouch("server")]);
-    await Promise.all([seedSetupTarget("local"), seedSetupTarget("server"), seedPlatformTarget("local"), seedPlatformTarget("server")]);
-    console.log(`Installed setup.nsf (${config.namesDb}) and platform catalog (${config.platformDb})`);
+    await Promise.all([seedNamesTarget("local"), seedNamesTarget("server"), seedPlatformTarget("local"), seedPlatformTarget("server")]);
+    console.log(`Installed names.nsf (${config.namesDb}) and platform catalog (${config.platformDb})`);
   } catch (error) {
     console.error("packaged app auto-setup failed", error);
   }
@@ -1272,7 +1272,7 @@ app.get(
 );
 
 app.post(
-  "/api/setup",
+  "/api/names/seed",
   asyncRoute(async (request, response) => {
     await requireSession(request, "manager");
     await Promise.all([seedTarget("local"), seedTarget("server")]);
@@ -1400,7 +1400,7 @@ app.post(
 );
 
 app.get(
-  "/api/setup/directory",
+  "/api/names/directory",
   asyncRoute(async (request, response) => {
     await requireSession(request, "manager");
     response.json(await setupDirectoryState());
@@ -1408,7 +1408,7 @@ app.get(
 );
 
 app.post(
-  "/api/setup/people",
+  "/api/names/people",
   asyncRoute(async (request, response) => {
     await requireSession(request, "manager");
     const username = normalizeUsername(String(request.body.username ?? ""));
@@ -1435,7 +1435,7 @@ app.post(
 );
 
 app.put(
-  "/api/setup/people/:username",
+  "/api/names/people/:username",
   asyncRoute(async (request, response) => {
     await requireSession(request, "manager");
     const username = normalizeUsername(routeParam(request.params.username));
@@ -1457,7 +1457,7 @@ app.put(
 );
 
 app.post(
-  "/api/setup/people/:username/password",
+  "/api/names/people/:username/password",
   asyncRoute(async (request, response) => {
     await requireSession(request, "manager");
     const username = normalizeUsername(routeParam(request.params.username));
@@ -1475,7 +1475,7 @@ app.post(
 );
 
 app.post(
-  "/api/setup/groups",
+  "/api/names/groups",
   asyncRoute(async (request, response) => {
     await requireSession(request, "manager");
     const slug = normalizeGroupSlug(String(request.body.slug ?? ""));
@@ -1505,7 +1505,7 @@ app.post(
 );
 
 app.put(
-  "/api/setup/groups/:slug",
+  "/api/names/groups/:slug",
   asyncRoute(async (request, response) => {
     await requireSession(request, "manager");
     const slug = normalizeGroupSlug(routeParam(request.params.slug));
