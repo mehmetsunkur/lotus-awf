@@ -43,22 +43,22 @@ resolution panel, and M18 login/logout.
   for system apps and installed business apps (`views`, `documents`, `new`, and `designer`).
   View/document/create/definition selections push matching URLs and browser back/forward updates
   selected state. Unknown business app slugs return to `/catalog.nsf`.
-- App runtime boot → `GET /api/apps/:appId/status|definitions|conflicts` for business apps (unscoped
-  Expense aliases remain) → render shell (`platform/state` carries the authenticated person/groups,
-  while definition/runtime APIs are session-protected).
+- App runtime boot → `GET /api/apps/:appId/status|definitions|conflicts` for business apps
+  (app-scoped only — ADR-0015; no unscoped aliases) → render shell (`platform/state` carries the
+  authenticated person/groups, while definition/runtime APIs are session-protected).
 - First-run setup (M14/M18) → `POST /api/platform/setup` stores org/domain/admin, creates the admin
   Person and `group:admins`, sets a session cookie, then catalog renders with no business apps
   installed.
-- Sample install (M14) → catalog `POST /api/platform/install-sample/expense`, then the user can open
-  the existing Expense runtime. Catalog-created apps (M21) use `POST /api/platform/apps`, then open
-  through `/:appId.nsf`.
+- Sample install (M14/ADR-0015) → the catalog sample card loops over `state.samples`; installing calls
+  the generic `POST /api/platform/install-sample/:appId`, then the app opens through `/:appId.nsf`.
+  Catalog-created apps (M21) use `POST /api/platform/apps`, then open the same way.
 - System app shell (M20) → `/catalog.nsf` and `/names.nsf` use the same left-navigation /
   right-content workspace as business apps. Catalog sections are System Apps, Installed Apps, and
   Sample Templates; names sections are People, Groups, and Installed Apps.
 - Directory Console (M19/M20, ADR-0012) → catalog System apps card opens `/names.nsf/views/people`; the console
   fetches `GET /api/names/directory` and calls manager-only People/Groups APIs. It renders only public
   person data, groups, and installed-app summaries inside the standard workspace.
-- Edit → shared `validatePayload` runs client-side → `POST/PUT /api/documents` (local replica).
+- Edit → shared `validatePayload` runs client-side → `POST/PUT /api/apps/:appId/documents` (local replica).
 - Compute (M7) → `applyComputedFields` (shared) derives `compute` fields from the live draft, offline;
   computed fields render read-only and recompute as inputs change.
 - Formula fields (ADR-0014) → a `type: "formula"` field renders read-only (`<output>`), its value fetched
@@ -113,6 +113,7 @@ See `docs/invariants.md`: **Validation parity**, **Offline editing**, **Form lay
 - `docs/decisions/0010-directory-and-session-auth.md`
 - `docs/decisions/0012-names-directory-split.md`
 - `docs/decisions/0014-formula-language-and-agents.md`
+- `docs/decisions/0015-retire-expense-specialization.md`
 
 ## Tests
 
