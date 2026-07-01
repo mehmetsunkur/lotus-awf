@@ -104,7 +104,10 @@ type RouteState = {
   nsf: NsfRoute;
 };
 
-const DEFAULT_EXPENSE_VIEW_ID = "view:my-expenses";
+// ADR-0015: no expense-specific default. A business app's default view is its
+// first view (resolved after definitions load); this empty fallback is only used
+// before definitions are available.
+const FALLBACK_VIEW_ID = "";
 const DEFAULT_NAMES_VIEW_ID = "view:people";
 const DEFAULT_CATALOG_VIEW_ID = "view:system-apps";
 const ACCESS_PANEL_ID = "acl:access";
@@ -132,7 +135,7 @@ const docTypeFromDefinitionId = (id: string) => id.replace(/^(form|workflow):/, 
 const defaultViewForApp = (app: PlatformRoute) => {
   if (app === "names") return DEFAULT_NAMES_VIEW_ID;
   if (app === "catalog") return DEFAULT_CATALOG_VIEW_ID;
-  return DEFAULT_EXPENSE_VIEW_ID;
+  return FALLBACK_VIEW_ID;
 };
 
 const nsfRouteForPath = (path: string, app: PlatformRoute): NsfRoute => {
@@ -241,7 +244,7 @@ function StatusStrip({
     <header className="topbar" data-testid="topbar">
       <div>
         <p className="kicker">M2 Metadata Runtime</p>
-        <h1>Expense Replica</h1>
+        <h1>Lotus Notes</h1>
       </div>
       <div className="statusCluster">
         <span
@@ -1647,8 +1650,7 @@ function AppCatalog({
   selectedViewId,
   onSelectView,
   onOpenNames,
-  onInstallExpense,
-  onOpenExpense,
+  onInstallSample,
   onOpenApp,
   onCreateApp,
   onRefresh,
@@ -1660,8 +1662,7 @@ function AppCatalog({
   selectedViewId: string;
   onSelectView: (viewId: string) => void;
   onOpenNames: () => void;
-  onInstallExpense: () => void;
-  onOpenExpense: () => void;
+  onInstallSample: (appId: string) => void;
   onOpenApp: (appId: string) => void;
   onCreateApp: (payload: { appId: string; title: string; docType: string; docTypeTitle: string }) => void;
   onRefresh: () => void;
@@ -1671,9 +1672,6 @@ function AppCatalog({
   const [title, setTitle] = React.useState("");
   const [docType, setDocType] = React.useState("");
   const [docTypeTitle, setDocTypeTitle] = React.useState("");
-  const expenseInstalled =
-    state.installedApps.some((app) => app.appId === "expense") ||
-    state.samples.some((sample) => sample.appId === "expense" && sample.installed);
   const sections = [
     { id: "view:system-apps", title: "System Apps" },
     { id: "view:installed-apps", title: "Installed Apps" },
@@ -1788,19 +1786,21 @@ function AppCatalog({
                   <h2>Available templates</h2>
                 </div>
               </div>
-              <article className="definitionCard" data-testid="sample-expense">
-                <strong>Expense sample</strong>
-                <span>Approval workflow, metadata forms, views, agents, search, and audit.</span>
-                {expenseInstalled ? (
-                  <button className="primary" onClick={onOpenExpense} disabled={busy} data-testid="open-expense-sample">
-                    <List size={16} /> Open Expense
-                  </button>
-                ) : (
-                  <button className="primary" onClick={onInstallExpense} disabled={busy} data-testid="install-expense-sample">
-                    <Database size={16} /> Install
-                  </button>
-                )}
-              </article>
+              {state.samples.map((sample) => (
+                <article className="definitionCard" data-testid={`sample-${sample.appId}`} key={sample.appId}>
+                  <strong>{sample.title}</strong>
+                  <span>{sample.description}</span>
+                  {sample.installed ? (
+                    <button className="primary" onClick={() => onOpenApp(sample.appId)} disabled={busy} data-testid={`open-${sample.appId}-sample`}>
+                      <List size={16} /> Open
+                    </button>
+                  ) : (
+                    <button className="primary" onClick={() => onInstallSample(sample.appId)} disabled={busy} data-testid={`install-${sample.appId}-sample`}>
+                      <Database size={16} /> Install
+                    </button>
+                  )}
+                </article>
+              ))}
             </section>
           )}
         </div>
@@ -2049,8 +2049,8 @@ function App() {
   const [documentRouteError, setDocumentRouteError] = React.useState("");
   const [conflicts, setConflicts] = React.useState<CouchDocument[]>([]);
   const [optionsByField, setOptionsByField] = React.useState<SelectOptionsByField>({});
-  const [selectedViewId, setSelectedViewId] = React.useState(DEFAULT_EXPENSE_VIEW_ID);
-  const [selectedDefinitionId, setSelectedDefinitionId] = React.useState("form:expense");
+  const [selectedViewId, setSelectedViewId] = React.useState(FALLBACK_VIEW_ID);
+  const [selectedDefinitionId, setSelectedDefinitionId] = React.useState("");
   const [selectedId, setSelectedId] = React.useState<string>();
   const [selectedConflict, setSelectedConflict] = React.useState<ConflictDetails>();
   const [message, setMessage] = React.useState("Runtime booting.");
@@ -2239,14 +2239,14 @@ function App() {
     }
     if (route.nsf.kind === "home") {
       if (window.location.pathname !== `/${route.app}.nsf`) {
-        navigateNsf({ kind: "view", viewId: route.app === "expense" ? DEFAULT_EXPENSE_VIEW_ID : selectedViewId }, true, route.app);
+        navigateNsf({ kind: "view", viewId: selectedViewId }, true, route.app);
         return;
       }
-      run(route.app === "expense" ? "Open Expense" : "Open app", () => refresh(selectedViewId, { autoSelectFirst: true }), { refreshAfter: false });
+      run("Open app", () => refresh(selectedViewId, { autoSelectFirst: true }), { refreshAfter: false });
       return;
     }
 
-    const targetViewId = route.nsf.kind === "view" ? route.nsf.viewId : selectedViewId || DEFAULT_EXPENSE_VIEW_ID;
+    const targetViewId = route.nsf.kind === "view" ? route.nsf.viewId : selectedViewId || FALLBACK_VIEW_ID;
     const routeKey = nsfRouteKey(route.nsf);
     if (lastOpenedNsfRouteRef.current === routeKey) return;
     lastOpenedNsfRouteRef.current = routeKey;
@@ -2267,14 +2267,14 @@ function App() {
       selectedIdRef.current = route.nsf.docId;
       setSelectedId(route.nsf.docId);
     }
-    run(route.app === "expense" ? "Open Expense" : "Open app", () => refresh(targetViewId, { autoSelectFirst: route.nsf.kind !== "document" }), { refreshAfter: false });
+    run("Open app", () => refresh(targetViewId, { autoSelectFirst: route.nsf.kind !== "document" }), { refreshAfter: false });
   }, [navigateApp, navigateNsf, platformState, refresh, route.app, route.nsf, selectedViewId]);
 
   React.useEffect(() => {
     if (!definitions || !isBusinessApp(route.app)) return;
     const nsfRoute = route.nsf;
     if ((nsfRoute.kind === "designer" || nsfRoute.kind === "designerHome") && !canDesign) {
-      navigateNsf({ kind: "view", viewId: selectedViewId || definitions.views[0]?._id || DEFAULT_EXPENSE_VIEW_ID }, true, route.app);
+      navigateNsf({ kind: "view", viewId: selectedViewId || definitions.views[0]?._id || FALLBACK_VIEW_ID }, true, route.app);
       return;
     }
     if (nsfRoute.kind === "view") {
@@ -2286,7 +2286,7 @@ function App() {
           setSelectedViewId(nsfRoute.viewId);
         }
       } else {
-        navigateNsf({ kind: "view", viewId: definitions.views[0]?._id ?? DEFAULT_EXPENSE_VIEW_ID }, true, route.app);
+        navigateNsf({ kind: "view", viewId: definitions.views[0]?._id ?? FALLBACK_VIEW_ID }, true, route.app);
       }
       return;
     }
@@ -2296,7 +2296,7 @@ function App() {
         setFocusedDocument(undefined);
         setDocumentRouteError("");
       } else {
-        navigateNsf({ kind: "view", viewId: definitions.views[0]?._id ?? DEFAULT_EXPENSE_VIEW_ID }, true, route.app);
+        navigateNsf({ kind: "view", viewId: definitions.views[0]?._id ?? FALLBACK_VIEW_ID }, true, route.app);
       }
       return;
     }
@@ -2314,7 +2314,7 @@ function App() {
         setSelectedDefinitionId(nsfRoute.definitionId);
       } else {
         const firstDefinition = editableDefinitions[0];
-        navigateNsf(firstDefinition ? { kind: "designer", definitionId: firstDefinition._id } : { kind: "view", viewId: definitions.views[0]?._id ?? DEFAULT_EXPENSE_VIEW_ID }, true, route.app);
+        navigateNsf(firstDefinition ? { kind: "designer", definitionId: firstDefinition._id } : { kind: "view", viewId: definitions.views[0]?._id ?? FALLBACK_VIEW_ID }, true, route.app);
       }
     }
   }, [canDesign, definitions, editableDefinitions, navigateNsf, route.app, route.nsf, selectedViewId]);
@@ -2548,12 +2548,12 @@ function App() {
             { refreshAfter: false }
           )
         }
-        onInstallExpense={() =>
+        onInstallSample={(appId) =>
           run(
-            "Install Expense sample",
+            "Install sample",
             async () => {
               setPlatformState(
-                await api<PlatformState>("/api/platform/install-sample/expense", {
+                await api<PlatformState>(`/api/platform/install-sample/${encodeURIComponent(appId)}`, {
                   method: "POST"
                 })
               );
@@ -2561,7 +2561,6 @@ function App() {
             { refreshAfter: false }
           )
         }
-        onOpenExpense={() => navigateNsf({ kind: "home" }, false, "expense")}
         onOpenApp={(appId) => navigateNsf({ kind: "home" }, false, appId)}
         onCreateApp={(payload) =>
           run(

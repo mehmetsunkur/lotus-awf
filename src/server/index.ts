@@ -1252,7 +1252,7 @@ app.get(
 );
 
 app.get(
-  ["/api/status", "/api/apps/:appId/status"],
+  "/api/apps/:appId/status",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     await requireAppSession(request, appContext.database);
@@ -1676,7 +1676,7 @@ app.post(
 );
 
 app.post(
-  ["/api/replicate", "/api/apps/:appId/replicate"],
+  "/api/apps/:appId/replicate",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     const scope = await requireAppSession(request, appContext.database);
@@ -1688,7 +1688,7 @@ app.post(
 );
 
 app.get(
-  ["/api/definitions", "/api/apps/:appId/definitions"],
+  "/api/apps/:appId/definitions",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     const scope = await requireAppSession(request, appContext.database);
@@ -1720,7 +1720,7 @@ app.get(
 );
 
 app.get(
-  ["/api/workflows/scaffold-options", "/api/apps/:appId/workflows/scaffold-options"],
+  "/api/apps/:appId/workflows/scaffold-options",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     await requireAppSession(request, appContext.database, "designer");
@@ -1756,7 +1756,7 @@ app.put(
 );
 
 app.post(
-  ["/api/templates/export", "/api/apps/:appId/templates/export"],
+  "/api/apps/:appId/templates/export",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     const scope = await requireAppSession(request, appContext.database, "designer");
@@ -1778,7 +1778,7 @@ app.post(
 );
 
 app.post(
-  ["/api/templates/diff", "/api/apps/:appId/templates/diff"],
+  "/api/apps/:appId/templates/diff",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     await requireAppSession(request, appContext.database, "designer");
@@ -1793,7 +1793,7 @@ app.post(
 );
 
 app.post(
-  ["/api/templates/apply", "/api/apps/:appId/templates/apply"],
+  "/api/apps/:appId/templates/apply",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     await requireAppSession(request, appContext.database, "designer");
@@ -1816,7 +1816,7 @@ app.post(
 );
 
 app.get(
-  ["/api/documents", "/api/apps/:appId/documents"],
+  "/api/apps/:appId/documents",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     const scope = await requireAppSession(request, appContext.database);
@@ -1827,7 +1827,7 @@ app.get(
 );
 
 app.get(
-  ["/api/views/:id/documents", "/api/apps/:appId/views/:id/documents"],
+  "/api/apps/:appId/views/:id/documents",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     const scope = await requireAppSession(request, appContext.database);
@@ -1860,7 +1860,7 @@ app.get(
 );
 
 app.get(
-  ["/api/documents/:id", "/api/apps/:appId/documents/:id"],
+  "/api/apps/:appId/documents/:id",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     response.json(await getReadableDocument(routeParam(request.params.id), await requireAppSession(request, appContext.database), appContext.database));
@@ -1872,7 +1872,7 @@ app.get(
   // the document/list read paths — the client fetches this only when a form has
   // formula fields. ACL-scoped to the caller both to read the document and inside
   // each lookup (canReadDocument), so it can never widen visibility.
-  ["/api/documents/:id/formulas", "/api/apps/:appId/documents/:id/formulas"],
+  "/api/apps/:appId/documents/:id/formulas",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     const scope = await requireAppSession(request, appContext.database);
@@ -1892,7 +1892,7 @@ app.get(
 );
 
 app.get(
-  ["/api/forms/:docType/options", "/api/apps/:appId/forms/:docType/options"],
+  "/api/apps/:appId/forms/:docType/options",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     const scope = await requireAppSession(request, appContext.database);
@@ -1902,7 +1902,7 @@ app.get(
 );
 
 app.post(
-  ["/api/documents", "/api/apps/:appId/documents"],
+  "/api/apps/:appId/documents",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     const scope = await requireAppSession(request, appContext.database, "author");
@@ -1926,7 +1926,7 @@ app.post(
 );
 
 app.put(
-  ["/api/documents/:id", "/api/apps/:appId/documents/:id"],
+  "/api/apps/:appId/documents/:id",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     const scope = await requireAppSession(request, appContext.database);
@@ -1954,7 +1954,7 @@ app.put(
 );
 
 app.delete(
-  ["/api/documents/:id", "/api/apps/:appId/documents/:id"],
+  "/api/apps/:appId/documents/:id",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     const scope = await requireAppSession(request, appContext.database);
@@ -1972,7 +1972,7 @@ app.delete(
 );
 
 app.post(
-  ["/api/documents/:id/transition", "/api/apps/:appId/documents/:id/transition"],
+  "/api/apps/:appId/documents/:id/transition",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     const scope = await requireAppSession(request, appContext.database);
@@ -2022,7 +2022,7 @@ app.get(
 );
 
 app.post(
-  ["/api/agents/run", "/api/apps/:appId/agents/run"],
+  "/api/apps/:appId/agents/run",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     await requireAppSession(request, appContext.database, "designer");
@@ -2032,7 +2032,7 @@ app.post(
 );
 
 app.get(
-  ["/api/agents", "/api/apps/:appId/agents"],
+  "/api/apps/:appId/agents",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     await requireAppSession(request, appContext.database, "designer");
@@ -2042,7 +2042,7 @@ app.get(
 );
 
 app.get(
-  ["/api/agents/runs", "/api/apps/:appId/agents/runs"],
+  "/api/apps/:appId/agents/runs",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     await requireAppSession(request, appContext.database, "designer");
@@ -2052,7 +2052,7 @@ app.get(
 );
 
 app.post(
-  ["/api/audit/run", "/api/apps/:appId/audit/run"],
+  "/api/apps/:appId/audit/run",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     await requireAppSession(request, appContext.database, "designer");
@@ -2062,7 +2062,7 @@ app.post(
 );
 
 app.get(
-  ["/api/audit", "/api/apps/:appId/audit"],
+  "/api/apps/:appId/audit",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     const principals = principalsFor(await requireAppSession(request, appContext.database));
@@ -2080,7 +2080,7 @@ app.get(
 );
 
 app.get(
-  ["/api/conflicts", "/api/apps/:appId/conflicts"],
+  "/api/apps/:appId/conflicts",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     const scope = await requireAppSession(request, appContext.database);
@@ -2097,7 +2097,7 @@ app.get(
 );
 
 app.put(
-  ["/api/definitions/:id", "/api/apps/:appId/definitions/:id"],
+  "/api/apps/:appId/definitions/:id",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     await requireAppSession(request, appContext.database, "designer");
@@ -2122,7 +2122,7 @@ app.put(
 // creates ordinary design docs only; business document readers/authors stay
 // untouched and transition authorization remains the existing workflow gate.
 app.post(
-  ["/api/workflows/scaffold", "/api/apps/:appId/workflows/scaffold"],
+  "/api/apps/:appId/workflows/scaffold",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     await requireAppSession(request, appContext.database, "designer");
@@ -2168,7 +2168,7 @@ app.post(
 // validated by the shared validators, and written local-first (upsert), exactly
 // like any other definition.
 app.post(
-  ["/api/document-types", "/api/apps/:appId/document-types"],
+  "/api/apps/:appId/document-types",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     await requireAppSession(request, appContext.database, "designer");
@@ -2199,7 +2199,7 @@ app.post(
 );
 
 app.get(
-  ["/api/conflicts/:id", "/api/apps/:appId/conflicts/:id"],
+  "/api/apps/:appId/conflicts/:id",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     const details = await conflictDetails(routeParam(request.params.id), await requireAppSession(request, appContext.database), appContext.database);
@@ -2212,7 +2212,7 @@ app.get(
 );
 
 app.post(
-  ["/api/conflicts/:id/resolve", "/api/apps/:appId/conflicts/:id/resolve"],
+  "/api/apps/:appId/conflicts/:id/resolve",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     const scope = await requireAppSession(request, appContext.database);

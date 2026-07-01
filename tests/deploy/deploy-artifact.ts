@@ -165,9 +165,11 @@ async function runAssertions() {
   assert.ok(firstRun.systemApps.some((app) => app.appId === "names" && app.route === "/names.nsf"), "names.nsf should be advertised as a system app");
   assert.equal(firstRun.installedApps.length, 0, "fresh deploy should have an empty app catalog");
   assert.equal(firstRun.samples.find((sample) => sample.appId === "expense")?.installed, false, "expense sample should not be installed by default");
-  // ADR-0015: the runtime is app-scoped only — an unscoped business request is
-  // rejected (no default app) rather than resolving to expense.
-  await request("/api/definitions", { ok: 400 });
+  // ADR-0015: the runtime is app-scoped only. Unscoped business routes no longer
+  // exist (404), and an app-scoped route for an uninstalled app resolves to 404 —
+  // expense is not privileged on a fresh deploy.
+  await request("/api/definitions", { ok: 404 });
+  await request("/api/apps/expense/definitions", { ok: 404 });
 
   const configured = await request<{
     setupComplete: boolean;

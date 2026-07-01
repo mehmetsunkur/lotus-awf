@@ -4,7 +4,7 @@ test.describe("runtime shell", () => {
   test("loads the seeded runtime with both replicas online", async ({ app, page }) => {
     await app.goto();
 
-    await expect(page.getByRole("heading", { name: "Expense Replica" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Lotus Notes" })).toBeVisible();
     await expect(page.getByTestId("status-local")).toHaveAttribute("data-online", "true");
     await expect(page.getByTestId("status-server")).toHaveAttribute("data-online", "true");
 
