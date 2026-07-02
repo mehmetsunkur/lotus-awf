@@ -143,10 +143,11 @@
         },
         {
           "name": "manager",
-          "type": "formula",
+          "type": "text",
           "label": "Manager",
           "formula": "(await DbLookup(doc.appId, 'department', 'payload.slug', payload.department, 'payload.head')) === payload.person ? await DbLookup(doc.appId, 'department', 'payload.slug', await DbLookup(doc.appId, 'department', 'payload.slug', payload.department, 'payload.parent'), 'payload.head') : await DbLookup(doc.appId, 'department', 'payload.slug', payload.department, 'payload.head')",
-          "helpText": "Derived from department.head (the single source of truth for reporting lines): your department's head, or the parent department's head if you are the head. Blank for a top-level head."
+          "helpText": "Derived from department.head (the single source of truth for reporting lines): your department's head, or the parent department's head if you are the head. Blank for a top-level head.",
+          "mode": "computed-for-display"
         }
       ]
     },

@@ -255,22 +255,23 @@ export async function seedAgenticAirlines(
     ]
   });
 
-  // ADR-0017/0018: the template's approver/responsible formulas reference the
-  // org app by its authored default id; this deployment runs under a per-seed
-  // appId, so re-point them with a designer-level definition edit — the same
-  // mechanism a real deployment under custom appIds uses.
-  const leaveDefinitions = await requestJson<{ workflows: Array<Json & { _id: string }> }>(
+  // ADR-0019: the template's computed approver/department field formulas
+  // reference the org app by its authored default id; this deployment runs
+  // under a per-seed appId, so re-point them with a designer-level definition
+  // edit — the same mechanism a real deployment under custom appIds uses.
+  // (The workflow's responsibleFormula is just "payload.approver" — no re-point.)
+  const leaveDefinitions = await requestJson<{ forms: Array<Json & { _id: string }> }>(
     admin,
     "get",
     `/api/apps/${leaveRequestAppId}/definitions`
   );
-  const leaveWorkflow = leaveDefinitions.workflows.find((definition) => definition._id === "workflow:leave-request");
-  if (!leaveWorkflow) throw new Error("leave-request app is missing workflow:leave-request");
-  const repointed = JSON.parse(JSON.stringify(leaveWorkflow).split("DbLookup('org'").join(`DbLookup('${orgAppId}'`));
+  const leaveForm = leaveDefinitions.forms.find((definition) => definition._id === "form:leave-request");
+  if (!leaveForm) throw new Error("leave-request app is missing form:leave-request");
+  const repointed = JSON.parse(JSON.stringify(leaveForm).split("DbLookup('org'").join(`DbLookup('${orgAppId}'`));
   await requestJson(
     admin,
     "put",
-    `/api/apps/${leaveRequestAppId}/definitions/${encodeURIComponent("workflow:leave-request")}`,
+    `/api/apps/${leaveRequestAppId}/definitions/${encodeURIComponent("form:leave-request")}`,
     repointed
   );
   // Expense is seeded by `/api/reset` but may be absent on a real deployment —

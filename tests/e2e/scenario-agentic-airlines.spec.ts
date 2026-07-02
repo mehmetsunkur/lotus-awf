@@ -202,7 +202,7 @@ test.describe("Agentic Airlines PLC scenario", () => {
     expect(approved.status()).toBe(200);
   });
 
-  test("ADR-0017/0018: approval routes to the department head and the assignee tracks the hand-off", async ({
+  test("ADR-0019/0018: approval routes to the stamped department head and the assignee tracks the hand-off", async ({
     airline
   }) => {
     const app = airline.scenario.leaveRequestAppId;
@@ -227,7 +227,7 @@ test.describe("Agentic Airlines PLC scenario", () => {
     const refused = await transition(erin, app, request._id, "approve");
     expect(refused.status()).toBe(422);
     const refusal = (await refused.json()) as { errors: Array<{ message: string }> };
-    expect(refusal.errors[0].message).toContain("designated approver");
+    expect(refusal.errors[0].message).toContain("not allowed for this document");
 
     const carol = await airline.as("carol");
     const approved = await transition(carol, app, request._id, "approve");
@@ -237,7 +237,7 @@ test.describe("Agentic Airlines PLC scenario", () => {
     expect(final.assignee).toBeUndefined(); // final states clear the assignment
   });
 
-  test("ADR-0017: a department head outside group:managers can approve their department's requests", async ({
+  test("ADR-0019: a department head outside group:managers can approve their department's requests", async ({
     airline
   }) => {
     const app = airline.scenario.leaveRequestAppId;
@@ -266,7 +266,7 @@ test.describe("Agentic Airlines PLC scenario", () => {
     expect(approved.status()).toBe(200);
   });
 
-  test("ADR-0017: a headless department falls back to the static group:managers gate", async ({
+  test("ADR-0019: a headless department stamps the group:managers fallback", async ({
     airline,
     page
   }) => {
@@ -299,6 +299,157 @@ test.describe("Agentic Airlines PLC scenario", () => {
     expect((await transition(hank, app, request._id, "approve")).status()).toBe(422);
     const erin = await airline.as("erin");
     expect((await transition(erin, app, request._id, "approve")).status()).toBe(200);
+  });
+
+  test("ADR-0019 tamper rule: client-supplied computed values are discarded on create, save, and conflict-resolve", async ({
+    airline,
+    page,
+    playwright,
+    apiBaseURL,
+    localCouchUrl,
+    serverCouchUrl
+  }) => {
+    const app = airline.scenario.leaveRequestAppId;
+    const couchAuth = { authorization: `Basic ${Buffer.from("admin:password").toString("base64")}` };
+    const db = `${app}_app`;
+
+    // Create with a self-serving approver and a fake department: both stamped over.
+    const dave = await airline.as("dave");
+    const request = await createDoc(dave, app, "leave-request", {
+      type: "annual",
+      from: "2026-11-02",
+      to: "2026-11-06",
+      reason: "Tamper probe",
+      approver: "person:dave",
+      department: "somewhere-else"
+    });
+    expect(request.payload.approver).toBe("person:carol");
+    expect(request.payload.department).toBe("flight-ops");
+
+    // Save with tampered values: discarded again (computed re-stamps, once preserves).
+    const putResponse = await dave.put(`/api/apps/${app}/documents/${encodeURIComponent(request._id)}`, {
+      data: { payload: { ...request.payload, reason: "Edited", approver: "person:dave", department: "elsewhere" } }
+    });
+    expect(putResponse.status()).toBe(200);
+    const saved = (await putResponse.json()) as Doc;
+    expect(saved.payload.approver).toBe("person:carol");
+    expect(saved.payload.department).toBe("flight-ops");
+
+    // Conflict-resolve (review B1): force a replication conflict, then resolve
+    // with a tampered approver — the elected payload runs the stamp pipeline.
+    // Replication's business-doc pull is reader-scoped to the caller (M5), so
+    // sync as DAVE — alice is not a reader of his request and would never pull
+    // the divergent revision back.
+    await dave.post(`/api/apps/${app}/replicate`);
+    const readRev = async (url: string) =>
+      (await page.request.get(`${url}/${db}/${encodeURIComponent(request._id)}`, { headers: couchAuth }).then((r) => r.json())) as Doc & { _rev: string };
+    const localDoc = await readRev(localCouchUrl);
+    const serverDoc = await readRev(serverCouchUrl);
+    const diverge = (base: Doc & { _rev: string }, marker: string) => ({
+      ...base,
+      payload: { ...base.payload, reason: marker },
+      updatedAt: new Date().toISOString()
+    });
+    const localPut = await page.request.put(`${localCouchUrl}/${db}/${encodeURIComponent(request._id)}`, {
+      headers: couchAuth,
+      data: diverge(localDoc, "local edit")
+    });
+    expect(localPut.status(), await localPut.text()).toBe(201);
+    const serverPut = await page.request.put(`${serverCouchUrl}/${db}/${encodeURIComponent(request._id)}`, {
+      headers: couchAuth,
+      data: diverge(serverDoc, "server edit")
+    });
+    expect(serverPut.status(), await serverPut.text()).toBe(201);
+    const sync = await dave.post(`/api/apps/${app}/replicate`);
+    expect(sync.status()).toBe(200);
+    const conflicted = await page.request.get(`${localCouchUrl}/${db}/${encodeURIComponent(request._id)}?conflicts=true`, { headers: couchAuth });
+    expect(((await conflicted.json()) as { _conflicts?: string[] })._conflicts?.length ?? 0, "forged conflict should exist").toBeGreaterThan(0);
+
+    const resolveResponse = await dave.post(`/api/apps/${app}/conflicts/${encodeURIComponent(request._id)}/resolve`, {
+      data: { payload: { ...request.payload, reason: "resolved", approver: "person:dave" } }
+    });
+    expect(resolveResponse.status()).toBe(200);
+    const resolved = (await resolveResponse.json()) as Doc;
+    expect(resolved.payload.reason).toBe("resolved");
+    expect(resolved.payload.approver).toBe("person:carol"); // tamper discarded on the third write path
+  });
+
+  test("ADR-0019 computed-once: the filed-under department survives a transfer while the approver re-routes", async ({
+    airline,
+    page
+  }) => {
+    const app = airline.scenario.leaveRequestAppId;
+    const ivy = await airline.as("ivy");
+    const request = await createDoc(ivy, app, "leave-request", {
+      type: "annual",
+      from: "2026-09-21",
+      to: "2026-09-25",
+      reason: "Filed from ground ops"
+    });
+    expect(request.payload.approver).toBe("person:hank");
+    expect(request.payload.department).toBe("ground-ops");
+
+    // Ivy transfers to cabin crew (admin edits her org employee record)…
+    const employeeId = airline.scenario.employeeDocIds.ivy;
+    const orgApp = airline.scenario.orgAppId;
+    const employee = (await page.request
+      .get(`/api/apps/${orgApp}/documents/${encodeURIComponent(employeeId)}`)
+      .then((response) => response.json())) as Doc;
+    const moved = await page.request.put(`/api/apps/${orgApp}/documents/${encodeURIComponent(employeeId)}`, {
+      data: { payload: { ...employee.payload, department: "cabin-crew" } }
+    });
+    expect(moved.status()).toBe(200);
+
+    // …then edits her request: computed approver re-stamps to the new head,
+    // computed-once department keeps the filed-under value.
+    const edited = (await ivy
+      .put(`/api/apps/${app}/documents/${encodeURIComponent(request._id)}`, {
+        data: { payload: { ...request.payload, reason: "Edited after transfer" } }
+      })
+      .then((response) => response.json())) as Doc;
+    expect(edited.payload.approver).toBe("person:erin");
+    expect(edited.payload.department).toBe("ground-ops");
+  });
+
+  test("ADR-0019 preserve-on-empty: an org-blind writer's edit keeps the stamped approver (never widens)", async ({
+    airline,
+    page
+  }) => {
+    const app = airline.scenario.leaveRequestAppId;
+    const dave = await airline.as("dave");
+    const request = await createDoc(dave, app, "leave-request", {
+      type: "sick",
+      from: "2026-07-08",
+      to: "2026-07-09",
+      reason: "Before losing org access"
+    });
+    expect(request.payload.approver).toBe("person:carol");
+
+    // Dave loses org visibility (removed from flight-ops) but keeps authoring
+    // rights on the leave app via an explicit person-level access entry.
+    const access = (await page.request
+      .get(`/api/apps/${app}/access`)
+      .then((response) => response.json())) as { entries: Array<{ principal: string; level: string }> };
+    await page.request.put(`/api/apps/${app}/access`, {
+      data: { entries: [...access.entries, { principal: "person:dave", level: "author" }] }
+    });
+    const directory = (await page.request.get("/api/names/directory").then((response) => response.json())) as {
+      groups: Array<{ _id: string; members: string[] }>;
+    };
+    const flightOps = directory.groups.find((group) => group._id === "group:flight-ops");
+    await page.request.put("/api/names/groups/flight-ops", {
+      data: { members: (flightOps?.members ?? []).filter((member) => member !== "person:dave") }
+    });
+
+    // His edit resolves nothing (cannot read the org app) — the stamp is preserved,
+    // NOT cleared and NOT widened to group:managers.
+    const daveBlind = await airline.as("dave");
+    const edited = (await daveBlind
+      .put(`/api/apps/${app}/documents/${encodeURIComponent(request._id)}`, {
+        data: { payload: { ...request.payload, reason: "Edited while org-blind" } }
+      })
+      .then((response) => response.json())) as Doc;
+    expect(edited.payload.approver).toBe("person:carol");
   });
 
   test("the same personas work the expense app: crew files, finance approves, others see nothing", async ({

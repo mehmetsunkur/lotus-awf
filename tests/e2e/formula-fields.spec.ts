@@ -41,8 +41,8 @@ test.describe("ADR-0014 formula fields", () => {
     await createApp(api, "desk", "note");
     await putForm(api, "desk", "note", [
       { name: "title", type: "text", label: "Title", required: true },
-      { name: "bookCount", type: "formula", label: "Books", formula: "(await DbColumn('library', 'book', 'payload.title')).length" },
-      { name: "ghost", type: "formula", label: "Ghost", formula: "await DbLookup('nope', 'x', 'a', 'b', 'c')" }
+      { name: "bookCount", type: "number", mode: "computed-for-display", label: "Books", formula: "(await DbColumn('library', 'book', 'payload.title')).length" },
+      { name: "ghost", type: "text", mode: "computed-for-display", label: "Ghost", formula: "await DbLookup('nope', 'x', 'a', 'b', 'c')" }
     ]);
     const noteId = await createDoc(api, "desk", "note", { title: "Sprint notes" });
 
