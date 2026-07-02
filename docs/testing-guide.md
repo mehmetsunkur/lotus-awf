@@ -20,6 +20,8 @@ npm run test:mcp     # MCP stdio integration tests; needs CouchDB pair + Express
 npm run test:mcp:agent # Opt-in real-agent MCP acceptance; writes playwright-report-mcp-agent
 npm run test:e2e     # Playwright source-mode runtime tests; starts CouchDB pair
 npm run test:deploy  # M13 deploy artifact gate; requires Docker API access
+npm run seed:airline # seed the M25 Agentic Airlines scenario into a running server for manual testing
+                     # (env: API_URL, ADMIN_USER/ADMIN_PASSWORD, ORG_APP_ID/LEAVE_APP_ID, RESET=1)
 make k8s-dry-run     # Kubernetes manifest render check; requires kubectl
 ```
 
@@ -37,6 +39,7 @@ make k8s-dry-run     # Kubernetes manifest render check; requires kubectl
 | Shared pure engines | `npm run test:unit` |
 | MCP agent interface | `npm run test:mcp` |
 | Runtime UI/API flows | `npm run test:e2e` |
+| Multi-persona scenario (M25) | `npm run test:e2e` — `scenario-agentic-airlines.spec.ts`; reusable fixture in `tests/e2e/support/scenario-agentic-airlines.ts` |
 | Deploy packaging | `npm run test:deploy` |
 | Docker/compose shape | `docker compose -f deploy/compose.yml config` |
 | Kubernetes manifests | `make k8s-dry-run` |

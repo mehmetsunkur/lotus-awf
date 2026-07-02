@@ -24,6 +24,7 @@
     "test:mcp": "playwright test -c playwright.mcp.config.ts",
     "test:mcp:http": "playwright test -c playwright.mcp.http.config.ts",
     "test:mcp:agent": "playwright test -c playwright.mcp.agent.config.ts",
+    "seed:airline": "tsx scripts/seed-airline.ts",
     "test:e2e": "xvfb-run -a playwright test",
     "test:e2e:nodisplay": "playwright test",
     "test:deploy": "tsx tests/deploy/deploy-artifact.ts",
