@@ -131,6 +131,16 @@ export type WorkflowState = {
   name: string;
   label: string;
   final?: boolean;
+  /**
+   * ADR-0018: who owes action while a document sits in this state. `responsible`
+   * is a static principal; `responsibleFormula` (async lane, server-resolved) wins
+   * when both are present. Stamped as the document's `assignee` on state ENTRY via
+   * a transition — creation never stamps, so an initial-state declaration only
+   * matters for re-entry transitions (e.g. revise → draft). Routing metadata, not
+   * a gate: resolution failure never fails a transition.
+   */
+  responsible?: string;
+  responsibleFormula?: string;
 };
 
 export type WorkflowTransition = {
@@ -149,6 +159,15 @@ export type WorkflowTransition = {
    * workflow. Effects are best-effort: they never block or revert the transition.
    */
   action?: string;
+  /**
+   * ADR-0017: async-lane formula resolved SERVER-SIDE at transition time to the
+   * principal(s) who may perform this transition (a `person:*`/`group:*` id or an
+   * array of them). Non-empty resolution REPLACES `requiredRole`; empty/failed
+   * resolution falls back to `requiredRole`, and DENIES when no `requiredRole`
+   * exists (an authored restriction never degrades to no gate). Never evaluated
+   * on the client — offering stays advisory and the server is authoritative.
+   */
+  approverFormula?: string;
 };
 
 export type WorkflowDefinition = {
@@ -169,6 +188,8 @@ export type TransitionEvent = {
   to: string;
   at: string;
   by: string;
+  /** ADR-0018: who the entered state assigned (absent when the entry cleared it). */
+  assignee?: string;
 };
 
 export type BusinessDocument = {
@@ -194,6 +215,14 @@ export type BusinessDocument = {
   stateUpdatedAt?: string;
   stateUpdatedBy?: string;
   history?: TransitionEvent[];
+  /**
+   * ADR-0018: who owes the next action in the current state — routing metadata,
+   * stamped ONLY by `applyTransition` on state entry (from the target state's
+   * resolved/static responsibility), cleared on final states, never a gate.
+   * Optional and absent until the first assigning transition, like the state trio.
+   */
+  assignee?: string;
+  assignedAt?: string;
 };
 
 /**

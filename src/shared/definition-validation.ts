@@ -172,6 +172,24 @@ export function validateViewDefinition(definition: ViewDefinition): ValidationEr
   return errors;
 }
 
+/**
+ * ADR-0017/0018: an async-lane formula on a workflow definition (approverFormula /
+ * responsibleFormula). Same posture as form formula fields: presence + sandbox
+ * blocklist + compile check; it must NOT go through the sync `validateExpression`
+ * lane (that lane forbids `await` and has no DB functions).
+ */
+function validateAsyncFormula(formula: string | undefined, field: string): ValidationError[] {
+  if (formula === undefined) return [];
+  if (!nonEmpty(formula)) return [error(field, "Formula must not be empty")];
+  const bad = formulaBlockedToken(formula);
+  if (bad) return [error(field, `Formula contains a blocked token: ${bad}`)];
+  const syntax = formulaSyntaxError(formula);
+  if (syntax) return [error(field, `Formula is not valid: ${syntax}`)];
+  return [];
+}
+
+const principalShaped = (value: string) => value.startsWith("person:") || value.startsWith("group:");
+
 function validateTransition(
   transition: WorkflowTransition,
   index: number,
@@ -188,6 +206,7 @@ function validateTransition(
   if (!states.has(transition.to)) errors.push(error(`${prefix}.to`, `Transition target does not exist: ${transition.to}`));
   errors.push(...validateExpression(transition.guard, `${prefix}.guard`));
   errors.push(...validateHandlerRef(transition.action, "effect", `${prefix}.action`));
+  errors.push(...validateAsyncFormula(transition.approverFormula, `${prefix}.approverFormula`));
   return errors;
 }
 
@@ -209,6 +228,11 @@ export function validateWorkflowDefinition(definition: WorkflowDefinition): Vali
     if (!nonEmpty(state.label)) errors.push(error(`states.${index}.label`, "State label is required"));
     if (states.has(state.name)) errors.push(error(`states.${index}.name`, `Duplicate state name: ${state.name}`));
     states.add(state.name);
+    // ADR-0018: per-state responsibility declarations.
+    if (state.responsible !== undefined && !(nonEmpty(state.responsible) && principalShaped(state.responsible))) {
+      errors.push(error(`states.${index}.responsible`, "Responsible must be a person: or group: principal"));
+    }
+    errors.push(...validateAsyncFormula(state.responsibleFormula, `states.${index}.responsibleFormula`));
   }
   if (!states.has(definition.initialState)) {
     errors.push(error("initialState", `Initial state does not exist: ${definition.initialState}`));
