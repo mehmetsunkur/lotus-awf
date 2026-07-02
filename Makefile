@@ -15,6 +15,7 @@ NVM := export NVM_DIR="$$HOME/.nvm"; . "$$NVM_DIR/nvm.sh"; nvm use --lts >/dev/n
 DOCKER ?= sudo docker
 DEPLOY_PROJECT ?= lotus-fresh
 DEPLOY_COMPOSE ?= deploy/compose.yml
+LOTUS_APP_PORT ?= 3101
 LOTUS_IMAGE ?= lotus-notes-platform:dev
 K8S_DIR ?= deploy/k8s
 K8S_NAMESPACE ?= lotus-notes
@@ -27,7 +28,7 @@ MCP_CONFIG_DIR ?= .tmp
 MCP_CONFIG ?= $(MCP_CONFIG_DIR)/claude-mcp.lotus.json
 
 .PHONY: help e2e e2e-headed e2e-ui e2e-debug e2e-report setup-e2e \
-	deploy-up deploy-down image-build k8s-dry-run k8s-apply k8s-status \
+	deploy-up deploy-down deploy-seed image-build k8s-dry-run k8s-apply k8s-status \
 	mcp-api mcp-reset mcp-test mcp-http claude-mcp \
 	claude-mcp-admin claude-mcp-designer claude-mcp-workspace \
 	codex-mcp-admin-install codex-mcp-designer-install codex-mcp-workspace-install \
@@ -61,6 +62,9 @@ deploy-up: ## Build and start the deploy artifact stack (lotus-fresh) using depl
 
 deploy-down: ## Stop and remove deploy artifact stack (+ volumes + orphans)
 	$(DOCKER) compose -p $(DEPLOY_PROJECT) -f $(DEPLOY_COMPOSE) down -v --remove-orphans
+
+deploy-seed: ## Complete first-run setup (if needed) and seed the Agentic Airlines scenario (M25)
+	LOTUS_APP_PORT=$(LOTUS_APP_PORT) bash scripts/deploy-seed.sh
 
 image-build: ## Build the Lotus runtime Docker image
 	$(DOCKER) build -t $(LOTUS_IMAGE) .

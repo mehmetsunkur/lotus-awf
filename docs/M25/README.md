@@ -11,7 +11,10 @@ are asserted across independent authenticated persona sessions.
 
 For manual testing, `npm run seed:airline` (`scripts/seed-airline.ts`) seeds the same
 scenario into a running server — dev (`npm run test:serve`, with `RESET=1`) or a
-deploy-compose artifact (pass `API_URL` and the deployment's admin credentials).
+deploy-compose artifact (pass `API_URL` and the deployment's admin credentials). For the
+deploy stack, `make deploy-seed` (`scripts/deploy-seed.sh`) is the one-shot: it discovers
+the reachable endpoint, completes first-run setup if needed, and seeds — so the full cycle
+is `make deploy-down && make deploy-up && make deploy-seed`.
 
 The AI-agents-via-MCP tier (Claude-driven personas over `/mcp/workspace`) is a planned
 follow-up, not part of M25.

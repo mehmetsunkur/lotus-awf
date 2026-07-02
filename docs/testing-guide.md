@@ -22,6 +22,9 @@ npm run test:e2e     # Playwright source-mode runtime tests; starts CouchDB pair
 npm run test:deploy  # M13 deploy artifact gate; requires Docker API access
 npm run seed:airline # seed the M25 Agentic Airlines scenario into a running server for manual testing
                      # (env: API_URL, ADMIN_USER/ADMIN_PASSWORD, ORG_APP_ID/LEAVE_APP_ID, RESET=1)
+make deploy-seed     # deploy-stack one-shot: finds the app port, completes first-run setup if
+                     # needed, then seeds the airline (idempotent; env: LOTUS_APP_PORT, ADMIN_USER,
+                     # ADMIN_PASSWORD, ORG_NAME, DOMAIN_NAME)
 make k8s-dry-run     # Kubernetes manifest render check; requires kubectl
 ```
 
