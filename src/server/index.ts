@@ -55,7 +55,7 @@ import {
   normalizeDefinitions,
   stripDefinitionRev
 } from "../shared/template";
-import { applyComputedFields, normalizePayload, validatePayload } from "../shared/validation";
+import { applyComputedFields, coerceFieldValue, normalizePayload, validatePayload } from "../shared/validation";
 import { evaluateFormulaAsync, type DbReader } from "../shared/formula";
 import {
   applyTransition,
@@ -1222,13 +1222,13 @@ function makeDbReader(): DbReader {
   };
 }
 
-/** Resolve a document's `type: "formula"` fields, ACL-scoped to `scope`. */
+/** Resolve a document's `computed-for-display` fields, ACL-scoped to `scope`. */
 async function resolveFormulaFields(
   form: FormDefinition,
   doc: BusinessDocument,
   scope: PrincipalScope
 ): Promise<Record<string, unknown>> {
-  const fields = form.fields.filter((field) => field.type === "formula" && field.formula);
+  const fields = form.fields.filter((field) => field.mode === "computed-for-display" && field.formula);
   if (!fields.length) return {};
   const read = makeDbReader();
   // allSettled + fail-closed eval: one bad formula can never reject the batch and
@@ -1248,6 +1248,60 @@ async function resolveFormulaFields(
     (field, index) => [field.name, results[index].status === "fulfilled" ? results[index].value : undefined] as const
   );
   return Object.fromEntries(entries);
+}
+
+/**
+ * ADR-0019: stamp computed-mode field values — the server is their single
+ * writer. `computed` re-resolves on every payload write with PRESERVE-ON-EMPTY
+ * (a degraded resolution keeps the prior stamp — never clears, never widens to
+ * a fallback); `computed-once` resolves iff absent (create, or backfill for
+ * docs predating the field) and never overwrites a present value;
+ * `computed-for-display` is stripped (never stored). Client-supplied values
+ * for all three are thereby discarded on every write path (tamper rule).
+ * Resolution runs in the async lane under the WRITER's ACL scope against the
+ * local replica, with `doc` bound to the built/merged envelope so
+ * `doc.createdBy` is the creator, never the acting editor (review M2); results
+ * are coerced to the field's datatype and non-primitive results are treated as
+ * empty (review m7). Fail-closed: never throws into the route.
+ */
+async function stampComputedFields(
+  form: FormDefinition,
+  doc: BusinessDocument,
+  previousPayload: Record<string, unknown> | undefined,
+  scope: PrincipalScope
+): Promise<BusinessDocument> {
+  const stampFields = form.fields.filter((field) => field.mode === "computed" || field.mode === "computed-once");
+  const displayFields = form.fields.filter((field) => field.mode === "computed-for-display");
+  if (!stampFields.length && !displayFields.length) return doc;
+
+  const payload = { ...doc.payload };
+  for (const field of displayFields) delete payload[field.name];
+
+  const read = makeDbReader();
+  for (const field of stampFields) {
+    const previous = previousPayload?.[field.name];
+    const hasPrevious = previous !== undefined && previous !== null && previous !== "";
+    if (field.mode === "computed-once" && hasPrevious) {
+      payload[field.name] = previous;
+      continue;
+    }
+    const raw = await evaluateFormulaAsync(field.formula, {
+      payload,
+      doc: { ...doc, payload } as unknown as Record<string, unknown>,
+      user: scope.person,
+      scope,
+      read
+    });
+    const primitive =
+      typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean" ? raw : undefined;
+    if (primitive === undefined || primitive === "") {
+      if (hasPrevious) payload[field.name] = previous;
+      else delete payload[field.name];
+      continue;
+    }
+    payload[field.name] = coerceFieldValue(field, primitive);
+  }
+  return { ...doc, payload };
 }
 
 app.get(
@@ -1924,7 +1978,12 @@ app.post(
     // M12: stamp the document generically so any scaffolded docType is correct
     // (was hardcoded to expense/vendor); readers come from the form's data policy
     // (ADR-0015: `defaultReaders`), not an app-specific rule in base.
-    const doc = createDocument(docType, payload, scopeUser(scope), readers, appContext.appId);
+    const doc = await stampComputedFields(
+      form,
+      createDocument(docType, payload, scopeUser(scope), readers, appContext.appId),
+      undefined,
+      scope
+    );
     const result = await putDoc("local", doc, appContext.database);
     response.status(201).json({ ...doc, _rev: result.rev });
   })
@@ -1947,12 +2006,12 @@ app.put(
       response.status(422).json({ error: "validation_failed", errors });
       return;
     }
-    const updated: BusinessDocument = {
-      ...existing,
-      updatedAt: timestamp(),
-      updatedBy: scopeUser(scope),
-      payload
-    };
+    const updated = await stampComputedFields(
+      form,
+      { ...existing, updatedAt: timestamp(), updatedBy: scopeUser(scope), payload },
+      existing.payload,
+      scope
+    );
     const result = await putDoc("local", updated, appContext.database);
     response.json({ ...updated, _rev: result.rev });
   })
@@ -1987,36 +2046,24 @@ app.post(
       response.status(404).json({ error: "not_found", reason: `No workflow for ${existing.docType}` });
       return;
     }
-    // ADR-0017/0018: resolve the requested transition's approver gate and the
-    // target state's responsibility in the async formula lane BEFORE the pure
-    // engine runs — under the ACTOR's ACL scope (lookups can only narrow) and
-    // against the LOCAL replica (offline nodes resolve too; never a
-    // server-replica dependency). Both resolutions fail closed to their
-    // fallbacks and never 500: the approver gate falls back to requiredRole
-    // (or denies when the author declared none), and assignment is routing
-    // metadata that never fails a transition.
+    // ADR-0018 (gating itself is sync-lane per ADR-0019): resolve the target
+    // state's responsibility in the async formula lane BEFORE the pure engine
+    // runs — under the ACTOR's ACL scope (lookups can only narrow) and against
+    // the LOCAL replica (offline nodes resolve too). Assignment is routing
+    // metadata: resolution fails closed and never fails the transition.
     const requested = def.transitions.find((candidate) => candidate.id === request.body.transition);
     const resolved: ResolvedTransitionContext = {};
-    if (requested?.approverFormula || def.states.find((s) => s.name === requested?.to)?.responsibleFormula) {
-      const read = makeDbReader();
-      const formulaContext = {
-        payload: existing.payload,
-        doc: existing as unknown as Record<string, unknown>,
-        user: scopeUser(scope),
-        scope,
-        read
-      };
-      if (requested?.approverFormula) {
-        resolved.approvers = normalizeResolvedPrincipals(
-          await evaluateFormulaAsync(requested.approverFormula, formulaContext)
-        );
-      }
-      const targetState = def.states.find((candidate) => candidate.name === requested?.to);
-      if (targetState?.responsibleFormula) {
-        resolved.assignee = normalizeResolvedPrincipals(
-          await evaluateFormulaAsync(targetState.responsibleFormula, formulaContext)
-        )[0];
-      }
+    const targetState = def.states.find((candidate) => candidate.name === requested?.to);
+    if (targetState?.responsibleFormula) {
+      resolved.assignee = normalizeResolvedPrincipals(
+        await evaluateFormulaAsync(targetState.responsibleFormula, {
+          payload: existing.payload,
+          doc: existing as unknown as Record<string, unknown>,
+          user: scopeUser(scope),
+          scope,
+          read: makeDbReader()
+        })
+      )[0];
     }
     // Same shared engine the client uses to offer the action — authoritative here (A2/A3).
     const result = applyTransition(existing, def, request.body.transition, scopeUser(scope), principalsFor(scope), timestamp(), resolved);
@@ -2282,6 +2329,26 @@ app.post(
       return;
     }
 
+    // ADR-0019 (review B1): the elected payload is a payload WRITE — it runs the
+    // normalize -> compute-handlers -> stamp pipeline so a resolver cannot
+    // smuggle a tampered computed value (e.g. a self-serving approver) past the
+    // tamper rule. Elected payloads keep their pre-existing exemption from
+    // user-input validatePayload (electing a historic revision must not be
+    // blockable by later-tightened rules).
+    let electedPayload = request.body.payload;
+    if (chosen.kind === "document") {
+      const chosenDoc = chosen as BusinessDocument;
+      electedPayload = electedPayload ?? chosenDoc.payload;
+      const form = await formForDocType(chosenDoc.docType, appContext.database);
+      electedPayload = applyComputedFields(form, normalizePayload(form, electedPayload), chosenDoc);
+      const stamped = await stampComputedFields(
+        form,
+        { ...chosenDoc, payload: electedPayload },
+        chosenDoc.payload,
+        scope
+      );
+      electedPayload = stamped.payload;
+    }
     const resolved =
       chosen.kind === "document"
         ? {
@@ -2290,7 +2357,7 @@ app.post(
             _conflicts: undefined,
             updatedAt: timestamp(),
             updatedBy: scopeUser(scope),
-            payload: request.body.payload ?? chosen.payload
+            payload: electedPayload
           }
         : {
             ...chosen,

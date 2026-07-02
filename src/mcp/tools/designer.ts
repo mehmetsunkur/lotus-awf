@@ -15,9 +15,7 @@ const transitionSchema = z.object({
   to: z.string().min(1),
   guard: z.string().optional(),
   requiredRole: z.string().optional(),
-  action: z.string().optional(),
-  // ADR-0017: server-resolved dynamic approver gate (validated by shared rules).
-  approverFormula: z.string().optional()
+  action: z.string().optional()
 });
 
 // ADR-0018: per-state responsibility declarations, editable via update_state.patch.
