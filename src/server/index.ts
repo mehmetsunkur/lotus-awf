@@ -57,7 +57,12 @@ import {
 } from "../shared/template";
 import { applyComputedFields, normalizePayload, validatePayload } from "../shared/validation";
 import { evaluateFormulaAsync, type DbReader } from "../shared/formula";
-import { applyTransition, currentState } from "../shared/workflow";
+import {
+  applyTransition,
+  currentState,
+  normalizeResolvedPrincipals,
+  type ResolvedTransitionContext
+} from "../shared/workflow";
 import { agentIsDue, agentIsEnabled, agentMatchesChange, agentRunKey } from "../shared/agents";
 import { searchDocuments } from "../shared/search";
 import { auditAction, eventIsExpired, shouldAudit } from "../shared/audit";
@@ -1982,14 +1987,57 @@ app.post(
       response.status(404).json({ error: "not_found", reason: `No workflow for ${existing.docType}` });
       return;
     }
+    // ADR-0017/0018: resolve the requested transition's approver gate and the
+    // target state's responsibility in the async formula lane BEFORE the pure
+    // engine runs — under the ACTOR's ACL scope (lookups can only narrow) and
+    // against the LOCAL replica (offline nodes resolve too; never a
+    // server-replica dependency). Both resolutions fail closed to their
+    // fallbacks and never 500: the approver gate falls back to requiredRole
+    // (or denies when the author declared none), and assignment is routing
+    // metadata that never fails a transition.
+    const requested = def.transitions.find((candidate) => candidate.id === request.body.transition);
+    const resolved: ResolvedTransitionContext = {};
+    if (requested?.approverFormula || def.states.find((s) => s.name === requested?.to)?.responsibleFormula) {
+      const read = makeDbReader();
+      const formulaContext = {
+        payload: existing.payload,
+        doc: existing as unknown as Record<string, unknown>,
+        user: scopeUser(scope),
+        scope,
+        read
+      };
+      if (requested?.approverFormula) {
+        resolved.approvers = normalizeResolvedPrincipals(
+          await evaluateFormulaAsync(requested.approverFormula, formulaContext)
+        );
+      }
+      const targetState = def.states.find((candidate) => candidate.name === requested?.to);
+      if (targetState?.responsibleFormula) {
+        resolved.assignee = normalizeResolvedPrincipals(
+          await evaluateFormulaAsync(targetState.responsibleFormula, formulaContext)
+        )[0];
+      }
+    }
     // Same shared engine the client uses to offer the action — authoritative here (A2/A3).
-    const result = applyTransition(existing, def, request.body.transition, scopeUser(scope), principalsFor(scope), timestamp());
+    const result = applyTransition(existing, def, request.body.transition, scopeUser(scope), principalsFor(scope), timestamp(), resolved);
     if (!result.ok) {
       response.status(422).json({ error: "transition_failed", errors: result.errors });
       return;
     }
     const updated: BusinessDocument = { ...result.document, updatedAt: timestamp(), updatedBy: scopeUser(scope) };
-    const put = await putDoc("local", updated, appContext.database);
+    let put: { rev: string };
+    try {
+      put = await putDoc("local", updated, appContext.database);
+    } catch (error) {
+      // The async resolution above widens the read-modify-write window; a
+      // concurrent transition surfaces as a Couch 409 — return it retryable
+      // instead of leaking a 500 (review n4).
+      if (error instanceof CouchError && error.status === 409) {
+        response.status(409).json({ error: "conflict", reason: "Document changed while transitioning; retry" });
+        return;
+      }
+      throw error;
+    }
     // M7: the state change is now committed and authoritative. The transition's
     // effect handler (if any) runs best-effort AFTER the write — server-only,
     // never throwing, never reverting — so a failing effect cannot block or

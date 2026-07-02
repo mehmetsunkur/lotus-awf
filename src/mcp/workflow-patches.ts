@@ -3,7 +3,10 @@ import { validateWorkflowDefinition } from "../shared/definition-validation";
 
 export type WorkflowPatchOperation =
   | { type: "add_state"; name: string; label: string; final?: boolean }
-  | { type: "update_state"; name: string; label?: string; final?: boolean }
+  /** ADR-0018: a general state patch (like update_transition's) so the new
+   *  responsibility declarations are editable from the MCP designer surface;
+   *  shared validateWorkflowDefinition enforces their rules after every patch. */
+  | { type: "update_state"; name: string; patch?: Partial<WorkflowState>; label?: string; final?: boolean }
   | { type: "remove_state"; name: string }
   | { type: "add_transition"; transition: WorkflowTransition }
   | { type: "update_transition"; id: string; patch: Partial<WorkflowTransition> }
@@ -48,6 +51,7 @@ function applyOperation(workflow: WorkflowDefinition, operation: WorkflowPatchOp
   if (operation.type === "update_state") {
     const state = findState(workflow.states, operation.name);
     if (!state) throw new Error(`State not found: ${operation.name}`);
+    if (operation.patch) Object.assign(state, operation.patch, { name: operation.name });
     if (operation.label !== undefined) state.label = operation.label;
     if (operation.final !== undefined) state.final = operation.final || undefined;
     return `Updated state ${operation.name}`;

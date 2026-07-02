@@ -15,7 +15,17 @@ const transitionSchema = z.object({
   to: z.string().min(1),
   guard: z.string().optional(),
   requiredRole: z.string().optional(),
-  action: z.string().optional()
+  action: z.string().optional(),
+  // ADR-0017: server-resolved dynamic approver gate (validated by shared rules).
+  approverFormula: z.string().optional()
+});
+
+// ADR-0018: per-state responsibility declarations, editable via update_state.patch.
+const statePatchSchema = z.object({
+  label: z.string().min(1).optional(),
+  final: z.boolean().optional(),
+  responsible: z.string().optional(),
+  responsibleFormula: z.string().optional()
 });
 
 const workflowPatchOperationSchema = z.discriminatedUnion("type", [
@@ -28,6 +38,7 @@ const workflowPatchOperationSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("update_state"),
     name: z.string().min(1),
+    patch: statePatchSchema.optional(),
     label: z.string().min(1).optional(),
     final: z.boolean().optional()
   }),
