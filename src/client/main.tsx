@@ -542,8 +542,10 @@ function WorkflowBar({
 }) {
   const state = currentState(doc, workflow);
   const stateDef = workflow.states.find((candidate) => candidate.name === state);
-  // Same engine the server uses to authorize the write, so we never offer an
-  // action the transition endpoint would reject (A2/A3).
+  // Same engine the server uses to authorize the write for the sync lane, so a
+  // requiredRole action is never offered where the endpoint would reject it.
+  // ADR-0017: approverFormula-gated actions are offered ADVISORILY (the client
+  // cannot resolve async formulas) — the server is authoritative and may 422.
   const actions = availableTransitions(doc, workflow, user, roles);
 
   return (
@@ -551,6 +553,11 @@ function WorkflowBar({
       <span className="statePill" data-testid="workflow-state" data-state={state}>
         {stateDef?.label ?? state}
       </span>
+      {doc.assignee ? (
+        <span className="assigneePill" data-testid="workflow-assignee">
+          Assigned to {doc.assignee}
+        </span>
+      ) : null}
       <div className="workflowActions">
         {actions.map((transition) => (
           <button
