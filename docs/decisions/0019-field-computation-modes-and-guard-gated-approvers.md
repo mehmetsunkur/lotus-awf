@@ -62,17 +62,52 @@ fields always keep their real datatype:
   every non-editable mode on every write — `computed` re-resolves, `computed-once`
   preserves the existing value or first-resolves, `computed-for-display` never stores.
   Without this, a requester simply posts their own `approver` and self-approves.
+  **This applies to every payload write path** — document POST, document PUT, **and the
+  conflict-resolve route** (review blocker B1: resolve writes an elected payload and
+  would otherwise smuggle a self-serving approver past the pipeline; it now runs
+  normalize → compute handlers → stamp before its write. Its pre-existing lack of
+  user-input validation on elected payloads is unchanged and out of scope here).
 - **Resolution context**: async lane (`@DbLookup`/`@DbColumn`), under the **writer's**
-  ACL scope, against the **local replica**, fail-closed to empty. Fallbacks belong inside
-  the formula (`… || 'group:managers'`).
-- **Write order**: `normalizePayload` → `applyComputedFields` (M7 pure handlers) →
-  `validatePayload` → **stamp computed modes** → write. Stamping after validation is
-  correct because computed fields are excluded from user-input validation (below).
+  ACL scope, against the **local replica**. **Preserve-on-empty** (review M1/m5): when a
+  `computed` re-resolution yields nothing — ACL-blind writer, unreachable source app,
+  transient failure — the previously stamped value is **preserved**, never cleared and
+  never replaced by a broad fallback; degradation must not widen authority. Formulas are
+  therefore written to *distinguish* "cannot see the source" (return `undefined` →
+  preserve) from "source says none" (return the intended fallback, e.g. a genuinely
+  headless department → `'group:managers'`). Stamped results are coerced to the field's
+  datatype; non-primitive results are treated as empty (review m7).
+- **Write order** (review M2): `normalizePayload` (strips `computed-for-display`, skips
+  defaults for non-editable modes) → `applyComputedFields` (M7 pure handlers) →
+  `validatePayload` (user-editable fields only) → **build/merge the document envelope**
+  → **stamp computed modes with `doc` bound to that envelope** (`createdBy` is the
+  requester on POST and the preserved creator on PUT — binding the acting writer would
+  re-route approval to the editor) → write. Stamping after validation means cross-field
+  `validate` rules see the *previous* stamped value — documented, not accidental
+  (review m6).
 - **Conflict resolution does not recompute** — electing a winning revision writes it
   as-is; stored values ride the chosen revision.
 - **`computed-once` empty-at-compose**: an empty resolution is retried at the next save
   (resolve-iff-absent), a deliberate self-healing softening of Notes' strict
   compose-time freeze.
+- **Readability precondition** (review M1): a gated docType's approver formula source
+  (the org app) must be readable by the population that *writes* gated documents;
+  deployments grant it as the airline fixture does. A writer outside that population
+  degrades per preserve-on-empty (edits keep the prior approver; a brand-new document
+  stamps nothing and the submit guard blocks — fail closed, never fail broad).
+- **Unbounded-formula exposure** (review m3): moving the async lane onto the save path
+  extends ADR-0014's known no-execution-deadline limitation to document writes; accepted
+  as the same designer-trust boundary (formulas are designer-authored data), with the
+  deadline follow-up remaining open and now higher priority.
+- **Pre-existing documents** (review m9): documents created before a computed field was
+  added carry no stamp until their next save (approve guards refuse until then);
+  re-saving is the unstick path. Pre-release, every environment is reset/reseeded when
+  this lands (review m1) — additionally, definition validation explicitly **rejects**
+  the superseded `approverFormula` key so stale ADR-0017-era workflow definitions fail
+  loudly at their next designer save instead of silently losing their gate.
+- **Approver-readability constraint** (review m2): the stamped approver must be able to
+  *read* the document to act on it — satisfied when the approver shares the requester's
+  department group or sits in the form's `defaultReaders` (both true in the template);
+  documented as a template-design constraint rather than auto-widening `readers`.
 - **Validation**: computed modes require `formula` (blocked-token + syntax checked);
   editable mode forbids it; computed modes reject `required`/`defaultValue`/`validate`/
   `compute` (the server owns the value; user-input rules and the sync handler conflict).
@@ -81,6 +116,10 @@ fields always keep their real datatype:
   `gross`), which formulas cannot be (async, server-only). Consolidation deferred.
 
 ### 2. Guards gain `principals`
+
+`principals` is populated only for workflow guard evaluation; other sync-lane contexts
+(visibility, validation rules) compile with an empty array — referencing it there is
+legal but always-empty by design (review m8).
 
 `ExpressionContext` gains `principals?: string[]` (the actor's person + group ids), and
 the workflow engine threads the principals it already receives into guard evaluation.
