@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `c979f24`
+- Last code review baseline: `2762f60`
 - Last reviewed date: `2026-07-01`
 - Code areas:
   - `src/server/**`
@@ -149,7 +149,10 @@ the server's own behavior.
   `POST /api/platform/apps { fromTemplate }`; `seedDocuments()` remains a dev/scripts wrapper. The
   server validates the template artifact and each design doc, rejecting runtime/business docs from
   the design set. M18 also seeds sample directory records (Alice, Bob, `group:finance`,
-  `group:sales`) around the reset path.
+  `group:sales`) around the reset path. `POST /api/reset` (dev/e2e only) returns a clean
+  slate: it drops every business-app database (`<appId>_app`) along with the control
+  databases before re-seeding, so leftover catalog/template apps cannot 409 the next
+  create-app.
 - Sync: `POST /api/replicate` → scoped `replicateBidirectional` → local `_purge` of server-revoked
   docs → `reconcileStates` reports concurrent state divergence; conflicts surfaced via
   `/api/conflicts`. Resolve accepts `chosenRev` to elect the winning revision's state.
