@@ -46,7 +46,9 @@
       "appId": "leave-request",
       "docType": "leave-request",
       "title": "Leave Request",
-      "defaultReaders": ["group:managers"],
+      "defaultReaders": [
+        "group:managers"
+      ],
       "sections": [
         {
           "title": "Leave",
@@ -183,6 +185,10 @@
           "label": "Reason"
         },
         {
+          "field": "assignee",
+          "label": "Assigned to"
+        },
+        {
           "field": "state",
           "label": "State"
         }
@@ -225,7 +231,9 @@
         },
         {
           "name": "submitted",
-          "label": "Submitted"
+          "label": "Submitted",
+          "responsible": "group:managers",
+          "responsibleFormula": "(await DbLookup('org', 'department', 'payload.slug', await DbLookup('org', 'employee', 'payload.person', doc.createdBy, 'payload.department'), 'payload.head')) === doc.createdBy ? await DbLookup('org', 'department', 'payload.slug', await DbLookup('org', 'department', 'payload.slug', await DbLookup('org', 'employee', 'payload.person', doc.createdBy, 'payload.department'), 'payload.parent'), 'payload.head') : await DbLookup('org', 'department', 'payload.slug', await DbLookup('org', 'employee', 'payload.person', doc.createdBy, 'payload.department'), 'payload.head')"
         },
         {
           "name": "approved",
@@ -252,14 +260,16 @@
           "label": "Approve",
           "from": "submitted",
           "to": "approved",
-          "requiredRole": "group:managers"
+          "requiredRole": "group:managers",
+          "approverFormula": "(await DbLookup('org', 'department', 'payload.slug', await DbLookup('org', 'employee', 'payload.person', doc.createdBy, 'payload.department'), 'payload.head')) === doc.createdBy ? await DbLookup('org', 'department', 'payload.slug', await DbLookup('org', 'department', 'payload.slug', await DbLookup('org', 'employee', 'payload.person', doc.createdBy, 'payload.department'), 'payload.parent'), 'payload.head') : await DbLookup('org', 'department', 'payload.slug', await DbLookup('org', 'employee', 'payload.person', doc.createdBy, 'payload.department'), 'payload.head')"
         },
         {
           "id": "reject",
           "label": "Reject",
           "from": "submitted",
           "to": "rejected",
-          "requiredRole": "group:managers"
+          "requiredRole": "group:managers",
+          "approverFormula": "(await DbLookup('org', 'department', 'payload.slug', await DbLookup('org', 'employee', 'payload.person', doc.createdBy, 'payload.department'), 'payload.head')) === doc.createdBy ? await DbLookup('org', 'department', 'payload.slug', await DbLookup('org', 'department', 'payload.slug', await DbLookup('org', 'employee', 'payload.person', doc.createdBy, 'payload.department'), 'payload.parent'), 'payload.head') : await DbLookup('org', 'department', 'payload.slug', await DbLookup('org', 'employee', 'payload.person', doc.createdBy, 'payload.department'), 'payload.head')"
         }
       ]
     }

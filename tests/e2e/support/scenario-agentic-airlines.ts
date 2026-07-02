@@ -19,7 +19,13 @@ import type { APIRequestContext, PlaywrightWorkerArgs } from "@playwright/test";
 export const AIRLINE_PASSWORD = "password123";
 
 /** Groups the fixture treats as "all airline staff" for org-chart visibility. */
-export const AIRLINE_STAFF_GROUPS = ["group:flight-ops", "group:cabin-crew", "group:finance", "group:managers"];
+export const AIRLINE_STAFF_GROUPS = [
+  "group:flight-ops",
+  "group:cabin-crew",
+  "group:ground-ops",
+  "group:finance",
+  "group:managers"
+];
 
 export type AirlinePersona = {
   username: string;
@@ -37,6 +43,9 @@ export type AirlinePersona = {
 export const AIRLINE_DEPARTMENTS = [
   { slug: "flight-ops", name: "Flight Operations", parent: "", head: "carol" },
   { slug: "cabin-crew", name: "Cabin Crew", parent: "flight-ops", head: "erin" },
+  // Hank deliberately holds NO managers membership: he exercises the ADR-0017
+  // case where the formula-resolved approver sits outside requiredRole.
+  { slug: "ground-ops", name: "Ground Operations", parent: "", head: "hank" },
   { slug: "finance", name: "Finance", parent: "", head: "grace" }
 ] as const;
 
@@ -68,6 +77,20 @@ export const AIRLINE_PERSONAS = {
     jobTitle: "Senior Cabin Crew",
     department: "cabin-crew",
     groups: ["cabin-crew"]
+  },
+  hank: {
+    username: "hank",
+    displayName: "Hank Tarmac",
+    jobTitle: "Ground Operations Supervisor",
+    department: "ground-ops",
+    groups: ["ground-ops"]
+  },
+  ivy: {
+    username: "ivy",
+    displayName: "Ivy Ramp",
+    jobTitle: "Ramp Agent",
+    department: "ground-ops",
+    groups: ["ground-ops"]
   },
   grace: {
     username: "grace",
@@ -164,7 +187,7 @@ export async function seedAgenticAirlines(
 
   const membersOf = (slug: string) =>
     personas.filter((persona) => persona.groups.includes(slug)).map((persona) => `person:${persona.username}`);
-  for (const slug of ["managers", "flight-ops", "cabin-crew", "finance"]) {
+  for (const slug of ["managers", "flight-ops", "cabin-crew", "ground-ops", "finance"]) {
     const name =
       slug === "managers" ? "Managers" : (AIRLINE_DEPARTMENTS.find((dept) => dept.slug === slug)?.name ?? "Finance");
     const existing = groupsById.get(`group:${slug}`);
@@ -227,9 +250,29 @@ export async function seedAgenticAirlines(
       { principal: "group:managers", level: "editor" },
       { principal: "group:flight-ops", level: "author" },
       { principal: "group:cabin-crew", level: "author" },
+      { principal: "group:ground-ops", level: "author" },
       { principal: "group:finance", level: "author" }
     ]
   });
+
+  // ADR-0017/0018: the template's approver/responsible formulas reference the
+  // org app by its authored default id; this deployment runs under a per-seed
+  // appId, so re-point them with a designer-level definition edit — the same
+  // mechanism a real deployment under custom appIds uses.
+  const leaveDefinitions = await requestJson<{ workflows: Array<Json & { _id: string }> }>(
+    admin,
+    "get",
+    `/api/apps/${leaveRequestAppId}/definitions`
+  );
+  const leaveWorkflow = leaveDefinitions.workflows.find((definition) => definition._id === "workflow:leave-request");
+  if (!leaveWorkflow) throw new Error("leave-request app is missing workflow:leave-request");
+  const repointed = JSON.parse(JSON.stringify(leaveWorkflow).split("DbLookup('org'").join(`DbLookup('${orgAppId}'`));
+  await requestJson(
+    admin,
+    "put",
+    `/api/apps/${leaveRequestAppId}/definitions/${encodeURIComponent("workflow:leave-request")}`,
+    repointed
+  );
   // Expense is seeded by `/api/reset` but may be absent on a real deployment —
   // wire the crew groups in only when the app is installed.
   const expenseAccessResponse = await admin.get("/api/apps/expense/access");

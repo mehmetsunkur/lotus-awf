@@ -76,14 +76,15 @@ test.describe("Agentic Airlines PLC scenario", () => {
     const frank = await airline.as("frank");
     const departments = await viewDocs(frank, airline.scenario.orgAppId, "view:departments");
     const headBySlug = new Map(departments.map((doc) => [doc.payload.slug, doc.payload.head]));
-    expect(headBySlug.size).toBe(3);
+    expect(headBySlug.size).toBe(4);
     expect(headBySlug.get("flight-ops")).toBe("person:carol");
     expect(headBySlug.get("cabin-crew")).toBe("person:erin");
+    expect(headBySlug.get("ground-ops")).toBe("person:hank");
     expect(headBySlug.get("finance")).toBe("person:grace");
 
     const employees = await viewDocs(frank, airline.scenario.orgAppId, "view:employees");
     const byPerson = new Map(employees.map((doc) => [doc.payload.person, doc.payload]));
-    expect(byPerson.size).toBe(5);
+    expect(byPerson.size).toBe(7);
     expect(byPerson.get("person:dave")).toMatchObject({ department: "flight-ops" });
     expect(byPerson.get("person:frank")).toMatchObject({ department: "cabin-crew" });
 
@@ -101,6 +102,8 @@ test.describe("Agentic Airlines PLC scenario", () => {
     expect(await managerOf("dave")).toBe("person:carol");
     expect(await managerOf("frank")).toBe("person:erin");
     expect(await managerOf("erin")).toBe("person:carol"); // head of cabin-crew → head of parent flight-ops
+    expect(await managerOf("ivy")).toBe("person:hank");
+    expect(await managerOf("hank")).toBeUndefined(); // head of top-level ground-ops
     expect(await managerOf("grace")).toBeUndefined(); // head of top-level finance
     expect(await managerOf("carol")).toBeUndefined(); // head of top-level flight-ops
   });
@@ -187,10 +190,115 @@ test.describe("Agentic Airlines PLC scenario", () => {
     const selfApprove = await transition(dave, airline.scenario.leaveRequestAppId, request._id, "approve");
     expect(selfApprove.status()).toBe(422);
 
-    // Grace holds group:managers, so the same transition succeeds for her.
+    // ADR-0017: grace holds group:managers but is NOT dave's department head —
+    // the dynamic gate refuses her where the old static role would have allowed.
     const grace = await airline.as("grace");
-    const approved = await transition(grace, airline.scenario.leaveRequestAppId, request._id, "approve");
+    const graceRefused = await transition(grace, airline.scenario.leaveRequestAppId, request._id, "approve");
+    expect(graceRefused.status()).toBe(422);
+
+    // Carol — head of dave's department — is the resolved approver.
+    const carol = await airline.as("carol");
+    const approved = await transition(carol, airline.scenario.leaveRequestAppId, request._id, "approve");
     expect(approved.status()).toBe(200);
+  });
+
+  test("ADR-0017/0018: approval routes to the department head and the assignee tracks the hand-off", async ({
+    airline
+  }) => {
+    const app = airline.scenario.leaveRequestAppId;
+    const dave = await airline.as("dave");
+    const request = await createDoc(dave, app, "leave-request", {
+      type: "annual",
+      from: "2026-10-05",
+      to: "2026-10-09",
+      reason: "Autumn break"
+    });
+    await transition(dave, app, request._id, "submit");
+
+    // ADR-0018: submit stamped the resolved department head as the assignee.
+    const submitted = (await dave
+      .get(`/api/apps/${app}/documents/${encodeURIComponent(request._id)}`)
+      .then((response) => response.json())) as Doc & { assignee?: string; assignedAt?: string };
+    expect(submitted.assignee).toBe("person:carol");
+    expect(submitted.assignedAt).toBeTruthy();
+
+    // ADR-0017: erin holds group:managers but heads another department — 422.
+    const erin = await airline.as("erin");
+    const refused = await transition(erin, app, request._id, "approve");
+    expect(refused.status()).toBe(422);
+    const refusal = (await refused.json()) as { errors: Array<{ message: string }> };
+    expect(refusal.errors[0].message).toContain("designated approver");
+
+    const carol = await airline.as("carol");
+    const approved = await transition(carol, app, request._id, "approve");
+    expect(approved.status()).toBe(200);
+    const final = (await approved.json()) as Doc & { assignee?: string };
+    expect(final.state).toBe("approved");
+    expect(final.assignee).toBeUndefined(); // final states clear the assignment
+  });
+
+  test("ADR-0017: a department head outside group:managers can approve their department's requests", async ({
+    airline
+  }) => {
+    const app = airline.scenario.leaveRequestAppId;
+    const ivy = await airline.as("ivy");
+    const request = await createDoc(ivy, app, "leave-request", {
+      type: "sick",
+      from: "2026-07-06",
+      to: "2026-07-07",
+      reason: "Dentist"
+    });
+    await transition(ivy, app, request._id, "submit");
+
+    // The stamp routed to hank even though he holds no managers membership…
+    const hank = await airline.as("hank");
+    const assigned = (await hank
+      .get(`/api/apps/${app}/documents/${encodeURIComponent(request._id)}`)
+      .then((response) => response.json())) as Doc & { assignee?: string };
+    expect(assigned.assignee).toBe("person:hank");
+
+    // …a manager outside the resolved set is refused…
+    const grace = await airline.as("grace");
+    expect((await transition(grace, app, request._id, "approve")).status()).toBe(422);
+
+    // …and hank approves purely via the dynamic gate (no requiredRole held).
+    const approved = await transition(hank, app, request._id, "approve");
+    expect(approved.status()).toBe(200);
+  });
+
+  test("ADR-0017: a headless department falls back to the static group:managers gate", async ({
+    airline,
+    page
+  }) => {
+    const app = airline.scenario.leaveRequestAppId;
+    // Blank ground-ops' head (an admin org-chart edit, as after a resignation).
+    const deptId = airline.scenario.departmentDocIds["ground-ops"];
+    const updated = await page.request.put(
+      `/api/apps/${airline.scenario.orgAppId}/documents/${encodeURIComponent(deptId)}`,
+      { data: { payload: { name: "Ground Operations", slug: "ground-ops", parent: "", head: "" } } }
+    );
+    expect(updated.status()).toBe(200);
+
+    const ivy = await airline.as("ivy");
+    const request = await createDoc(ivy, app, "leave-request", {
+      type: "unpaid",
+      from: "2026-08-01",
+      to: "2026-08-02",
+      reason: "Moving day"
+    });
+    await transition(ivy, app, request._id, "submit");
+
+    // No head resolves: the static responsible stamps and the requiredRole
+    // fallback gates — hank (no managers role) is refused, erin passes.
+    const submitted = (await ivy
+      .get(`/api/apps/${app}/documents/${encodeURIComponent(request._id)}`)
+      .then((response) => response.json())) as Doc & { assignee?: string };
+    expect(submitted.assignee).toBe("group:managers");
+
+    const hank = await airline.as("hank");
+    expect((await transition(hank, app, request._id, "approve")).status()).toBe(422);
+    const erin = await airline.as("erin");
+    expect((await transition(erin, app, request._id, "approve")).status()).toBe(200);
   });
 
   test("the same personas work the expense app: crew files, finance approves, others see nothing", async ({
