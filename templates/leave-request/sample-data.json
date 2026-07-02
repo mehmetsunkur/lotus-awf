@@ -1,0 +1,51 @@
+[
+  {
+    "_id": "doc:leave-request:alice-annual",
+    "kind": "document",
+    "appId": "leave-request",
+    "docType": "leave-request",
+    "createdAt": "2026-07-01T00:00:00.000Z",
+    "updatedAt": "2026-07-01T00:00:00.000Z",
+    "createdBy": "person:alice",
+    "updatedBy": "person:alice",
+    "readers": [
+      "person:alice",
+      "group:managers"
+    ],
+    "authors": [
+      "person:alice"
+    ],
+    "payload": {
+      "type": "annual",
+      "from": "2026-08-03",
+      "to": "2026-08-14",
+      "reason": "Summer holiday"
+    }
+  },
+  {
+    "_id": "doc:leave-request:bob-sick",
+    "kind": "document",
+    "appId": "leave-request",
+    "docType": "leave-request",
+    "createdAt": "2026-07-01T00:00:00.000Z",
+    "updatedAt": "2026-07-01T00:00:00.000Z",
+    "createdBy": "person:bob",
+    "updatedBy": "person:bob",
+    "readers": [
+      "person:bob",
+      "group:managers"
+    ],
+    "authors": [
+      "person:bob"
+    ],
+    "payload": {
+      "type": "sick",
+      "from": "2026-06-29",
+      "to": "2026-06-30",
+      "reason": "Flu"
+    },
+    "state": "submitted",
+    "stateUpdatedAt": "2026-07-01T00:00:00.000Z",
+    "stateUpdatedBy": "person:bob"
+  }
+]

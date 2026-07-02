@@ -53,6 +53,40 @@ describe("sample template registry", () => {
     ]);
   });
 
+  it("lists and loads the Leave request template as design docs plus separate sample data", () => {
+    expect(listSampleTemplates()).toEqual(
+      expect.arrayContaining([
+        {
+          templateId: "sample:leave-request",
+          appId: "leave-request",
+          title: "Leave request sample",
+          description: "Employees file leave requests; managers approve or reject them."
+        }
+      ])
+    );
+
+    const sample = loadSampleTemplate("sample:leave-request");
+
+    expect(sample.template.templateId).toBe("sample:leave-request");
+    expect(sample.template.definitions.every((definition) => definition.kind !== "document")).toBe(true);
+    expect(sample.template.definitions.map((definition) => definition._id).sort()).toEqual([
+      "acl:rules",
+      "app:config",
+      "audit:policy",
+      "form:leave-request",
+      "view:my-requests",
+      "view:pending-approval",
+      "workflow:leave-request"
+    ]);
+    expect(sample.sampleData.map((doc) => doc._id).sort()).toEqual([
+      "doc:leave-request:alice-annual",
+      "doc:leave-request:bob-sick"
+    ]);
+    expect(
+      sample.sampleData.every((doc) => doc.readers.includes("group:managers") && doc.readers.includes(doc.createdBy))
+    ).toBe(true);
+  });
+
   it("keeps seedDocuments compatible with the JSON sample artifacts", () => {
     expect(seedDocuments()).toEqual(sampleTemplateDocuments("sample:expense"));
   });

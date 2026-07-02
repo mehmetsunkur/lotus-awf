@@ -46,6 +46,13 @@ const SAMPLE_TEMPLATES: Record<string, SampleTemplateFiles> = {
     appId: "org",
     title: "Org sample",
     description: "Models departments, employees, and reporting lines."
+  },
+  "sample:leave-request": {
+    templatePath: "templates/leave-request/template.json",
+    sampleDataPath: "templates/leave-request/sample-data.json",
+    appId: "leave-request",
+    title: "Leave request sample",
+    description: "Employees file leave requests; managers approve or reject them."
   }
 };
 

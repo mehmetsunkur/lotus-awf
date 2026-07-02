@@ -1,0 +1,267 @@
+{
+  "kind": "template",
+  "templateId": "sample:leave-request",
+  "appId": "leave-request",
+  "version": "sample",
+  "createdAt": "2026-07-01T00:00:00.000Z",
+  "createdBy": "system:seed",
+  "source": "templates/leave-request/template.json",
+  "definitions": [
+    {
+      "_id": "acl:rules",
+      "kind": "acl",
+      "appId": "leave-request",
+      "policy": "leave-request.nsf: employees file their own requests; managers approve or reject them.",
+      "entries": [
+        {
+          "principal": "group:admins",
+          "level": "manager"
+        },
+        {
+          "principal": "group:managers",
+          "level": "editor"
+        },
+        {
+          "principal": "group:employees",
+          "level": "author"
+        }
+      ]
+    },
+    {
+      "_id": "app:config",
+      "kind": "app",
+      "appId": "leave-request",
+      "title": "Leave Requests",
+      "database": "leave-request_app"
+    },
+    {
+      "_id": "audit:policy",
+      "kind": "auditpolicy",
+      "appId": "leave-request",
+      "retentionDays": 365
+    },
+    {
+      "_id": "form:leave-request",
+      "kind": "form",
+      "appId": "leave-request",
+      "docType": "leave-request",
+      "title": "Leave Request",
+      "defaultReaders": ["group:managers"],
+      "sections": [
+        {
+          "title": "Leave",
+          "fields": [
+            "type",
+            "from",
+            "to"
+          ]
+        },
+        {
+          "title": "Justification",
+          "fields": [
+            "reason"
+          ]
+        }
+      ],
+      "fields": [
+        {
+          "name": "type",
+          "type": "select",
+          "label": "Leave type",
+          "required": true,
+          "defaultValue": "annual",
+          "options": [
+            {
+              "label": "Annual leave",
+              "value": "annual"
+            },
+            {
+              "label": "Sick leave",
+              "value": "sick"
+            },
+            {
+              "label": "Unpaid leave",
+              "value": "unpaid"
+            }
+          ]
+        },
+        {
+          "name": "from",
+          "type": "date",
+          "label": "First day",
+          "required": true
+        },
+        {
+          "name": "to",
+          "type": "date",
+          "label": "Last day",
+          "required": true,
+          "validate": [
+            {
+              "expression": "!payload.from || !payload.to || payload.to >= payload.from",
+              "message": "Last day must not be before the first day"
+            }
+          ]
+        },
+        {
+          "name": "reason",
+          "type": "textarea",
+          "label": "Reason",
+          "required": true,
+          "searchable": true
+        }
+      ]
+    },
+    {
+      "_id": "view:my-requests",
+      "kind": "view",
+      "appId": "leave-request",
+      "docType": "leave-request",
+      "title": "My Requests",
+      "columns": [
+        {
+          "field": "payload.type",
+          "label": "Type"
+        },
+        {
+          "field": "payload.from",
+          "label": "From"
+        },
+        {
+          "field": "payload.to",
+          "label": "To"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "leave-request"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "view:pending-approval",
+      "kind": "view",
+      "appId": "leave-request",
+      "docType": "leave-request",
+      "title": "Pending Approval",
+      "columns": [
+        {
+          "field": "payload.type",
+          "label": "Type"
+        },
+        {
+          "field": "payload.from",
+          "label": "From"
+        },
+        {
+          "field": "payload.to",
+          "label": "To"
+        },
+        {
+          "field": "payload.reason",
+          "label": "Reason"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "leave-request"
+        },
+        {
+          "field": "state",
+          "op": "eq",
+          "value": "submitted"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "workflow:leave-request",
+      "kind": "workflow",
+      "appId": "leave-request",
+      "docType": "leave-request",
+      "title": "Leave Approval",
+      "initialState": "draft",
+      "states": [
+        {
+          "name": "draft",
+          "label": "Draft"
+        },
+        {
+          "name": "submitted",
+          "label": "Submitted"
+        },
+        {
+          "name": "approved",
+          "label": "Approved",
+          "final": true
+        },
+        {
+          "name": "rejected",
+          "label": "Rejected",
+          "final": true
+        }
+      ],
+      "transitions": [
+        {
+          "id": "submit",
+          "label": "Submit",
+          "from": "draft",
+          "to": "submitted",
+          "guard": "!!payload.from && !!payload.to && payload.to >= payload.from",
+          "action": "audit-transition"
+        },
+        {
+          "id": "approve",
+          "label": "Approve",
+          "from": "submitted",
+          "to": "approved",
+          "requiredRole": "group:managers"
+        },
+        {
+          "id": "reject",
+          "label": "Reject",
+          "from": "submitted",
+          "to": "rejected",
+          "requiredRole": "group:managers"
+        }
+      ]
+    }
+  ]
+}
