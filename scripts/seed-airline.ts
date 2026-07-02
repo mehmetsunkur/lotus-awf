@@ -29,6 +29,7 @@ const ORG_APP_ID = process.env.ORG_APP_ID ?? "org";
 const LEAVE_APP_ID = process.env.LEAVE_APP_ID ?? "leave-request";
 
 async function main(): Promise<void> {
+  console.log(`Seeding ${API_URL} as ${ADMIN_USER} (set API_URL/ADMIN_USER/ADMIN_PASSWORD to target a deployment)`);
   const admin = await request.newContext({ baseURL: API_URL });
   try {
     if (process.env.RESET === "1") {
