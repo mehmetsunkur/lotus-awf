@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `24ffbfd`
+- Last code review baseline: `c979f24`
 - Last reviewed date: `2026-07-01`
 - Code areas:
   - `src/server/**`
@@ -44,7 +44,7 @@ the server's own behavior.
 - `src/server/seed-data.ts` — compatibility helpers for scripts/e2e; loads the packaged Expense
   sample from the JSON template registry.
 - `src/server/template-registry.ts` — filesystem-backed bundled template loader for
-  `templates/expense/*` and `templates/org/*`; pure design validation lives in
+  `templates/expense/*`, `templates/org/*`, and `templates/leave-request/*` (M25); pure design validation lives in
   `src/shared/template-validation.ts`.
 - `src/server/handlers/effects.ts` (M7) — server-only effect registry + `runEffect` (best-effort,
   in-memory log).
@@ -143,7 +143,8 @@ the server's own behavior.
   stale `_rev`, compares by definition id, and applies add/update changes to **local** Couch without
   touching business docs. Runtime `agentrun:*` / `agent:state` / `auditevent:*` / `audit:state` docs
   are NOT packaged.
-- JSON templates (M17/ADR-0016): bundled templates (`templates/expense/*`, `templates/org/*`) are
+- JSON templates (M17/ADR-0016): bundled templates (`templates/expense/*`, `templates/org/*`,
+  `templates/leave-request/*`) are
   packaged design + demo docs. `instantiateTemplate` re-stamps them to a chosen appId when deploying via
   `POST /api/platform/apps { fromTemplate }`; `seedDocuments()` remains a dev/scripts wrapper. The
   server validates the template artifact and each design doc, rejecting runtime/business docs from
