@@ -46,6 +46,15 @@ not in per-app payload conventions.
    fallback. Responsibility is a property of the **state** (where the document sits), not
    of a transition — that is what makes it uniform across workflows.
 
+   **Initial-state exception** (review finding): documents enter the initial state by
+   *creation*, not by transition (`currentState()` reads a missing `state` as
+   `initialState`), so an initial-state declaration could never be stamped. Validation
+   therefore **rejects** `responsible`/`responsibleFormula` on the initial state:
+   draft-stage responsibility is the creator's by definition (`createdBy`/`authors`
+   already express it). Stamping at document creation was considered and rejected — it
+   would pull workflow resolution into the create path for marginal value; if a future
+   need appears, that becomes its own decision.
+
 2. **Document envelope**: the engine's allocated family grows by one pair —
    `assignee?: string` (a `person:*`/`group:*` principal) and `assignedAt?: string`.
    Stamped **only** by `applyTransition` on state entry; cleared on entering a final state
@@ -109,7 +118,9 @@ staleness bug ADR-0017 rejected.
 
 - Unit: stamp on state entry (formula, static, and none), clear on final states,
   hand-off recorded in `history[]`, resolution failure stamps fallback/nothing but never
-  fails the transition, validation rejects malformed declarations.
+  fails the transition, validation rejects malformed declarations **and any
+  `responsible`/`responsibleFormula` on the initial state** (the inoperative-declaration
+  gap found in review).
 - E2E (airline scenario): dave submits a leave request → `assignee` is `person:carol`
   and the Departments-style worklist shows it; carol approves → `assignee` cleared;
   erin submits her own → `assignee` is `person:carol` (parent-walk via the formula).
