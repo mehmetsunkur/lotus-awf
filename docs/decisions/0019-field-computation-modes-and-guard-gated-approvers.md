@@ -84,8 +84,11 @@ fields always keep their real datatype:
   re-route approval to the editor) → write. Stamping after validation means cross-field
   `validate` rules see the *previous* stamped value — documented, not accidental
   (review m6).
-- **Conflict resolution does not recompute** — electing a winning revision writes it
-  as-is; stored values ride the chosen revision.
+- **Conflict resolution runs the stamp pipeline** (review B1 superseded the earlier
+  "writes as-is" posture): the elected payload passes normalize → compute handlers →
+  stamp before the write, under the resolver's scope with preserve-on-empty — so an
+  elected revision cannot carry a tampered computed value, while `computed-once` values
+  are preserved from the chosen revision as usual.
 - **`computed-once` empty-at-compose**: an empty resolution is retried at the next save
   (resolve-iff-absent), a deliberate self-healing softening of Notes' strict
   compose-time freeze.
