@@ -11,7 +11,7 @@
       "_id": "acl:rules",
       "kind": "acl",
       "appId": "org",
-      "policy": "org.nsf: admins design and manage the organization directory structure.",
+      "policy": "org.nsf: admins design and manage the organization directory structure. department.head is the organizational truth for reporting lines; approval enforcement stays group-based until ADR-0017.",
       "entries": [
         {
           "principal": "group:admins",
@@ -44,7 +44,8 @@
           "fields": [
             "name",
             "slug",
-            "parent"
+            "parent",
+            "head"
           ]
         }
       ],
@@ -75,6 +76,18 @@
           "type": "text",
           "label": "Parent slug",
           "helpText": "Slug of the parent department, or blank for a top-level department."
+        },
+        {
+          "name": "head",
+          "type": "text",
+          "label": "Head",
+          "helpText": "Directory id of the department head, e.g. person:alice. Blank while a department is between heads.",
+          "validate": [
+            {
+              "expression": "!payload.head || payload.head.startsWith('person:')",
+              "message": "Head must be a directory id like person:alice"
+            }
+          ]
         }
       ]
     },
@@ -130,15 +143,10 @@
         },
         {
           "name": "manager",
-          "type": "text",
+          "type": "formula",
           "label": "Manager",
-          "helpText": "Directory id of this employee's manager, e.g. person:alice.",
-          "validate": [
-            {
-              "expression": "!payload.manager || payload.manager.startsWith('person:')",
-              "message": "Manager must be a directory id like person:alice"
-            }
-          ]
+          "formula": "(await DbLookup(doc.appId, 'department', 'payload.slug', payload.department, 'payload.head')) === payload.person ? await DbLookup(doc.appId, 'department', 'payload.slug', await DbLookup(doc.appId, 'department', 'payload.slug', payload.department, 'payload.parent'), 'payload.head') : await DbLookup(doc.appId, 'department', 'payload.slug', payload.department, 'payload.head')",
+          "helpText": "Derived from department.head (the single source of truth for reporting lines): your department's head, or the parent department's head if you are the head. Blank for a top-level head."
         }
       ]
     },
@@ -160,6 +168,10 @@
         {
           "field": "payload.parent",
           "label": "Parent"
+        },
+        {
+          "field": "payload.head",
+          "label": "Head"
         },
         {
           "field": "updatedAt",
@@ -203,10 +215,6 @@
         {
           "field": "payload.department",
           "label": "Department"
-        },
-        {
-          "field": "payload.manager",
-          "label": "Manager"
         },
         {
           "field": "updatedAt",

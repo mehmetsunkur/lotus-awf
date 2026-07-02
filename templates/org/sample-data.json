@@ -17,7 +17,8 @@
     "payload": {
       "name": "Finance",
       "slug": "finance",
-      "parent": ""
+      "parent": "",
+      "head": "person:alice"
     }
   },
   {
@@ -38,7 +39,8 @@
     "payload": {
       "name": "Sales",
       "slug": "sales",
-      "parent": ""
+      "parent": "",
+      "head": "person:alice"
     }
   },
   {
@@ -60,8 +62,7 @@
     "payload": {
       "person": "person:alice",
       "title": "Finance Lead",
-      "department": "finance",
-      "manager": ""
+      "department": "finance"
     }
   },
   {
@@ -83,8 +84,7 @@
     "payload": {
       "person": "person:bob",
       "title": "Sales Rep",
-      "department": "sales",
-      "manager": "person:alice"
+      "department": "sales"
     }
   }
 ]
