@@ -110,3 +110,12 @@ app needs arbitrary triggered writes. Not decided here.
 - Write side (only when scheduled): decide declarative derivation rule vs formula-agents, then
   design it in a follow-up ADR. Re-expressing org.nsf as pure data is the first consumer.
 - Run the multi-lens `review-change` workflow (Tier-3 substrate) for any write-side work.
+
+## Amendment (2026-07-02, ADR-0017/0018)
+
+The async lane's allowed contexts grow beyond tolerant display: the transition route now
+resolves `approverFormula` (enforcement — empty resolution falls back to `requiredRole` or
+denies) and `responsibleFormula` (assignee routing — empty resolution never fails the
+transition), both server-side, ACL-scoped under the actor, against the local replica. The
+known unbounded-loop limitation therefore now guards a write path, which raises the
+priority of the execution-deadline follow-up.

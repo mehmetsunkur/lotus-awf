@@ -4,9 +4,8 @@ Date: 2026-07-02
 
 ## Status
 
-Proposed — **design only, not implemented**. Tier-3 substrate change (definition contract +
-document envelope); reviewed together with ADR-0017 via the multi-lens `review-change`
-workflow before implementation. Companion to ADR-0017: same resolver, two different
+Accepted — implemented 2026-07-02 together with ADR-0017 (shared resolver, one combined
+multi-lens plan review; the initial-state rule below was corrected by that review). Companion to ADR-0017: same resolver, two different
 moments — 0017 enforces *who may* act at gate time, 0018 tracks *who should* act while a
 document sits in a state.
 

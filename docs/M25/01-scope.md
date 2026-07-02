@@ -18,8 +18,9 @@
 
 - AI-agent personas over the MCP surfaces (follow-up tier; see `docs/context/mcp.md`).
 - Server/runtime behavior changes — the platform substrate is exercised, not modified.
-- Per-manager approval routing (the workflow gate is a single `group:managers` principal,
-  matching the expense template's `group:finance` granularity).
+- Per-manager approval routing — *superseded: ADR-0017 (dynamic approvers) and ADR-0018
+  (assignee) later added exactly this; the leave-request workflow now routes to the
+  requester's department head.*
 - Deploy-artifact test coverage of the new template (`tests/deploy/` already proves the
   bundled-template mechanism for two templates).
 - Changes to `/api/reset` cleanup semantics (leftover app databases are sidestepped by

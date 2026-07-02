@@ -7,10 +7,14 @@
  *
  * This lane adds cross-database reads (`@DbColumn`/`@DbLookup`, Notes-style) and is
  * therefore async and I/O-bound. Its results depend on which replica is read, so it
- * is allowed ONLY in tolerant contexts (formula fields, later formula view columns
- * and agent formulas) — never in the sync lane. Every lookup is filtered through the
- * shared access helpers, so a formula can never surface a document its caller could
- * not already read.
+ * is allowed ONLY in contexts with a defined fail-mode — never in the sync lane:
+ * formula fields (tolerant display), and since ADR-0017/0018 two server-side
+ * transition-route contexts with fail-closed contracts — approver-gate resolution
+ * (empty result falls back to requiredRole or denies) and assignee resolution
+ * (empty result falls back to the static responsible or stamps nothing; never
+ * fails the transition). Every lookup is filtered through the shared access
+ * helpers, so a formula can never surface a document its caller could not
+ * already read.
  */
 
 import { canReadDocument, type PrincipalScope } from "./access";

@@ -29,8 +29,9 @@ document ids. `airlinePersonaContext(playwright, baseURL, username)` opens an in
 authenticated cookie-jar context per persona (the `bobApi` pattern).
 
 - Personas: carol (Director of Flight Operations), dave (First Officer → carol), erin (Cabin
-  Services Manager → carol), frank (Senior Cabin Crew → erin), grace (Finance Controller →
-  carol). Directory groups: `managers`, `flight-ops`, `cabin-crew`; grace is added to the
+  Services Manager → carol), frank (Senior Cabin Crew → erin), hank (Ground Operations
+  Supervisor — a head deliberately outside `group:managers`), ivy (Ramp Agent → hank), grace
+  (Finance Controller — top-level head). Directory groups: `managers`, `flight-ops`, `cabin-crew`; grace is added to the
   existing `finance` group so she can approve expenses.
 - Org chart: three departments (each carrying its `head` — the single source of truth for
   reporting lines) and five employee documents, created by the admin after widening the org
@@ -38,8 +39,11 @@ authenticated cookie-jar context per persona (the `bobApi` pattern).
   stays untouched and invisible to personas. An employee's manager is not stored: the org
   template's `manager` formula field derives it via `@DbLookup` (department `head`, or the
   parent department's head for a head — e.g. erin → carol via `cabin-crew.parent`).
-  Approval enforcement remains `group:managers` until ADR-0017 (dynamic approvers) lands;
-  the fixture keeps every head a member of `group:managers` by construction.
+  ADR-0017 landed: approval routes to the requester's `department.head` via the workflow's
+  `approverFormula` (re-pointed to the per-seed org appId by the fixture), with
+  `group:managers` as the headless fallback; ADR-0018 stamps that resolution as the
+  document's `assignee`. Ground Operations exists precisely to break the head ∈ managers
+  assumption: hank heads it without `group:managers` membership, and ivy reports to him.
 - **Per-seed appIds**: `/api/reset` recreates the directory/platform databases but leaves
   earlier business-app databases behind, so a fixed appId would 409 on the second seed in a
   worker. Each seed deploys the templates under `org-s<n>` / `leave-request-s<n>` — templates

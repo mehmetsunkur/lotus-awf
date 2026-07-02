@@ -4,8 +4,12 @@ Date: 2026-07-02
 
 ## Status
 
-Proposed — **design only, not implemented**. Tier-3 substrate change: run the multi-lens
-`review-change` workflow on the implementation plan before building (see CLAUDE.md).
+Accepted — implemented 2026-07-02 after a combined multi-lens plan review with ADR-0018
+(no blockers; four majors and ten minors/notes resolved into this design before building).
+Deviations from the original sketch, both review-driven: the parent-walk fallback lives in
+the authored template formula, not the engine (the engine falls back straight to
+`requiredRole`, and DENIES when none is declared); the org-app reference in template
+formulas is authored data re-pointed at deploy time, not an `app:config` setting.
 
 ## Context
 

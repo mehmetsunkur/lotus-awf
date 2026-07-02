@@ -38,7 +38,7 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 
 ## Validation parity (client + API)
 
-- Validation, required, visibility, and default rules must run through `src/shared/validation.ts` on BOTH the client and the API save path — never inlined in only one, and never accepting on one tier what the other rejects.
+- Validation, required, visibility, and default rules must run through `src/shared/validation.ts` on BOTH the client and the API save path — never inlined in only one, and never accepting on one tier what the other rejects; the sole carve-out is a server-resolved async workflow gate (ADR-0017), where the client offers advisorily through the same shared engine and the server is authoritative via 422.
   - Paths: `src/shared/validation.ts`, `src/server/index.ts`, `src/client/main.tsx`
 
 ## Expression runtime
@@ -55,6 +55,11 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 
 - Agent execution is server-authoritative and tick-driven (never on a device): runs must be durable and at-least-once with (agentId+rev) dedupe, the `agent:state` checkpoint advances only after `agentrun:*` records are written, a failing handler records a failed run without crashing the tick, and `agentrun`/`agent:state` are runtime docs — never templated, never returned as business documents.
   - Paths: `src/shared/agents.ts`, `src/server/handlers/agents.ts`, `src/server/index.ts`, `src/server/couch.ts`
+
+## Workflow approvers & assignment
+
+- Dynamic approver/assignee resolution (ADR-0017/0018) is server-side only, in the sandboxed async lane, under the ACTING user's ACL scope, against the LOCAL replica: a non-empty approver resolution replaces `requiredRole`, an empty one falls back to it and DENIES when no `requiredRole` exists (never fail-open); `assignee`/`assignedAt` are engine-allocated envelope fields stamped only by `applyTransition` (routing metadata visible to all document readers — resolution failure never fails a transition), and the client offers formula-gated transitions advisorily while the server answers 422.
+  - Paths: `src/shared/workflow.ts`, `src/server/index.ts`, `templates/**`, `src/mcp/workflow-patches.ts`
 
 ## Search
 

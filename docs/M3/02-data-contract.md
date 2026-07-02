@@ -32,17 +32,24 @@ M3 adds a third replicated definition kind alongside `form:*` and `view:*`:
 Fields:
 
 - `initialState` — the state a document is treated as when it has no `state` yet.
-- `states[]` — `{ name, label, final? }`. `final` states offer no outbound transitions.
-- `transitions[]` — `{ id, label, from, to, guard?, requiredRole? }`.
+- `states[]` — `{ name, label, final?, responsible?, responsibleFormula? }`. `final` states offer
+  no outbound transitions. (ADR-0018) `responsible`/`responsibleFormula` declare who owes action in
+  the state; entering it via a transition stamps the document's `assignee`.
+- `transitions[]` — `{ id, label, from, to, guard?, requiredRole?, action?, approverFormula? }`.
   - `guard` is an M2 expression evaluated over `{ payload, doc, user, now }`; it must return truthy for
     the transition to be allowed.
   - `requiredRole` (optional) gates the transition to users holding that role in `acl:rules`.
+  - (ADR-0017) `approverFormula` (optional) is an async-lane formula resolved server-side to the
+    principal(s) who may perform the transition; a non-empty resolution replaces `requiredRole`, an
+    empty one falls back to it, and with no `requiredRole` declared the transition is denied.
 
 `from` may be a single state name or `"*"` to allow the transition from any non-final state.
 
 ## Envelope state
 
-The M2 `BusinessDocument` envelope gains four **optional** fields:
+The M2 `BusinessDocument` envelope gains four **optional** fields (ADR-0018 later extends the
+family with `assignee`/`assignedAt`, stamped on state entry and cleared on final states, and
+`history[]` entries gain an optional `assignee` recording each hand-off):
 
 ```json
 {
