@@ -32,9 +32,14 @@ authenticated cookie-jar context per persona (the `bobApi` pattern).
   Services Manager → carol), frank (Senior Cabin Crew → erin), grace (Finance Controller →
   carol). Directory groups: `managers`, `flight-ops`, `cabin-crew`; grace is added to the
   existing `finance` group so she can approve expenses.
-- Org chart: three departments and five employee documents with the manager chain, created by
-  the admin after widening the org forms' `defaultReaders` to the staff groups; the org
-  template's admin-only sample data stays untouched and invisible to personas.
+- Org chart: three departments (each carrying its `head` — the single source of truth for
+  reporting lines) and five employee documents, created by the admin after widening the org
+  forms' `defaultReaders` to the staff groups; the org template's admin-only sample data
+  stays untouched and invisible to personas. An employee's manager is not stored: the org
+  template's `manager` formula field derives it via `@DbLookup` (department `head`, or the
+  parent department's head for a head — e.g. erin → carol via `cabin-crew.parent`).
+  Approval enforcement remains `group:managers` until ADR-0017 (dynamic approvers) lands;
+  the fixture keeps every head a member of `group:managers` by construction.
 - **Per-seed appIds**: `/api/reset` recreates the directory/platform databases but leaves
   earlier business-app databases behind, so a fixed appId would 409 on the second seed in a
   worker. Each seed deploys the templates under `org-s<n>` / `leave-request-s<n>` — templates
