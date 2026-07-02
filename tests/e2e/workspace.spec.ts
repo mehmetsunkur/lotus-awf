@@ -81,7 +81,9 @@ test.describe("app workspace shell", () => {
   test("old design routes fall back to the default runtime view", async ({ page }) => {
     await page.goto("/expense.nsf/design/forms/expense");
 
-    await expect(page).toHaveURL(/\/expense\.nsf\/views\/my-expenses$/);
+    // ADR-0015: no expense-specific default — a business app falls back to its
+    // first view, which is all-expenses for the expense template.
+    await expect(page).toHaveURL(/\/expense\.nsf\/views\/all-expenses$/);
     await expect(page.getByTestId("runtime-workspace")).toBeVisible();
     await expect(page.getByTestId("designer-workspace")).toBeHidden();
   });

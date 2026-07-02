@@ -16,7 +16,7 @@ export class RuntimeApp {
   async gotoDesigner(path = "/expense.nsf/designer"): Promise<void> {
     await this.page.goto(path);
     await expect(this.page.getByTestId("designer-workspace")).toBeVisible();
-    await expect(this.message()).toHaveText(/Open Expense complete\./);
+    await expect(this.message()).toHaveText(/Open app complete\./);
     await this.settle();
   }
 
@@ -76,7 +76,7 @@ export class RuntimeApp {
    */
   async waitForReady(): Promise<void> {
     await expect(this.page.getByTestId("view-picker")).toBeVisible();
-    await expect(this.message()).toHaveText(/Initial refresh complete\.|Open Expense complete\./);
+    await expect(this.message()).toHaveText(/Initial refresh complete\.|Open app complete\./);
     await this.settle();
   }
 
