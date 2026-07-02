@@ -742,7 +742,7 @@ function FieldEditor({
   doc?: BusinessDocument;
   draft: Draft;
   optionsByField: SelectOptionsByField;
-  // ADR-0014: server-resolved value for a `type: "formula"` field (async lane).
+  // ADR-0014/0019: server-resolved value for a `computed-for-display` field.
   formulaValue?: unknown;
   onChange: (value: unknown) => void;
   // M11: the studio preview reuses this renderer; a distinct prefix keeps its
@@ -756,13 +756,17 @@ function FieldEditor({
   const options = field.options ?? optionsByField[field.name] ?? [];
   const testId = `${testIdPrefix}-${field.name}`;
 
-  // ADR-0014: formula fields are read-only and resolved server-side (they may do
-  // ACL-scoped cross-DB reads that cannot run in the browser); display only.
-  if (field.type === "formula") {
+  // ADR-0019: non-editable modes are server-owned and render read-only. Stored
+  // modes (computed / computed-once) show the STAMPED payload value — exactly
+  // what guards enforce — while computed-for-display shows the per-request
+  // server resolution (they may do ACL-scoped cross-DB reads that cannot run in
+  // the browser).
+  if (field.mode) {
+    const shown = field.mode === "computed-for-display" ? formulaValue : value;
     return (
       <label>
         <span>{field.label}</span>
-        <output data-testid={testId} className="formulaValue">{displayValue(formulaValue)}</output>
+        <output data-testid={testId} className="formulaValue">{displayValue(shown)}</output>
         {field.helpText ? <small>{field.helpText}</small> : null}
       </label>
     );
@@ -2393,7 +2397,7 @@ function App() {
   // do ACL-scoped cross-DB reads that can't run in the browser). Display-only; the
   // editable path stays fully offline. Skipped when the form has no formula fields.
   React.useEffect(() => {
-    const hasFormula = Boolean(selectedForm?.fields.some((field) => field.type === "formula" && field.formula));
+    const hasFormula = Boolean(selectedForm?.fields.some((field) => field.mode === "computed-for-display" && field.formula));
     if (!selectedId || !hasFormula) {
       setFormulaValues({});
       return;
