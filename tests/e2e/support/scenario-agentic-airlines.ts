@@ -27,16 +27,17 @@ export type AirlinePersona = {
   jobTitle: string;
   /** Department slug in the org app (also the persona's directory group slug, except `managers`). */
   department: string;
-  /** Username of the manager persona, or "" for the top of the chain. */
-  manager: string;
   /** Directory group slugs this persona belongs to. */
   groups: string[];
 };
 
+/** `head` is the source of truth for reporting lines: an employee's manager is
+ *  their department's head (or the parent department's head for a head),
+ *  derived by the org form's `manager` formula field — nothing per-employee. */
 export const AIRLINE_DEPARTMENTS = [
-  { slug: "flight-ops", name: "Flight Operations", parent: "" },
-  { slug: "cabin-crew", name: "Cabin Crew", parent: "flight-ops" },
-  { slug: "finance", name: "Finance", parent: "" }
+  { slug: "flight-ops", name: "Flight Operations", parent: "", head: "carol" },
+  { slug: "cabin-crew", name: "Cabin Crew", parent: "flight-ops", head: "erin" },
+  { slug: "finance", name: "Finance", parent: "", head: "grace" }
 ] as const;
 
 export const AIRLINE_PERSONAS = {
@@ -45,7 +46,6 @@ export const AIRLINE_PERSONAS = {
     displayName: "Carol Kaptan",
     jobTitle: "Director of Flight Operations",
     department: "flight-ops",
-    manager: "",
     groups: ["flight-ops", "managers"]
   },
   dave: {
@@ -53,7 +53,6 @@ export const AIRLINE_PERSONAS = {
     displayName: "Dave Rudder",
     jobTitle: "First Officer",
     department: "flight-ops",
-    manager: "carol",
     groups: ["flight-ops"]
   },
   erin: {
@@ -61,7 +60,6 @@ export const AIRLINE_PERSONAS = {
     displayName: "Erin Galley",
     jobTitle: "Cabin Services Manager",
     department: "cabin-crew",
-    manager: "carol",
     groups: ["cabin-crew", "managers"]
   },
   frank: {
@@ -69,7 +67,6 @@ export const AIRLINE_PERSONAS = {
     displayName: "Frank Trolley",
     jobTitle: "Senior Cabin Crew",
     department: "cabin-crew",
-    manager: "erin",
     groups: ["cabin-crew"]
   },
   grace: {
@@ -77,7 +74,6 @@ export const AIRLINE_PERSONAS = {
     displayName: "Grace Ledger",
     jobTitle: "Finance Controller",
     department: "finance",
-    manager: "carol",
     groups: ["finance", "managers"]
   }
 } satisfies Record<string, AirlinePersona>;
@@ -254,7 +250,7 @@ export async function seedAgenticAirlines(
       admin,
       "post",
       `/api/apps/${orgAppId}/documents`,
-      { docType: "department", payload: { name: dept.name, slug: dept.slug, parent: dept.parent } },
+      { docType: "department", payload: { name: dept.name, slug: dept.slug, parent: dept.parent, head: `person:${dept.head}` } },
       [201]
     );
     departmentDocIds[dept.slug] = doc._id;
@@ -270,8 +266,7 @@ export async function seedAgenticAirlines(
         payload: {
           person: `person:${persona.username}`,
           title: persona.jobTitle,
-          department: persona.department,
-          manager: persona.manager ? `person:${persona.manager}` : ""
+          department: persona.department
         }
       },
       [201]

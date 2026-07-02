@@ -75,15 +75,34 @@ test.describe("Agentic Airlines PLC scenario", () => {
     // the template's admin-only sample departments/employees stay invisible.
     const frank = await airline.as("frank");
     const departments = await viewDocs(frank, airline.scenario.orgAppId, "view:departments");
-    expect(departments.map((doc) => doc.payload.slug).sort()).toEqual(["cabin-crew", "finance", "flight-ops"]);
+    const headBySlug = new Map(departments.map((doc) => [doc.payload.slug, doc.payload.head]));
+    expect(headBySlug.size).toBe(3);
+    expect(headBySlug.get("flight-ops")).toBe("person:carol");
+    expect(headBySlug.get("cabin-crew")).toBe("person:erin");
+    expect(headBySlug.get("finance")).toBe("person:grace");
 
     const employees = await viewDocs(frank, airline.scenario.orgAppId, "view:employees");
     const byPerson = new Map(employees.map((doc) => [doc.payload.person, doc.payload]));
     expect(byPerson.size).toBe(5);
-    expect(byPerson.get("person:dave")).toMatchObject({ manager: "person:carol", department: "flight-ops" });
-    expect(byPerson.get("person:frank")).toMatchObject({ manager: "person:erin", department: "cabin-crew" });
-    expect(byPerson.get("person:erin")).toMatchObject({ manager: "person:carol" });
-    expect(byPerson.get("person:carol")).toMatchObject({ manager: "" });
+    expect(byPerson.get("person:dave")).toMatchObject({ department: "flight-ops" });
+    expect(byPerson.get("person:frank")).toMatchObject({ department: "cabin-crew" });
+
+    // Reporting lines derive from department.head (the single source of truth)
+    // via the employee form's manager formula field: your department's head, the
+    // parent department's head if you ARE the head, blank for a top-level head.
+    const managerOf = async (username: keyof typeof airline.scenario.employeeDocIds) => {
+      const docId = airline.scenario.employeeDocIds[username];
+      const response = await frank.get(
+        `/api/apps/${airline.scenario.orgAppId}/documents/${encodeURIComponent(docId)}/formulas`
+      );
+      expect(response.status()).toBe(200);
+      return ((await response.json()) as { manager?: string }).manager;
+    };
+    expect(await managerOf("dave")).toBe("person:carol");
+    expect(await managerOf("frank")).toBe("person:erin");
+    expect(await managerOf("erin")).toBe("person:carol"); // head of cabin-crew → head of parent flight-ops
+    expect(await managerOf("grace")).toBeUndefined(); // head of top-level finance
+    expect(await managerOf("carol")).toBeUndefined(); // head of top-level flight-ops
   });
 
   test("an employee's leave request travels submit → approve with a reader-scoped audit trail", async ({

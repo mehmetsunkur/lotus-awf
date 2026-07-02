@@ -1,5 +1,10 @@
 import { request } from "@playwright/test";
-import { AIRLINE_PASSWORD, AIRLINE_PERSONAS, seedAgenticAirlines } from "../tests/e2e/support/scenario-agentic-airlines";
+import {
+  AIRLINE_DEPARTMENTS,
+  AIRLINE_PASSWORD,
+  AIRLINE_PERSONAS,
+  seedAgenticAirlines
+} from "../tests/e2e/support/scenario-agentic-airlines";
 
 /**
  * Seed the Agentic Airlines PLC scenario (M25) into a RUNNING platform for
@@ -45,9 +50,16 @@ async function main(): Promise<void> {
     console.log(`  Org app:            /${scenario.orgAppId}.nsf`);
     console.log(`  Leave requests app: /${scenario.leaveRequestAppId}.nsf`);
     console.log(`\nPersonas (password: ${AIRLINE_PASSWORD}):`);
+    const heads = new Map<string, (typeof AIRLINE_DEPARTMENTS)[number]>(
+      AIRLINE_DEPARTMENTS.map((dept) => [dept.slug, dept])
+    );
     for (const persona of Object.values(AIRLINE_PERSONAS)) {
-      const manager = persona.manager ? ` → reports to ${persona.manager}` : " (top of the chain)";
-      console.log(`  ${persona.username.padEnd(6)} ${persona.jobTitle} [${persona.groups.join(", ")}]${manager}`);
+      const dept = heads.get(persona.department);
+      // Reporting line derives from department.head: your head, or the parent
+      // department's head if you are the head (blank at the top).
+      const manager = dept?.head === persona.username ? heads.get(dept.parent)?.head : dept?.head;
+      const reports = manager ? ` → reports to ${manager}` : " (top of the chain)";
+      console.log(`  ${persona.username.padEnd(6)} ${persona.jobTitle} [${persona.groups.join(", ")}]${reports}`);
     }
     console.log("\nTry: log in as dave, file a leave request in the Leave Requests app and submit it;");
     console.log("then log in as carol (or erin/grace) and approve it from the Pending Approval view.");
