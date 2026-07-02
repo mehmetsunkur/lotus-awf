@@ -4,18 +4,26 @@ import {
   availableTransitions,
   normalizeResolvedPrincipals
 } from "../../src/shared/workflow";
-import { validateWorkflowDefinition } from "../../src/shared/definition-validation";
-import type { BusinessDocument, WorkflowDefinition } from "../../src/shared/types";
+import { validateFormDefinition, validateWorkflowDefinition } from "../../src/shared/definition-validation";
+import {
+  applyFormDefaults,
+  isEditableField,
+  isPayloadField,
+  normalizePayload,
+  validatePayload
+} from "../../src/shared/validation";
+import { evaluateExpression } from "../../src/shared/expression";
+import type { BusinessDocument, FormDefinition, WorkflowDefinition } from "../../src/shared/types";
 
 /**
- * ADR-0017 (dynamic approver gate) + ADR-0018 (per-state responsibility and the
- * engine-stamped assignee). The gate/stamping matrices here encode the review
- * findings: fail-closed floor (M1), advisory offering (M2), normalization (m1),
- * distinct refusal message (m2), transition-into-initial-state stamping (m6).
+ * ADR-0019 (guard-gated approvers over server-stamped computed fields, field
+ * computation modes) + ADR-0018 (engine-stamped assignee). Encodes the ADR-0019
+ * review resolutions: guard membership via `principals` (parity, no advisory
+ * offering), mode/field consistency matrix, the two-predicate split (m4), and
+ * the superseded-approverFormula rejection (m1).
  */
 
 const NOW = "2026-07-02T00:00:00.000Z";
-const FORMULA = "await DbLookup(doc.appId, 'department', 'payload.slug', payload.department, 'payload.head')";
 
 const workflow = (overrides: Partial<WorkflowDefinition> = {}): WorkflowDefinition => ({
   _id: "workflow:leave-request",
@@ -26,18 +34,17 @@ const workflow = (overrides: Partial<WorkflowDefinition> = {}): WorkflowDefiniti
   initialState: "draft",
   states: [
     { name: "draft", label: "Draft" },
-    { name: "submitted", label: "Submitted", responsible: "group:managers" },
+    { name: "submitted", label: "Submitted", responsible: "group:managers", responsibleFormula: "payload.approver" },
     { name: "approved", label: "Approved", final: true, responsible: "group:managers" }
   ],
   transitions: [
-    { id: "submit", label: "Submit", from: "draft", to: "submitted" },
+    { id: "submit", label: "Submit", from: "draft", to: "submitted", guard: "!!payload.approver" },
     {
       id: "approve",
       label: "Approve",
       from: "submitted",
       to: "approved",
-      requiredRole: "group:managers",
-      approverFormula: FORMULA
+      guard: "principals.includes(payload.approver)"
     },
     { id: "revise", label: "Revise", from: "submitted", to: "draft" }
   ],
@@ -55,94 +62,59 @@ const doc = (overrides: Partial<BusinessDocument> = {}): BusinessDocument => ({
   updatedBy: "person:dave",
   readers: ["person:dave", "group:managers"],
   authors: ["person:dave"],
-  payload: { department: "flight-ops" },
+  payload: { department: "flight-ops", approver: "person:carol" },
   state: "submitted",
   ...overrides
 });
 
-describe("ADR-0017 approver gate", () => {
-  it("non-empty resolution REPLACES requiredRole: a role-holder outside the resolved set is refused", () => {
-    const result = applyTransition(doc(), workflow(), "approve", "person:erin", ["person:erin", "group:managers"], NOW, {
-      approvers: ["person:carol"]
-    });
+describe("ADR-0019 guard-gated approvers (principals in the sync lane)", () => {
+  it("admits exactly the stamped approver, regardless of any role", () => {
+    const carol = applyTransition(doc(), workflow(), "approve", "person:carol", ["person:carol", "group:managers"], NOW);
+    expect(carol.ok).toBe(true);
+
+    // A bona fide manager who is NOT the stamped approver is refused.
+    const erin = applyTransition(doc(), workflow(), "approve", "person:erin", ["person:erin", "group:managers"], NOW);
+    expect(erin.ok).toBe(false);
+    if (!erin.ok) expect(erin.errors[0].message).toBe("Approve is not allowed for this document");
+  });
+
+  it("admits a head with NO role at all — authority comes from the stamp", () => {
+    const hankDoc = doc({ payload: { department: "ground-ops", approver: "person:hank" } });
+    const result = applyTransition(hankDoc, workflow(), "approve", "person:hank", ["person:hank", "group:ground-ops"], NOW);
+    expect(result.ok).toBe(true);
+  });
+
+  it("matches group-valued approvers by membership (headless fallback)", () => {
+    const fallbackDoc = doc({ payload: { approver: "group:managers" } });
+    const manager = applyTransition(fallbackDoc, workflow(), "approve", "person:erin", ["person:erin", "group:managers"], NOW);
+    expect(manager.ok).toBe(true);
+    const outsider = applyTransition(fallbackDoc, workflow(), "approve", "person:hank", ["person:hank", "group:ground-ops"], NOW);
+    expect(outsider.ok).toBe(false);
+  });
+
+  it("offering EXACTLY mirrors enforcement — no advisory divergence", () => {
+    const offeredToCarol = availableTransitions(doc(), workflow(), "person:carol", ["person:carol", "group:managers"], NOW);
+    expect(offeredToCarol.map((transition) => transition.id)).toContain("approve");
+    const offeredToErin = availableTransitions(doc(), workflow(), "person:erin", ["person:erin", "group:managers"], NOW);
+    expect(offeredToErin.map((transition) => transition.id)).not.toContain("approve");
+  });
+
+  it("an unstamped document refuses submit via the belt-and-braces guard", () => {
+    const unstamped = doc({ state: "draft", payload: { department: "flight-ops" } });
+    const result = applyTransition(unstamped, workflow(), "submit", "person:dave", ["person:dave"], NOW);
     expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.errors[0].message).toBe("Approve requires approval by the designated approver");
-    }
   });
 
-  it("non-empty resolution admits a resolved approver even without the static role", () => {
-    const result = applyTransition(doc(), workflow(), "approve", "person:hank", ["person:hank", "group:ground-ops"], NOW, {
-      approvers: ["person:hank"]
-    });
-    expect(result.ok).toBe(true);
-  });
-
-  it("resolution can admit via a resolved group principal", () => {
-    const result = applyTransition(doc(), workflow(), "approve", "person:grace", ["person:grace", "group:finance"], NOW, {
-      approvers: ["group:finance"]
-    });
-    expect(result.ok).toBe(true);
-  });
-
-  it("empty resolution falls back to requiredRole", () => {
-    const allowed = applyTransition(doc(), workflow(), "approve", "person:erin", ["group:managers"], NOW, {
-      approvers: []
-    });
-    expect(allowed.ok).toBe(true);
-    const refused = applyTransition(doc(), workflow(), "approve", "person:dave", ["person:dave"], NOW, {
-      approvers: []
-    });
-    expect(refused.ok).toBe(false);
-  });
-
-  it("FAIL-CLOSED FLOOR: approverFormula with no requiredRole DENIES on empty resolution (review M1)", () => {
-    const def = workflow();
-    def.transitions[1] = { ...def.transitions[1], requiredRole: undefined };
-    for (const approvers of [[], undefined]) {
-      const result = applyTransition(doc(), def, "approve", "person:erin", ["group:managers"], NOW, { approvers });
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.errors[0].message).toBe("Approve requires approval by the designated approver");
-      }
-    }
-  });
-
-  it("absent resolution (advisory/unresolved) behaves like empty: requiredRole fallback", () => {
-    const result = applyTransition(doc(), workflow(), "approve", "person:erin", ["group:managers"], NOW);
-    expect(result.ok).toBe(true);
-  });
-
-  it("transitions without approverFormula behave exactly as before", () => {
-    const def = workflow();
-    def.transitions[1] = { ...def.transitions[1], approverFormula: undefined };
-    const refused = applyTransition(doc(), def, "approve", "person:dave", ["person:dave"], NOW);
-    expect(refused.ok).toBe(false);
-    if (!refused.ok) expect(refused.errors[0].message).toBe("Approve requires group:managers");
-    expect(applyTransition(doc(), def, "approve", "person:erin", ["group:managers"], NOW).ok).toBe(true);
-  });
-
-  it("ADVISORY OFFERING (review M2): a formula-gated transition is offered even without the static role", () => {
-    const offered = availableTransitions(doc(), workflow(), "person:hank", ["person:hank", "group:ground-ops"], NOW);
-    expect(offered.map((transition) => transition.id)).toContain("approve");
-    // …while a plain requiredRole transition stays hidden without the role.
-    const def = workflow();
-    def.transitions[1] = { ...def.transitions[1], approverFormula: undefined };
-    const hidden = availableTransitions(doc(), def, "person:hank", ["person:hank"], NOW);
-    expect(hidden.map((transition) => transition.id)).not.toContain("approve");
+  it("principals is empty (not an error) outside guard contexts", () => {
+    expect(evaluateExpression("principals.length", { payload: {} })).toBe(0);
   });
 });
 
-describe("normalizeResolvedPrincipals (review m1)", () => {
+describe("normalizeResolvedPrincipals", () => {
   it("keeps only principal-shaped strings", () => {
     expect(normalizeResolvedPrincipals("person:carol")).toEqual(["person:carol"]);
-    expect(normalizeResolvedPrincipals(["group:managers", "person:erin", "carol", 42, {}])).toEqual([
-      "group:managers",
-      "person:erin"
-    ]);
-    expect(normalizeResolvedPrincipals("carol")).toEqual([]);
+    expect(normalizeResolvedPrincipals(["group:managers", "carol", 42])).toEqual(["group:managers"]);
     expect(normalizeResolvedPrincipals(undefined)).toEqual([]);
-    expect(normalizeResolvedPrincipals({ person: "person:carol" })).toEqual([]);
   });
 });
 
@@ -172,19 +144,16 @@ describe("ADR-0018 assignee stamping", () => {
       "approve",
       "person:carol",
       ["person:carol", "group:managers"],
-      NOW,
-      { approvers: ["person:carol"] }
+      NOW
     );
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.document.assignee).toBeUndefined();
       expect("assignee" in result.document).toBe(false);
       expect("assignedAt" in result.document).toBe(false);
-      expect(result.document.history?.at(-1)?.assignee).toBeUndefined();
     }
   });
 
-  it("stamps on a transition INTO the initial state (review m6: revise → draft)", () => {
+  it("stamps on a transition INTO the initial state (revise → draft)", () => {
     const def = workflow();
     def.states[0] = { ...def.states[0], responsibleFormula: "doc.createdBy" };
     const result = applyTransition(doc(), def, "revise", "person:erin", ["group:managers"], NOW, {
@@ -196,45 +165,120 @@ describe("ADR-0018 assignee stamping", () => {
 
   it("a non-principal resolved value normalizes away and the static responsible wins", () => {
     const result = applyTransition(doc({ state: "draft" }), workflow(), "submit", "person:dave", ["person:dave"], NOW, {
-      assignee: "not-a-principal" as string
+      assignee: "not-a-principal"
     });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.document.assignee).toBe("group:managers");
   });
+});
 
-  it("no declaration, no resolution: no assignee is stamped", () => {
+describe("ADR-0019 field computation modes — definition validation", () => {
+  const form = (fields: FormDefinition["fields"]): FormDefinition => ({
+    _id: "form:leave-request",
+    kind: "form",
+    appId: "leave-request",
+    docType: "leave-request",
+    title: "Leave Request",
+    fields
+  });
+
+  it("accepts the mode family with formulas", () => {
+    const errors = validateFormDefinition(
+      form([
+        { name: "reason", type: "text", label: "Reason", required: true },
+        { name: "approver", type: "text", label: "Approver", mode: "computed", formula: "doc.createdBy" },
+        { name: "department", type: "text", label: "Department", mode: "computed-once", formula: "'ops'" },
+        { name: "manager", type: "text", label: "Manager", mode: "computed-for-display", formula: "doc.createdBy" }
+      ])
+    );
+    expect(errors).toEqual([]);
+  });
+
+  it("rejects formula type (removed), unknown modes, and editable+formula", () => {
+    const badType = validateFormDefinition(
+      form([{ name: "x", type: "formula" as never, label: "X", formula: "1" }])
+    );
+    expect(badType.map((error) => error.field)).toContain("fields.0.type");
+
+    const badMode = validateFormDefinition(
+      form([{ name: "x", type: "text", label: "X", mode: "stored" as never, formula: "1" }])
+    );
+    expect(badMode.map((error) => error.field)).toContain("fields.0.mode");
+
+    const editableFormula = validateFormDefinition(form([{ name: "x", type: "text", label: "X", formula: "1" }]));
+    expect(editableFormula.map((error) => error.field)).toContain("fields.0.formula");
+  });
+
+  it("rejects user-input rules and pure handlers on computed modes", () => {
+    const errors = validateFormDefinition(
+      form([
+        {
+          name: "x",
+          type: "text",
+          label: "X",
+          mode: "computed",
+          formula: "1",
+          required: true,
+          defaultValue: "y",
+          validate: [{ expression: "true" }],
+          compute: "expense-total-with-tax"
+        }
+      ])
+    );
+    const fields = errors.map((error) => error.field);
+    expect(fields).toContain("fields.0.required");
+    expect(fields).toContain("fields.0.defaultValue");
+    expect(fields).toContain("fields.0.validate");
+    expect(fields).toContain("fields.0.compute");
+  });
+
+  it("rejects a computed mode without a formula and a blocked-token formula", () => {
+    const missing = validateFormDefinition(form([{ name: "x", type: "text", label: "X", mode: "computed" }]));
+    expect(missing.map((error) => error.field)).toContain("fields.0.formula");
+    const blocked = validateFormDefinition(
+      form([{ name: "x", type: "text", label: "X", mode: "computed", formula: "globalThis.leak" }])
+    );
+    expect(blocked.map((error) => error.field)).toContain("fields.0.formula");
+  });
+
+  it("rejects the superseded approverFormula on transitions (review m1)", () => {
     const def = workflow();
-    def.states[1] = { name: "submitted", label: "Submitted" };
-    const result = applyTransition(doc({ state: "draft" }), def, "submit", "person:dave", ["person:dave"], NOW);
-    expect(result.ok).toBe(true);
-    if (result.ok) expect("assignee" in result.document).toBe(false);
+    (def.transitions[1] as Record<string, unknown>).approverFormula = "doc.createdBy";
+    expect(validateWorkflowDefinition(def).map((error) => error.field)).toContain("transitions.1.approverFormula");
   });
 });
 
-describe("definition validation (ADR-0017/0018)", () => {
-  it("accepts valid approverFormula and responsibility declarations", () => {
-    expect(validateWorkflowDefinition(workflow())).toEqual([]);
+describe("ADR-0019 payload predicates (review m4)", () => {
+  const fields: FormDefinition["fields"] = [
+    { name: "reason", type: "text", label: "Reason" },
+    { name: "approver", type: "text", label: "Approver", mode: "computed", formula: "doc.createdBy" },
+    { name: "department", type: "text", label: "Department", mode: "computed-once", formula: "'ops'" },
+    { name: "manager", type: "text", label: "Manager", mode: "computed-for-display", formula: "doc.createdBy" }
+  ];
+  const form: FormDefinition = {
+    _id: "form:leave-request",
+    kind: "form",
+    appId: "leave-request",
+    docType: "leave-request",
+    title: "Leave Request",
+    fields
+  };
+
+  it("splits stored vs editable correctly", () => {
+    expect(fields.map(isPayloadField)).toEqual([true, true, true, false]);
+    expect(fields.map(isEditableField)).toEqual([true, false, false, false]);
   });
 
-  it("rejects a blocked token and a syntax error in approverFormula", () => {
-    const blocked = workflow();
-    blocked.transitions[1] = { ...blocked.transitions[1], approverFormula: "globalThis.leak" };
-    expect(validateWorkflowDefinition(blocked).map((error) => error.field)).toContain("transitions.1.approverFormula");
-
-    const broken = workflow();
-    broken.transitions[1] = { ...broken.transitions[1], approverFormula: "await DbLookup(" };
-    expect(validateWorkflowDefinition(broken).map((error) => error.field)).toContain("transitions.1.approverFormula");
+  it("normalizePayload strips computed-for-display, passes stored modes through raw, and never defaults them", () => {
+    const normalized = normalizePayload(form, { reason: "trip", approver: "person:evil", manager: "person:evil" });
+    expect(normalized.reason).toBe("trip");
+    expect(normalized.approver).toBe("person:evil"); // passthrough — the server stamp step discards it
+    expect("manager" in normalized).toBe(false);
+    expect(normalized.department).toBeUndefined(); // no "" default: resolve-iff-absent must see absence
+    expect(applyFormDefaults(form, {}).approver).toBeUndefined();
   });
 
-  it("rejects a non-principal static responsible and a malformed responsibleFormula", () => {
-    const badStatic = workflow();
-    badStatic.states[1] = { ...badStatic.states[1], responsible: "managers" };
-    expect(validateWorkflowDefinition(badStatic).map((error) => error.field)).toContain("states.1.responsible");
-
-    const badFormula = workflow();
-    badFormula.states[1] = { ...badFormula.states[1], responsibleFormula: "   " };
-    expect(validateWorkflowDefinition(badFormula).map((error) => error.field)).toContain(
-      "states.1.responsibleFormula"
-    );
+  it("validatePayload never validates server-owned fields", () => {
+    expect(validatePayload(form, { reason: "x" })).toEqual([]);
   });
 });

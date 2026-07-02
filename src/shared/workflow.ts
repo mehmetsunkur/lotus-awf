@@ -10,12 +10,11 @@ import { evaluateBoolean } from "./expression";
 /**
  * Portable workflow engine. Pure: no I/O, never mutates its inputs. Imported by
  * BOTH the client (to decide which actions to offer) and the server (to decide
- * whether a transition write is legal). For the SYNC lane (states, guards,
- * requiredRole) the two can never diverge (aspect A3). ADR-0017 adds a
- * server-resolved ASYNC gate (`approverFormula`): the engine consumes only the
- * pre-resolved result, the client offers such transitions advisorily (it cannot
- * run async lookups), and the server is authoritative — a refused dynamic gate
- * is a 422, never a divergence in the shared semantics themselves.
+ * whether a transition write is legal), so the two can never diverge (aspect
+ * A3): gating is `requiredRole` plus guards, and guards receive the actor's
+ * `principals` (ADR-0019) so per-document authority — e.g.
+ * `principals.includes(payload.approver)` over a server-stamped computed field —
+ * stays in the sync parity lane.
  *
  * A document with no `state` is treated as the workflow's `initialState`, which
  * keeps every already-replicated M1/M2 document valid (aspect A1).
@@ -26,7 +25,7 @@ import { evaluateBoolean } from "./expression";
  * final states, and never consulted as a gate.
  */
 
-/** A principal id the workflow envelope/gate may carry. */
+/** A principal id the workflow envelope may carry. */
 export function isPrincipalId(value: unknown): value is string {
   return typeof value === "string" && (value.startsWith("person:") || value.startsWith("group:"));
 }
@@ -34,8 +33,8 @@ export function isPrincipalId(value: unknown): value is string {
 /**
  * Normalize an async-formula result to principal ids: a principal string becomes
  * a singleton, an array keeps only its principal-shaped strings, anything else
- * is empty. Shared by the ADR-0017 approver gate and the ADR-0018 assignee stamp
- * so a malformed formula result can never reach the envelope or the gate.
+ * is empty. Used by the ADR-0018 assignee stamp so a malformed formula result
+ * can never reach the envelope.
  */
 export function normalizeResolvedPrincipals(value: unknown): string[] {
   if (Array.isArray(value)) return value.filter(isPrincipalId);
@@ -44,9 +43,6 @@ export function normalizeResolvedPrincipals(value: unknown): string[] {
 
 /** Pre-resolved async-lane inputs (server-side); absent in advisory contexts. */
 export type ResolvedTransitionContext = {
-  /** ADR-0017: normalized approverFormula result. Empty array = resolution ran
-   *  and yielded nothing; undefined = resolution was not run. Both fall back. */
-  approvers?: string[];
   /** ADR-0018: normalized responsibleFormula result for the TARGET state. */
   assignee?: string;
 };
@@ -68,36 +64,28 @@ function roleAllows(transition: WorkflowTransition, roles: string[]): boolean {
   return !transition.requiredRole || roles.includes(transition.requiredRole);
 }
 
-/**
- * ADR-0017 dynamic approver gate. With a non-empty resolution the resolved
- * principals REPLACE requiredRole (union would let any role-holder approve and
- * defeat per-approver enforcement). With an empty/absent resolution the static
- * requiredRole is the fallback — and when the author declared approverFormula
- * with NO requiredRole, the transition is DENIED: an authored restriction must
- * fail closed, never degrade to no gate at all.
- */
-function approverAllows(
+function guardAllows(
   transition: WorkflowTransition,
+  doc: BusinessDocument,
+  user: string,
   roles: string[],
-  resolvedApprovers: string[] | undefined
+  now: string
 ): boolean {
-  if (!transition.approverFormula) return roleAllows(transition, roles);
-  if (resolvedApprovers && resolvedApprovers.length > 0) {
-    return resolvedApprovers.some((principal) => roles.includes(principal));
-  }
-  if (transition.requiredRole) return roles.includes(transition.requiredRole);
-  return false;
-}
-
-function guardAllows(transition: WorkflowTransition, doc: BusinessDocument, user: string, now: string): boolean {
   // Fail closed: a malformed or blocked-token guard denies the transition rather
   // than throwing into the server route (500) or the client render. Mirrors the
   // try/catch posture in validation.ts. An empty guard already returns the
-  // fallback (true) inside evaluateBoolean.
+  // fallback (true) inside evaluateBoolean. ADR-0019: guards receive the actor's
+  // principals, identically on client and server.
   try {
     return evaluateBoolean(
       transition.guard,
-      { payload: doc.payload, doc: doc as unknown as Record<string, unknown>, user, now },
+      {
+        payload: doc.payload,
+        doc: doc as unknown as Record<string, unknown>,
+        user,
+        now,
+        principals: roles
+      },
       true
     );
   } catch {
@@ -107,11 +95,9 @@ function guardAllows(transition: WorkflowTransition, doc: BusinessDocument, user
 
 /**
  * Transitions the given user may perform on the document right now: source state
- * matches, guard passes, and the static role is held OR the transition carries an
- * approverFormula (ADR-0017 advisory offering: this function cannot resolve async
- * formulas, so it offers the action and the authoritative server decides — hiding
- * it would make a formula-resolved approver outside requiredRole unable to act
- * from the UI at all). `roles` are the user's principals.
+ * matches, guard passes (with the user's principals in scope), and any required
+ * role is held. `roles` are the user's principals. Exactly mirrors the server's
+ * authorization — offering and enforcement cannot diverge.
  */
 export function availableTransitions(
   doc: BusinessDocument,
@@ -124,8 +110,8 @@ export function availableTransitions(
   return def.transitions.filter(
     (transition) =>
       matchesFrom(transition, state, def) &&
-      (roleAllows(transition, roles) || Boolean(transition.approverFormula)) &&
-      guardAllows(transition, doc, user, now)
+      roleAllows(transition, roles) &&
+      guardAllows(transition, doc, user, roles, now)
   );
 }
 
@@ -136,8 +122,8 @@ export type TransitionResult =
 /**
  * Apply a transition, returning the next document envelope (new state, stamps,
  * appended history, ADR-0018 assignment) or the reasons it is not currently
- * legal. Pure — the input document is not mutated; async resolution happens in
- * the caller and arrives pre-resolved via `resolved`.
+ * legal. Pure — the input document is not mutated; async assignee resolution
+ * happens in the caller and arrives pre-resolved via `resolved`.
  */
 export function applyTransition(
   doc: BusinessDocument,
@@ -160,16 +146,13 @@ export function applyTransition(
       errors: [{ field: "state", message: `Cannot ${transition.label} from ${state}` }]
     };
   }
-  if (!approverAllows(transition, roles, resolved.approvers)) {
-    // Distinct message for the dynamic gate: telling a requiredRole-holder the
-    // transition "requires <their own role>" would be unintelligible when the
-    // resolved approver set is what refused them.
-    const message = transition.approverFormula
-      ? `${transition.label} requires approval by the designated approver`
-      : `${transition.label} requires ${transition.requiredRole}`;
-    return { ok: false, errors: [{ field: "state", message }] };
+  if (!roleAllows(transition, roles)) {
+    return {
+      ok: false,
+      errors: [{ field: "state", message: `${transition.label} requires ${transition.requiredRole}` }]
+    };
   }
-  if (!guardAllows(transition, doc, user, now)) {
+  if (!guardAllows(transition, doc, user, roles, now)) {
     return {
       ok: false,
       errors: [{ field: "state", message: `${transition.label} is not allowed for this document` }]

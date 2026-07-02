@@ -75,8 +75,8 @@ describe("formula async lane — @DbColumn/@DbLookup", () => {
   });
 });
 
-describe("formula field — definition validation & payload lifecycle", () => {
-  const form = (formula: unknown, type = "formula"): FormDefinition =>
+describe("computed-for-display field — definition validation & payload lifecycle (ADR-0019 mode shape)", () => {
+  const form = (formula: unknown, mode: unknown = "computed-for-display"): FormDefinition =>
     ({
       _id: "form:report",
       kind: "form",
@@ -85,7 +85,7 @@ describe("formula field — definition validation & payload lifecycle", () => {
       title: "Report",
       fields: [
         { name: "title", type: "text", label: "Title", required: true },
-        { name: "dept", type, label: "Dept", ...(formula === undefined ? {} : { formula }) }
+        { name: "dept", type: "text", label: "Dept", ...(mode === null ? {} : { mode }), ...(formula === undefined ? {} : { formula }) }
       ]
     }) as unknown as FormDefinition;
 
@@ -104,8 +104,8 @@ describe("formula field — definition validation & payload lifecycle", () => {
     expect(errors.some((e) => e.field === "fields.1.formula" && /blocked token/.test(e.message))).toBe(true);
   });
 
-  it("rejects a formula set on a non-formula field", () => {
-    const errors = validateFormDefinition(form("payload.x", "text"));
+  it("rejects a formula set on an editable field", () => {
+    const errors = validateFormDefinition(form("payload.x", null));
     expect(errors.some((e) => e.field === "fields.1.formula")).toBe(true);
   });
 

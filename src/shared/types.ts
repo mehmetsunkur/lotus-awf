@@ -9,7 +9,18 @@ export type AppConfig = {
   database: string;
 };
 
-export type FieldType = "text" | "textarea" | "number" | "date" | "boolean" | "select" | "formula";
+export type FieldType = "text" | "textarea" | "number" | "date" | "boolean" | "select";
+
+/**
+ * ADR-0019: Notes-style field computation modes, orthogonal to the datatype.
+ * Absent = editable (user input). `computed` = server resolves the async-lane
+ * formula and stamps the payload on EVERY payload write; `computed-once` =
+ * resolve iff the stored value is absent (create/backfill), never overwrite;
+ * `computed-for-display` = per-request resolution, never stored (the former
+ * `type: "formula"`). Non-editable values are server-owned: client-supplied
+ * values for them are discarded on every write path.
+ */
+export type FieldMode = "computed" | "computed-once" | "computed-for-display";
 
 export type ExpressionRule = {
   expression: string;
@@ -62,9 +73,16 @@ export type FormField = {
    */
   compute?: string;
   /**
-   * ADR-0014: a `type: "formula"` field's value is derived by evaluating this
-   * async-lane formula (may call `@DbColumn`/`@DbLookup`) server-side, ACL-scoped.
-   * Read-only, never stored in the document payload. Optional and back-compatible.
+   * ADR-0019: the field's computation mode; absent means editable. Computed
+   * modes require `formula` and reject user-input rules (`required`,
+   * `defaultValue`, `validate`, `compute`).
+   */
+  mode?: FieldMode;
+  /**
+   * ADR-0014/0019: async-lane formula (may call `@DbColumn`/`@DbLookup`),
+   * resolved server-side under the writer's/reader's ACL scope against the
+   * local replica. Required by every computed mode, forbidden on editable
+   * fields.
    */
   formula?: string;
   /**
@@ -159,15 +177,6 @@ export type WorkflowTransition = {
    * workflow. Effects are best-effort: they never block or revert the transition.
    */
   action?: string;
-  /**
-   * ADR-0017: async-lane formula resolved SERVER-SIDE at transition time to the
-   * principal(s) who may perform this transition (a `person:*`/`group:*` id or an
-   * array of them). Non-empty resolution REPLACES `requiredRole`; empty/failed
-   * resolution falls back to `requiredRole`, and DENIES when no `requiredRole`
-   * exists (an authored restriction never degrades to no gate). Never evaluated
-   * on the client — offering stays advisory and the server is authoritative.
-   */
-  approverFormula?: string;
 };
 
 export type WorkflowDefinition = {

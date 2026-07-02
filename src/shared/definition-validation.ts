@@ -13,7 +13,8 @@ import { formulaBlockedToken, formulaSyntaxError } from "./formula";
 import { findHandler, handlerHasKind } from "./handlers/manifest";
 import type { AgentDefinition, AuditPolicy, HandlerKind } from "./types";
 
-const FIELD_TYPES = new Set(["text", "textarea", "number", "date", "boolean", "select", "formula"]);
+const FIELD_TYPES = new Set(["text", "textarea", "number", "date", "boolean", "select"]);
+const FIELD_MODES = new Set(["computed", "computed-once", "computed-for-display"]);
 const FILTER_OPS = new Set(["eq", "ne", "gt", "gte", "lt", "lte", "in"]);
 const SORT_DIRECTIONS = new Set(["asc", "desc"]);
 
@@ -79,24 +80,24 @@ function validateField(field: FormField, index: number): ValidationError[] {
     errors.push(...validateExpression(rule.expression, `${prefix}.validate.${ruleIndex}.expression`));
   }
   errors.push(...validateHandlerRef(field.compute, "pure", `${prefix}.compute`));
-  if (field.type === "formula") {
-    // ADR-0014: a formula field carries an async-lane formula, resolved server-side.
-    // Validate presence + sandbox posture here; it must NOT go through the sync
-    // `validateExpression` lane (that lane forbids `await` and has no DB functions).
+  // ADR-0019: computation modes. Computed modes require an async-lane formula
+  // (validated for sandbox posture + syntax — never through the sync
+  // `validateExpression` lane, which forbids `await` and has no DB functions)
+  // and reject user-input rules, whose values the server owns.
+  if (field.mode !== undefined && !FIELD_MODES.has(field.mode)) {
+    errors.push(error(`${prefix}.mode`, `Field mode is invalid: ${String(field.mode)}`));
+  } else if (field.mode) {
     if (!nonEmpty(field.formula)) {
-      errors.push(error(`${prefix}.formula`, "A formula field requires a formula"));
+      errors.push(error(`${prefix}.formula`, `A ${field.mode} field requires a formula`));
     } else {
-      const bad = formulaBlockedToken(field.formula);
-      if (bad) {
-        errors.push(error(`${prefix}.formula`, `Formula contains a blocked token: ${bad}`));
-      } else {
-        // Reject an unparseable formula here so it can never reach the read path.
-        const syntax = formulaSyntaxError(field.formula);
-        if (syntax) errors.push(error(`${prefix}.formula`, `Formula is not valid: ${syntax}`));
-      }
+      errors.push(...validateAsyncFormula(field.formula, `${prefix}.formula`));
     }
+    if (field.required) errors.push(error(`${prefix}.required`, "A computed field cannot be required user input"));
+    if (field.defaultValue !== undefined) errors.push(error(`${prefix}.defaultValue`, "A computed field cannot have a default"));
+    if (field.validate?.length) errors.push(error(`${prefix}.validate`, "A computed field cannot carry validation rules"));
+    if (field.compute) errors.push(error(`${prefix}.compute`, "A computed field cannot also reference a pure handler"));
   } else if (field.formula !== undefined) {
-    errors.push(error(`${prefix}.formula`, "Only formula fields may set a formula"));
+    errors.push(error(`${prefix}.formula`, "Only computed-mode fields may set a formula"));
   }
   if (field.searchable !== undefined && typeof field.searchable !== "boolean") {
     errors.push(error(`${prefix}.searchable`, "Field searchable must be a boolean"));
@@ -206,7 +207,16 @@ function validateTransition(
   if (!states.has(transition.to)) errors.push(error(`${prefix}.to`, `Transition target does not exist: ${transition.to}`));
   errors.push(...validateExpression(transition.guard, `${prefix}.guard`));
   errors.push(...validateHandlerRef(transition.action, "effect", `${prefix}.action`));
-  errors.push(...validateAsyncFormula(transition.approverFormula, `${prefix}.approverFormula`));
+  // ADR-0019 superseded the ADR-0017 gate: fail loudly on a stale definition
+  // instead of silently ignoring (and thereby dropping) its authored gate.
+  if ((transition as Record<string, unknown>).approverFormula !== undefined) {
+    errors.push(
+      error(
+        `${prefix}.approverFormula`,
+        "approverFormula was superseded by ADR-0019; gate with a guard over a stamped computed field"
+      )
+    );
+  }
   return errors;
 }
 

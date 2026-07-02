@@ -38,7 +38,7 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 
 ## Validation parity (client + API)
 
-- Validation, required, visibility, and default rules must run through `src/shared/validation.ts` on BOTH the client and the API save path — never inlined in only one, and never accepting on one tier what the other rejects; the sole carve-out is a server-resolved async workflow gate (ADR-0017), where the client offers advisorily through the same shared engine and the server is authoritative via 422.
+- Validation, required, visibility, and default rules for USER-EDITABLE fields must run through `src/shared/validation.ts` on BOTH the client and the API save path — never inlined in only one, and never accepting on one tier what the other rejects; computed-mode field values (ADR-0019) are server-owned, stamped after validation, and excluded from user-input rules on both tiers alike.
   - Paths: `src/shared/validation.ts`, `src/server/index.ts`, `src/client/main.tsx`
 
 ## Expression runtime
@@ -56,10 +56,12 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 - Agent execution is server-authoritative and tick-driven (never on a device): runs must be durable and at-least-once with (agentId+rev) dedupe, the `agent:state` checkpoint advances only after `agentrun:*` records are written, a failing handler records a failed run without crashing the tick, and `agentrun`/`agent:state` are runtime docs — never templated, never returned as business documents.
   - Paths: `src/shared/agents.ts`, `src/server/handlers/agents.ts`, `src/server/index.ts`, `src/server/couch.ts`
 
-## Workflow approvers & assignment
+## Computed fields, workflow gating & assignment
 
-- Dynamic approver/assignee resolution (ADR-0017/0018) is server-side only, in the sandboxed async lane, under the ACTING user's ACL scope, against the LOCAL replica: a non-empty approver resolution replaces `requiredRole`, an empty one falls back to it and DENIES when no `requiredRole` exists (never fail-open); `assignee`/`assignedAt` are engine-allocated envelope fields stamped only by `applyTransition` (routing metadata visible to all document readers — resolution failure never fails a transition), and the client offers formula-gated transitions advisorily while the server answers 422.
-  - Paths: `src/shared/workflow.ts`, `src/server/index.ts`, `templates/**`, `src/mcp/workflow-patches.ts`
+- Computed-mode field values (ADR-0019) are SERVER-OWNED: every payload write path (document POST, PUT, and conflict-resolve) discards the client-supplied value — `computed` re-resolves, `computed-once` preserves-or-first-resolves, `computed-for-display` is never stored — with resolution in the sandboxed async lane under the WRITER's ACL scope against the LOCAL replica, `doc` bound to the built/merged envelope (createdBy = the creator, never the acting editor), results coerced to the field's datatype, and PRESERVE-ON-EMPTY (a degraded re-resolution keeps the prior stamp and never widens authority to a fallback).
+  - Paths: `src/shared/validation.ts`, `src/server/index.ts`, `templates/**`
+- Workflow gating is the sync parity lane only (ADR-0019): `requiredRole` plus guards, where guards receive the actor's `principals` identically on client and server so offering and enforcement never diverge; per-document authority is expressed as a guard over a server-stamped computed field (e.g. `principals.includes(payload.approver)`); `assignee`/`assignedAt` remain engine-allocated envelope fields stamped only by `applyTransition` (routing metadata visible to all document readers — resolution failure never fails a transition).
+  - Paths: `src/shared/workflow.ts`, `src/shared/expression.ts`, `src/server/index.ts`, `templates/**`, `src/mcp/workflow-patches.ts`
 
 ## Search
 

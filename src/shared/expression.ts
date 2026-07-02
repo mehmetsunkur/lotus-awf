@@ -3,6 +3,13 @@ export type ExpressionContext = {
   doc?: Record<string, unknown>;
   user?: string;
   now?: string;
+  /**
+   * ADR-0019: the actor's principal ids (person + groups), populated ONLY for
+   * workflow guard evaluation so guards can express membership
+   * (`principals.includes(payload.approver)`). Every other sync-lane context
+   * compiles with an empty array by design.
+   */
+  principals?: string[];
 };
 
 const blockedTokens = [
@@ -34,10 +41,17 @@ export function evaluateExpression(expression: string | undefined, context: Expr
     "doc",
     "user",
     "now",
+    "principals",
     `"use strict"; return (${expression});`
-  ) as (payload: unknown, doc: unknown, user: unknown, now: unknown) => unknown;
+  ) as (payload: unknown, doc: unknown, user: unknown, now: unknown, principals: unknown) => unknown;
 
-  return fn(context.payload, context.doc ?? {}, context.user ?? "", context.now ?? new Date().toISOString());
+  return fn(
+    context.payload,
+    context.doc ?? {},
+    context.user ?? "",
+    context.now ?? new Date().toISOString(),
+    context.principals ?? []
+  );
 }
 
 export function evaluateBoolean(expression: string | undefined, context: ExpressionContext, fallback = true): boolean {
