@@ -83,8 +83,10 @@ the server's own behavior.
 - Direct read: `GET /api/apps/:appId/documents/:id` → `getReadableDocument` against the app's
   **local** Couch database with current principal scope; direct document routes do not depend on a
   view result set.
-- Save: `POST/PUT /api/apps/:appId/documents` → shared `validatePayload` → write to the app's
-  **local** Couch database. (M12/M21) The POST path stamps the document via the generic
+- Save: `POST/PUT /api/apps/:appId/documents` → shared `validatePayload` (user-editable fields) →
+  **`stampComputedFields`** (ADR-0019: computed/computed-once resolution under the writer's scope
+  with preserve-on-empty and tamper-discard; also runs on the conflict-resolve route's elected
+  payload) → write to the app's **local** Couch database. (M12/M21) The POST path stamps the document via the generic
   `createDocument(docType, …)` and overrides `appId` from the app context, so any scaffolded type/app
   is stamped correctly.
 - Create type (M12): `POST /api/document-types {docType, title}` → shared `validateDocType` (422),
@@ -117,12 +119,12 @@ the server's own behavior.
 - Search (M9): the same endpoint with `?q=` applies the shared `searchDocuments` matcher **after** the
   `canReadDocument` ACL filter (loading the view's form from local Couch), so search narrows the
   ACL-scoped set and never widens it. No new Mango index; the matcher runs in-memory over the candidates.
-- Transition (M3/M5/M18, ADR-0017/0018): `POST /api/documents/:id/transition` → session +
-  read-access check → resolve `approverFormula`/`responsibleFormula` in the async lane (actor's
-  ACL scope, local replica, fail-closed) → shared `applyTransition` (resolved approvers replace
-  `requiredRole`; empty resolution falls back or denies; assignee stamped for the target state) →
-  write **local** Couch; `403` when unreadable, `422` on an illegal/refused transition, `409` on a
-  concurrent-write conflict. (M7) After the
+- Transition (M3/M5/M18, ADR-0018/0019): `POST /api/documents/:id/transition` → session +
+  read-access check → resolve the target state's `responsibleFormula` in the async lane (actor's
+  ACL scope, local replica, fail-closed; assignment never gates) → shared `applyTransition`
+  (gating is sync-lane `requiredRole` + guards, guards receiving the actor's `principals`;
+  assignee stamped for the target state) → write **local** Couch; `403` when unreadable, `422` on
+  an illegal/refused transition, `409` on a concurrent-write conflict. (M7) After the
   authoritative write, a transition's `action` effect runs best-effort via `runEffect`, surfaced as
   `effects[]`.
 - Compute (M7): `POST/PUT /api/documents` apply `applyComputedFields` (shared) so computed fields are

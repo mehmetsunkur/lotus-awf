@@ -129,13 +129,18 @@ definition shapes and validators, so no replicated document shape migration is r
 - Pure functions over definitions, payloads, and docs — no I/O, no DOM, no Node/server-only APIs.
 - Definition shape changes go in `types.ts` first, then `seed-data.ts` and the API.
 
-## ADR-0017/0018 workflow additions
+## ADR-0018/0019 workflow & field-mode additions
 
-`src/shared/workflow.ts` owns the dynamic approver gate (`approverFormula`, consumed as a
-pre-resolved principal list — replace/fallback/deny semantics) and the assignment envelope
+Fields carry a computation `mode` (`computed`/`computed-once`/`computed-for-display`,
+absent = editable) orthogonal to the datatype; `src/shared/validation.ts` splits
+`isPayloadField` (everything but computed-for-display) from `isEditableField` (no mode),
+and server-owned values skip defaults, coercion, and user-input validation. Guards
+receive the actor's `principals` (5th sync-expression arg), so per-document gating —
+`principals.includes(payload.approver)` — lives in the parity lane; offering and
+enforcement are exact. `src/shared/workflow.ts` owns the assignment envelope
 (`assignee`/`assignedAt` stamped on state entry, cleared on final states, hand-offs in
-`history[]`); `availableTransitions` offers formula-gated transitions advisorily. Shared
-definition validation covers both async formulas and principal-shaped `responsible`.
+`history[]`). Definition validation enforces the mode/field matrix and rejects the
+superseded `approverFormula`.
 
 ## Invariants
 

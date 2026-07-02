@@ -5,7 +5,10 @@ Date: 2026-07-02
 ## Status
 
 Accepted — implemented 2026-07-02 together with ADR-0017 (shared resolver, one combined
-multi-lens plan review; the initial-state rule below was corrected by that review). Companion to ADR-0017: same resolver, two different
+multi-lens plan review; the initial-state rule below was corrected by that review).
+ADR-0017's gate was later superseded by ADR-0019; this ADR's assignee machinery is
+unaffected — `responsibleFormula` is now typically just `"payload.approver"` over the
+ADR-0019 stamped field. Companion to ADR-0017: same resolver, two different
 moments — 0017 enforces *who may* act at gate time, 0018 tracks *who should* act while a
 document sits in a state.
 

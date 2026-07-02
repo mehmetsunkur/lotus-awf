@@ -4,11 +4,11 @@ Date: 2026-07-02
 
 ## Status
 
-Proposed — design agreed with the product owner in review of the shipped ADR-0017 gate;
-**supersedes ADR-0017's transition gate** (ADR-0018's assignee machinery survives and is
-fed from the new approver field). Tier-3 substrate change; multi-lens `review-change` on
-this plan before building. Nothing is deployed or pushed, so the supersession is a clean
-removal, not a deprecation.
+Accepted — implemented 2026-07-02. **Supersedes ADR-0017's transition gate** (ADR-0018's
+assignee machinery survives, fed from the stamped approver field). The multi-lens plan
+review returned one blocker and three majors — all folded into this design before
+building (conflict-resolve stamping, preserve-on-empty, envelope-bound stamp context,
+docs-of-record coverage) — plus ten minor clusters resolved in the Decision notes.
 
 ## Context
 

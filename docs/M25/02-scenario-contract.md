@@ -39,11 +39,16 @@ authenticated cookie-jar context per persona (the `bobApi` pattern).
   stays untouched and invisible to personas. An employee's manager is not stored: the org
   template's `manager` formula field derives it via `@DbLookup` (department `head`, or the
   parent department's head for a head — e.g. erin → carol via `cabin-crew.parent`).
-  ADR-0017 landed: approval routes to the requester's `department.head` via the workflow's
-  `approverFormula` (re-pointed to the per-seed org appId by the fixture), with
-  `group:managers` as the headless fallback; ADR-0018 stamps that resolution as the
-  document's `assignee`. Ground Operations exists precisely to break the head ∈ managers
-  assumption: hank heads it without `group:managers` membership, and ivy reports to him.
+  ADR-0019 landed (superseding ADR-0017's gate): the leave-request form stamps
+  `payload.approver` (a `computed` field — the requester's department head, parent-walk
+  for heads, `group:managers` only for a genuinely headless department) and
+  `payload.department` (`computed-once`, the filed-under department) at every save, with
+  client-supplied values discarded on all three write paths; approve/reject gate with the
+  guard `principals.includes(payload.approver)` (no `requiredRole`), and the workflow's
+  `responsibleFormula: "payload.approver"` feeds the ADR-0018 assignee. The fixture
+  re-points the FORM's formulas to the per-seed org appId. Ground Operations exists
+  precisely to break the head ∈ managers assumption: hank heads it without
+  `group:managers` membership, and ivy reports to him.
 - **Per-seed appIds**: `/api/reset` recreates the directory/platform databases but leaves
   earlier business-app databases behind, so a fixed appId would 409 on the second seed in a
   worker. Each seed deploys the templates under `org-s<n>` / `leave-request-s<n>` — templates

@@ -35,13 +35,14 @@ Fields:
 - `states[]` — `{ name, label, final?, responsible?, responsibleFormula? }`. `final` states offer
   no outbound transitions. (ADR-0018) `responsible`/`responsibleFormula` declare who owes action in
   the state; entering it via a transition stamps the document's `assignee`.
-- `transitions[]` — `{ id, label, from, to, guard?, requiredRole?, action?, approverFormula? }`.
-  - `guard` is an M2 expression evaluated over `{ payload, doc, user, now }`; it must return truthy for
-    the transition to be allowed.
+- `transitions[]` — `{ id, label, from, to, guard?, requiredRole?, action? }`.
+  - `guard` is an M2 expression evaluated over `{ payload, doc, user, now, principals }`; it must
+    return truthy for the transition to be allowed. (ADR-0019) `principals` is the actor's
+    person + group ids, so per-document authority is expressed as e.g.
+    `principals.includes(payload.approver)` over a server-stamped computed field.
   - `requiredRole` (optional) gates the transition to users holding that role in `acl:rules`.
-  - (ADR-0017) `approverFormula` (optional) is an async-lane formula resolved server-side to the
-    principal(s) who may perform the transition; a non-empty resolution replaces `requiredRole`, an
-    empty one falls back to it, and with no `requiredRole` declared the transition is denied.
+  - (`approverFormula` existed briefly under ADR-0017 and was superseded by ADR-0019; definition
+    validation rejects it loudly.)
 
 `from` may be a single state name or `"*"` to allow the transition from any non-final state.
 

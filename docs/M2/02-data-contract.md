@@ -76,8 +76,14 @@ Supported field types:
 - `date`
 - `boolean`
 - `select`
-- `formula` (ADR-0014) — read-only, server-resolved via the async formula lane
-  (`@DbColumn`/`@DbLookup`), and excluded from the stored payload.
+
+(ADR-0019) Orthogonal to the datatype, a field may declare a computation `mode`:
+absent = editable (user input); `computed` = server resolves the field's async-lane
+`formula` (`@DbColumn`/`@DbLookup`) and stamps the payload on every write;
+`computed-once` = resolve iff absent, never overwrite; `computed-for-display` =
+per-request resolution, never stored (the former `type: "formula"`). Non-editable
+values are server-owned — client-supplied values for them are discarded on every
+write path — and computed modes reject `required`/`defaultValue`/`validate`/`compute`.
 
 Supported field behavior:
 

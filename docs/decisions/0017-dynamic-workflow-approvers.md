@@ -4,12 +4,13 @@ Date: 2026-07-02
 
 ## Status
 
-Accepted — implemented 2026-07-02 after a combined multi-lens plan review with ADR-0018
-(no blockers; four majors and ten minors/notes resolved into this design before building).
-Deviations from the original sketch, both review-driven: the parent-walk fallback lives in
-the authored template formula, not the engine (the engine falls back straight to
-`requiredRole`, and DENIES when none is declared); the org-app reference in template
-formulas is authored data re-pointed at deploy time, not an `app:config` setting.
+**Superseded by ADR-0019** (2026-07-02, same day it was accepted). The gate-time
+`approverFormula` shipped and was proven in the airline scenario, but the product owner
+chose the opposite trade — a stored, server-stamped approver field gated by an ordinary
+guard — restoring exact offering/enforcement parity at the cost of a bounded staleness
+window. The engine gate, advisory offering, and transition-route approver resolution were
+removed; ADR-0018's assignee machinery survives, fed by the stamped field. This document
+records the superseded design and its review history.
 
 ## Context
 

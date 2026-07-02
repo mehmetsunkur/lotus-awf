@@ -21,14 +21,12 @@ server (aspect A3). It exposes:
   (new `state`, stamped `stateUpdatedAt`/`stateUpdatedBy`, appended `history`) **or** a
   `ValidationError[]` if the transition is not currently legal.
 
-The engine performs no I/O and mutates nothing. For the SYNC lane (states, guards,
-`requiredRole`) the same function decides "what can I do" in the UI and "is this write legal" on
-the server, so client and server can never diverge on those semantics. ADR-0017 adds a
-server-resolved ASYNC gate (`approverFormula`): the engine consumes only a pre-resolved result
-(`applyTransition`'s optional `resolved` argument), the client offers formula-gated transitions
-advisorily (it cannot run async lookups), and the server is authoritative — a refused dynamic gate
-is a `422`, not a divergence in the shared semantics. ADR-0018 likewise passes a pre-resolved
-assignee for the target state; assignment is routing metadata and never gates.
+The engine performs no I/O and mutates nothing. The same function decides "what can I do" in the UI
+and "is this write legal" on the server, so client and server can never diverge — including
+per-document approver gating, which ADR-0019 expresses as ordinary guards over server-stamped
+computed fields (guards receive the actor's `principals` identically on both tiers). ADR-0018's
+assignee is the one async-informed input: `applyTransition` accepts a pre-resolved
+`resolved.assignee` for the target state — routing metadata that never gates.
 
 Guards reuse `evaluateBoolean` from `src/shared/expression.ts` unchanged — the existing
 `{ payload, doc, user, now }` context already exposes `doc.state`, so guards can branch on state

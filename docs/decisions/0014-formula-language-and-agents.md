@@ -111,11 +111,13 @@ app needs arbitrary triggered writes. Not decided here.
   design it in a follow-up ADR. Re-expressing org.nsf as pure data is the first consumer.
 - Run the multi-lens `review-change` workflow (Tier-3 substrate) for any write-side work.
 
-## Amendment (2026-07-02, ADR-0017/0018)
+## Amendment (2026-07-02, ADR-0018/0019)
 
-The async lane's allowed contexts grow beyond tolerant display: the transition route now
-resolves `approverFormula` (enforcement — empty resolution falls back to `requiredRole` or
-denies) and `responsibleFormula` (assignee routing — empty resolution never fails the
-transition), both server-side, ACL-scoped under the actor, against the local replica. The
-known unbounded-loop limitation therefore now guards a write path, which raises the
-priority of the execution-deadline follow-up.
+The async lane's allowed contexts grow beyond tolerant display: document write paths now
+resolve `computed`/`computed-once` field stamps (ADR-0019 — fail-closed with
+preserve-on-empty, writer's ACL scope, local replica), and the transition route resolves
+`responsibleFormula` (ADR-0018 assignee routing — empty resolution never fails the
+transition). `type: "formula"` fields became `mode: "computed-for-display"` with a real
+datatype. The known unbounded-loop limitation now guards write paths, which raises the
+priority of the execution-deadline follow-up. (ADR-0017's transition-gate context existed
+briefly and was superseded by ADR-0019.)
