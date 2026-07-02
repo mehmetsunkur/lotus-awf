@@ -46,14 +46,15 @@ not in per-app payload conventions.
    fallback. Responsibility is a property of the **state** (where the document sits), not
    of a transition — that is what makes it uniform across workflows.
 
-   **Initial-state exception** (review finding): documents enter the initial state by
-   *creation*, not by transition (`currentState()` reads a missing `state` as
-   `initialState`), so an initial-state declaration could never be stamped. Validation
-   therefore **rejects** `responsible`/`responsibleFormula` on the initial state:
-   draft-stage responsibility is the creator's by definition (`createdBy`/`authors`
-   already express it). Stamping at document creation was considered and rejected — it
-   would pull workflow resolution into the create path for marginal value; if a future
-   need appears, that becomes its own decision.
+   **Initial-state asymmetry** (review findings, revised): documents *usually* enter the
+   initial state by creation — which never stamps — but transitions **into** the initial
+   state are legal and reachable (e.g. a `revise → draft` return), and those stamp like
+   any other entry. So initial-state declarations are **allowed** and meaningful for
+   re-entry (`responsibleFormula: "doc.createdBy"` hands a revised draft back to its
+   requester); the documented asymmetry is that creation itself never stamps — a fresh
+   draft's responsibility is the creator's by definition (`createdBy`/`authors`).
+   Stamping at document creation was considered and rejected — it would pull workflow
+   resolution into the create path for marginal value.
 
 2. **Document envelope**: the engine's allocated family grows by one pair —
    `assignee?: string` (a `person:*`/`group:*` principal) and `assignedAt?: string`.
@@ -63,10 +64,17 @@ not in per-app payload conventions.
 
 3. **Resolution**: the server resolves `responsibleFormula` in the ADR-0014 async lane
    (the same resolver ADR-0017 adds for `approverFormula`), under the transition actor's
-   ACL scope, before calling the pure engine — `applyTransition` receives the pre-resolved
-   value (`resolvedAssignee?: string`) and stays sync/portable. Fallback chain:
-   formula → static `responsible` → no assignee. **Assignment is routing metadata, not a
-   gate: a transition never fails because responsibility resolution failed.**
+   ACL scope and against the local replica, before calling the pure engine —
+   `applyTransition` receives the pre-resolved value (`resolvedAssignee?: string`) and
+   stays sync/portable. The resolved value passes the same normalization as approvers
+   (only `person:*`/`group:*` strings survive; an array yields its first valid element) so
+   a malformed formula result can never be stamped verbatim into the replicated envelope.
+   Fallback chain: formula → static `responsible` → no assignee. **Assignment is routing
+   metadata, not a gate: a transition never fails because responsibility resolution
+   failed.** Disclosure note: the stamped `assignee` is a one-time materialization of
+   data resolved under the *actor's* scope but visible thereafter to **all document
+   readers** — a deliberate difference from per-request formula fields, recorded in the
+   invariants rule.
 
 4. **Consumption**: `assignee` is a stored envelope field, so — unlike formula fields —
    it works on the list path today: an "Assigned to" view column, static team worklists
@@ -80,7 +88,11 @@ not in per-app payload conventions.
 6. **Validation**: shared `validateTransition`-equivalent checks on states —
    `responsible` must be principal-shaped; `responsibleFormula` must be non-empty, pass
    `formulaBlockedToken`, and compile (`formulaSyntaxError`). Flows to the definitions
-   APIs, template registry/apply, and MCP designer patch ops automatically.
+   APIs and template registry/apply automatically. The MCP designer surface needs one
+   explicit change (review finding m5): `update_state` today patches only
+   `label`/`final`, so it gains a `Partial<WorkflowState>` patch (like
+   `update_transition`) and the shared workflow validation enforces the new rules there
+   too.
 
 ## The line this ADR holds
 
@@ -116,11 +128,11 @@ staleness bug ADR-0017 rejected.
 
 ## Acceptance sketch (for the implementing milestone)
 
-- Unit: stamp on state entry (formula, static, and none), clear on final states,
-  hand-off recorded in `history[]`, resolution failure stamps fallback/nothing but never
-  fails the transition, validation rejects malformed declarations **and any
-  `responsible`/`responsibleFormula` on the initial state** (the inoperative-declaration
-  gap found in review).
+- Unit: stamp on state entry (formula, static, and none) **including a transition whose
+  `to` is the initial state**, clear on final states, hand-off recorded in `history[]`,
+  resolution failure stamps fallback/nothing but never fails the transition,
+  non-principal formula results normalize away, validation rejects malformed
+  declarations.
 - E2E (airline scenario): dave submits a leave request → `assignee` is `person:carol`
   and the Departments-style worklist shows it; carol approves → `assignee` cleared;
   erin submits her own → `assignee` is `person:carol` (parent-walk via the formula).
