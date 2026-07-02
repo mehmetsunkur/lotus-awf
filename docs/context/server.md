@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `2762f60`
+- Last code review baseline: `a95b1a4`
 - Last reviewed date: `2026-07-01`
 - Code areas:
   - `src/server/**`
@@ -51,7 +51,9 @@ the server's own behavior.
 - `src/server/handlers/agents.ts` (M8) — server-only agent-handler registry + `runAgentHandler`
   (fail-closed). The `runAgents()` tick orchestrator lives in `index.ts`.
 - `scripts/*.ts` — `seed`, `reset`, `replicate`, `force-conflict`, `force-state-conflict`,
-  `acl-spike`, and `app` (M7 definitions-as-code `extract`/`apply` CLI).
+  `acl-spike`, and `app` (M7 definitions-as-code `extract`/`apply` CLI). M25 adds
+  `seed-airline.ts` (seed the Agentic Airlines scenario into a running server) and
+  `deploy-seed.sh` (deploy-stack one-shot: endpoint discovery, first-run setup, seed).
 - `Dockerfile` / `deploy/compose.yml` / `deploy/k8s/` — M13 deployable artifact topologies; no source
   bind mount; the image includes `templates/` for JSON-backed app installs.
 
