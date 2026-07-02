@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `2762f60`
+- Last code review baseline: `1ffaf99`
 - Last reviewed date: `2026-07-01`
 - Code areas:
   - `src/shared/**`
@@ -128,6 +128,14 @@ definition shapes and validators, so no replicated document shape migration is r
 
 - Pure functions over definitions, payloads, and docs — no I/O, no DOM, no Node/server-only APIs.
 - Definition shape changes go in `types.ts` first, then `seed-data.ts` and the API.
+
+## ADR-0017/0018 workflow additions
+
+`src/shared/workflow.ts` owns the dynamic approver gate (`approverFormula`, consumed as a
+pre-resolved principal list — replace/fallback/deny semantics) and the assignment envelope
+(`assignee`/`assignedAt` stamped on state entry, cleared on final states, hand-offs in
+`history[]`); `availableTransitions` offers formula-gated transitions advisorily. Shared
+definition validation covers both async formulas and principal-shaped `responsible`.
 
 ## Invariants
 

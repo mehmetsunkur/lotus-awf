@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `a95b1a4`
+- Last code review baseline: `1ffaf99`
 - Last reviewed date: `2026-07-01`
 - Code areas:
   - `src/server/**`
@@ -117,9 +117,12 @@ the server's own behavior.
 - Search (M9): the same endpoint with `?q=` applies the shared `searchDocuments` matcher **after** the
   `canReadDocument` ACL filter (loading the view's form from local Couch), so search narrows the
   ACL-scoped set and never widens it. No new Mango index; the matcher runs in-memory over the candidates.
-- Transition (M3/M5/M18): `POST /api/documents/:id/transition` → session + read-access check →
-  shared `applyTransition` (required principals such as `group:finance`) → write **local** Couch;
-  `403` when unreadable and `422` on an illegal/principal-gated transition. (M7) After the
+- Transition (M3/M5/M18, ADR-0017/0018): `POST /api/documents/:id/transition` → session +
+  read-access check → resolve `approverFormula`/`responsibleFormula` in the async lane (actor's
+  ACL scope, local replica, fail-closed) → shared `applyTransition` (resolved approvers replace
+  `requiredRole`; empty resolution falls back or denies; assignee stamped for the target state) →
+  write **local** Couch; `403` when unreadable, `422` on an illegal/refused transition, `409` on a
+  concurrent-write conflict. (M7) After the
   authoritative write, a transition's `action` effect runs best-effort via `runEffect`, surfaced as
   `effects[]`.
 - Compute (M7): `POST/PUT /api/documents` apply `applyComputedFields` (shared) so computed fields are
