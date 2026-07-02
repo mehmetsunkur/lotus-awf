@@ -77,6 +77,7 @@ import {
   createIndex,
   dbExists,
   deleteDb,
+  listDbs,
   deleteDoc,
   ensureDb,
   getBusinessDocs,
@@ -1343,7 +1344,17 @@ app.post(
       response.status(404).json({ error: "not_found" });
       return;
     }
+    // Reset must return a clean slate: also drop every business-app database
+    // (catalog- or template-created, `<appId>_app`), or their leftovers make the
+    // next create-app 409 even though the install records were wiped with
+    // platform_app. The control databases are recreated below; the default
+    // expense database is force-recreated by seedTarget.
+    const isBusinessAppDb = (db: string) =>
+      db.endsWith("_app") && db !== config.namesDb && db !== config.platformDb;
+    const [localDbs, serverDbs] = await Promise.all([listDbs("local"), listDbs("server")]);
     await Promise.all([
+      ...localDbs.filter(isBusinessAppDb).map((db) => deleteDb("local", db)),
+      ...serverDbs.filter(isBusinessAppDb).map((db) => deleteDb("server", db)),
       deleteDb("local", config.namesDb),
       deleteDb("server", config.namesDb),
       deleteDb("local", config.platformDb),

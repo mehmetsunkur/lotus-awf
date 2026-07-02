@@ -102,10 +102,11 @@ export type SeedAirlineOptions = {
 };
 
 /**
- * `/api/reset` recreates the directory and platform databases but leaves any
- * business-app database from an earlier test in this worker behind, so a fixed
- * appId would 409 on the second seed. Templates are appId-agnostic (ADR-0016),
- * so each seed deploys under a fresh per-worker appId instead.
+ * `/api/reset` now drops leftover business-app databases, but each seed still
+ * deploys under a fresh per-worker appId: it keeps the fixture safe on servers
+ * seeded outside the reset path (manual targets) and exercises the ADR-0016
+ * appId-agnostic deploy contract on every run. Manual one-shot seeding passes
+ * fixed ids via SeedAirlineOptions instead.
  */
 let seedSequence = 0;
 

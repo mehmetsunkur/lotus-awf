@@ -104,6 +104,10 @@ export async function ensureDb(target: CouchTarget, db = config.appDb) {
   }
 }
 
+export async function listDbs(target: CouchTarget): Promise<string[]> {
+  return await couchRequest<string[]>(target, "/_all_dbs");
+}
+
 export async function deleteDb(target: CouchTarget, db = config.appDb) {
   try {
     await couchRequest(target, `/${db}`, { method: "DELETE" });
