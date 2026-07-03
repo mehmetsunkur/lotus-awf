@@ -452,6 +452,126 @@ test.describe("Agentic Airlines PLC scenario", () => {
     expect(edited.payload.approver).toBe("person:carol");
   });
 
+  test("ADR-0020 @me: personal inboxes route by assignee, My views mean mine, ACL still wins", async ({
+    airline,
+    page,
+    localCouchUrl
+  }) => {
+    const app = airline.scenario.leaveRequestAppId;
+    const couchAuth = { authorization: `Basic ${Buffer.from("admin:password").toString("base64")}` };
+
+    // Dave files and submits: assignee = carol.
+    const dave = await airline.as("dave");
+    const daveRequest = await createDoc(dave, app, "leave-request", {
+      type: "annual",
+      from: "2026-10-12",
+      to: "2026-10-16",
+      reason: "Inbox check"
+    });
+    await transition(dave, app, daveRequest._id, "submit");
+
+    // Ivy files and submits: assignee = hank.
+    const ivy = await airline.as("ivy");
+    const ivyRequest = await createDoc(ivy, app, "leave-request", {
+      type: "sick",
+      from: "2026-07-09",
+      to: "2026-07-10",
+      reason: "Inbox check"
+    });
+    await transition(ivy, app, ivyRequest._id, "submit");
+
+    // Personal inboxes: carol sees dave's, hank sees ivy's, erin sees neither.
+    const carol = await airline.as("carol");
+    const hank = await airline.as("hank");
+    const erin = await airline.as("erin");
+    expect((await viewDocs(carol, app, "view:my-approvals")).map((doc) => doc._id)).toContain(daveRequest._id);
+    expect((await viewDocs(hank, app, "view:my-approvals")).map((doc) => doc._id)).toContain(ivyRequest._id);
+    const erinInbox = (await viewDocs(erin, app, "view:my-approvals")).map((doc) => doc._id);
+    expect(erinInbox).not.toContain(daveRequest._id);
+    expect(erinInbox).not.toContain(ivyRequest._id);
+
+    // My views mean mine: dave's my-requests has his doc, frank's has neither.
+    expect((await viewDocs(dave, app, "view:my-requests")).map((doc) => doc._id)).toContain(daveRequest._id);
+    const frank = await airline.as("frank");
+    const frankRequests = (await viewDocs(frank, app, "view:my-requests")).map((doc) => doc._id);
+    expect(frankRequests).not.toContain(daveRequest._id);
+
+    // Approval clears the assignee and the request LEAVES the inbox.
+    await transition(carol, app, daveRequest._id, "approve");
+    expect((await viewDocs(carol, app, "view:my-approvals")).map((doc) => doc._id)).not.toContain(daveRequest._id);
+
+    // ACL precedence pinned (review M4): hank stays ivy's assignee but loses
+    // DOCUMENT readership (removed from group:ground-ops) — the inbox must NOT
+    // show it. He keeps app-level access via a person entry so the view route
+    // itself still answers (we are testing doc ACL, not the app gate).
+    const access = (await page.request
+      .get(`/api/apps/${app}/access`)
+      .then((response) => response.json())) as { entries: Array<{ principal: string; level: string }> };
+    await page.request.put(`/api/apps/${app}/access`, {
+      data: { entries: [...access.entries, { principal: "person:hank", level: "author" }] }
+    });
+    const directory = (await page.request.get("/api/names/directory").then((response) => response.json())) as {
+      groups: Array<{ _id: string; members: string[] }>;
+    };
+    const groundOps = directory.groups.find((group) => group._id === "group:ground-ops");
+    await page.request.put("/api/names/groups/ground-ops", {
+      data: { members: (groundOps?.members ?? []).filter((member) => member !== "person:hank") }
+    });
+    const hankBlind = await airline.as("hank");
+    expect((await viewDocs(hankBlind, app, "view:my-approvals")).map((doc) => doc._id)).not.toContain(
+      ivyRequest._id
+    );
+
+    // Index binding verified, not assumed (ADR-0020 performance guard): the
+    // inbox selector still binds the m3 index per CouchDB _explain.
+    const explain = await page.request.post(`${localCouchUrl}/${app}_app/_explain`, {
+      headers: couchAuth,
+      data: {
+        selector: {
+          kind: "document",
+          docType: { $eq: "leave-request" },
+          state: { $eq: "submitted" },
+          assignee: { $in: ["person:carol", "group:managers"] },
+          readers: { $in: ["person:carol", "group:managers"] }
+        },
+        sort: [{ updatedAt: "desc" }],
+        limit: 200,
+        use_index: "m3-docType-state-updatedAt"
+      }
+    });
+    expect(explain.status()).toBe(200);
+    const plan = (await explain.json()) as { index: { name: string } };
+    expect(plan.index.name).toBe("m3-docType-state-updatedAt");
+  });
+
+  test("ADR-0020 @me: a headless-department request lands in every manager's inbox (group expansion)", async ({
+    airline,
+    page
+  }) => {
+    const app = airline.scenario.leaveRequestAppId;
+    // Blank ground-ops' head, then ivy files: assignee stamps group:managers.
+    const deptId = airline.scenario.departmentDocIds["ground-ops"];
+    await page.request.put(`/api/apps/${airline.scenario.orgAppId}/documents/${encodeURIComponent(deptId)}`, {
+      data: { payload: { name: "Ground Operations", slug: "ground-ops", parent: "", head: "" } }
+    });
+    const ivy = await airline.as("ivy");
+    const request = await createDoc(ivy, app, "leave-request", {
+      type: "unpaid",
+      from: "2026-08-03",
+      to: "2026-08-04",
+      reason: "Group inbox check"
+    });
+    await transition(ivy, app, request._id, "submit");
+
+    // Every group:managers member's inbox contains it; hank's (no role) does not.
+    for (const manager of ["carol", "erin", "grace"] as const) {
+      const inbox = await viewDocs(await airline.as(manager), app, "view:my-approvals");
+      expect(inbox.map((doc) => doc._id), `${manager}'s inbox`).toContain(request._id);
+    }
+    const hank = await airline.as("hank");
+    expect((await viewDocs(hank, app, "view:my-approvals")).map((doc) => doc._id)).not.toContain(request._id);
+  });
+
   test("the same personas work the expense app: crew files, finance approves, others see nothing", async ({
     airline
   }) => {
