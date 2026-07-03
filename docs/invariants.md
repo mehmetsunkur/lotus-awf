@@ -117,7 +117,7 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 
 ## Index & query
 
-- A new view `sort`/`filter` field may need a Mango index, and the three indexes (`m2-kind-docType-updatedAt`, `m2-readers`, `m3-docType-state-updatedAt`) are defined in THREE places (`scripts/seed.ts`, `scripts/reset.ts`, `ensureIndexes` in `src/server/index.ts`) that must be kept in sync. `createIndex` pins `ddoc === name` so a `use_index: "<name>"` hint resolves and binds.
+- A new view `sort`/`filter` field may need a Mango index, and the three indexes (`m2-kind-docType-updatedAt`, `m2-readers`, `m3-docType-state-updatedAt`) are defined in THREE places (`scripts/seed.ts`, `scripts/reset.ts`, `ensureIndexes` in `src/server/index.ts`) that must be kept in sync. `createIndex` pins `ddoc === name` so a `use_index: "<name>"` hint resolves and binds. ADR-0020's `@me` adds an in-memory predicate to the existing index scan (no new index; same cost class as the ACL filter; index binding is asserted via `_explain` in e2e, and the designed escape hatch is a partial index on `assignee` for `state == submitted` if inbox selectivity ever degrades).
   - Paths: `src/server/couch.ts`, `src/server/index.ts`, `scripts/seed.ts`, `scripts/reset.ts`
 
 ## Documentation & acceptance

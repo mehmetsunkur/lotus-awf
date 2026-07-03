@@ -4,7 +4,10 @@ Date: 2026-07-03
 
 ## Status
 
-Proposed — multi-lens `review-change` on this plan before building. Completes the
+Accepted — implemented 2026-07-03. The multi-lens plan review returned no blockers and
+no majors; eight minors/notes were folded into this design before building (value-shape
+rules, dead readers/authors filter rejection, runtime floor, pinned ACL precedence, the
+phantom-call-site correction, absent-assignee semantics, and doc coverage). Completes the
 ADR-0018/0019 workflow arc: the engine stamps who owes action (`assignee`) and who may
 act (`payload.approver`), but a view still cannot say "…and show *me* mine". M23
 explicitly deferred this ("actor-aware `My` view filter DSL"); this ADR builds the

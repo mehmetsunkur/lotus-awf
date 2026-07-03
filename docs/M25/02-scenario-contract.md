@@ -11,8 +11,11 @@
 - `workflow:leave-request` — `draft → submitted → approved/rejected`; `submit` guards on the
   date range and runs the `audit-transition` effect; `approve`/`reject` require
   `group:managers`.
-- `view:my-requests` (docType filter) and `view:pending-approval` (docType + `state ==
-  submitted`). Both sort on `updatedAt` and bind the existing Mango indexes — no new index.
+- Three views, all sorting on `updatedAt` and binding the existing Mango indexes (no new
+  index): `view:my-requests` (docType + `createdBy in @me` — the caller's own requests),
+  `view:my-approvals` (ADR-0020 personal inbox: docType + `state == submitted` +
+  `assignee in @me`, index binding verified via `_explain` in the suite), and
+  `view:pending-approval` (the shared worklist: docType + `state == submitted`).
 - `acl:rules` grants `group:admins` manager, `group:managers` editor, `group:employees`
   author. The groups are a convention the deploying environment supplies (the airline fixture
   intentionally does not create `group:employees` — see ACL design below).

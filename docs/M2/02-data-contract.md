@@ -77,6 +77,13 @@ Supported field types:
 - `boolean`
 - `select`
 
+(ADR-0020) A view filter value may be the reserved sentinel `"@me"` — valid only with
+`op: "in"` and only as the entire value — which the server substitutes per request with
+the caller's full principal set (person + groups). An `in` value must otherwise be an
+array; filters on the `readers`/`authors` envelope fields are rejected (the ACL selector
+always overrides them); `@me` views require every node at or above the ADR-0020 build
+(older code renders a malformed `$in` — a Mango 400 on that view).
+
 (ADR-0019) Orthogonal to the datatype, a field may declare a computation `mode`:
 absent = editable (user input); `computed` = server resolves the field's async-lane
 `formula` (`@DbColumn`/`@DbLookup`) and stamps the payload on every write;

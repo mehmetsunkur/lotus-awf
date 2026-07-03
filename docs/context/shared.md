@@ -129,6 +129,14 @@ definition shapes and validators, so no replicated document shape migration is r
 - Pure functions over definitions, payloads, and docs — no I/O, no DOM, no Node/server-only APIs.
 - Definition shape changes go in `types.ts` first, then `seed-data.ts` and the API.
 
+## ADR-0020 actor-aware view filters
+
+`src/shared/view-query.ts` owns the pure `mangoSelector` (moved from the server) with a
+REQUIRED `principals` argument: the reserved filter value `"@me"` (op `in` only, whole
+value only) substitutes the caller's principal set at query time — fail-closed on an
+empty scope, AND-ed with the ACL selector so it only narrows. Shared validation enforces
+the value-shape rules and rejects dead `readers`/`authors` filters.
+
 ## ADR-0018/0019 workflow & field-mode additions
 
 Fields carry a computation `mode` (`computed`/`computed-once`/`computed-for-display`,

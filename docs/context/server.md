@@ -114,7 +114,9 @@ the server's own behavior.
   `reader`/`author`/`editor`/`designer`/`manager`. Business reads match document `readers`, payload
   writes/deletes require `authors`, design routes require designer-level access, and sourced select
   options use the same readable-document scope.
-- List: `GET /api/views/:id/documents` → `mangoSelector(view.filters)` + access selector →
+- List: `GET /api/views/:id/documents` → shared `mangoSelector(view.filters, docType,
+  principals)` (ADR-0020: the `@me` sentinel substitutes THIS caller's principal set;
+  fail-closed on empty scope) + access selector spread last →
   `findDocs`; on `updatedAt` sort binds `m3-docType-state-updatedAt` for state-filtered views, else
   `m2-kind-docType-updatedAt` (hints bind because `createIndex` pins `ddoc === name`).
 - Search (M9): the same endpoint with `?q=` applies the shared `searchDocuments` matcher **after** the

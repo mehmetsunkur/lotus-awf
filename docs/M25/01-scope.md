@@ -5,6 +5,8 @@
 - A third bundled template, `sample:leave-request` (`templates/leave-request/*`): leave form
   (type/from/to/reason), `submit → approve/reject` workflow gated on `group:managers`,
   `view:my-requests` and `view:pending-approval`, ACL, audit policy, and sample data.
+  (Later evolved in place: ADR-0019 added the stamped approver/department fields and
+  guard gating; ADR-0020 added `view:my-approvals` and made the `My` views actor-aware.)
 - A reusable e2e scenario fixture (`tests/e2e/support/scenario-agentic-airlines.ts`) that
   seeds Agentic Airlines PLC on top of `/api/reset` through public HTTP APIs only: five
   personas and their directory groups in names.nsf, org + leave-request apps deployed from
