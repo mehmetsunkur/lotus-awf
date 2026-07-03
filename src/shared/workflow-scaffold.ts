@@ -64,6 +64,9 @@ export function scaffoldApprovalWorkflow(
       docType,
       title: `My ${label}`,
       columns: [titleColumn, stateColumn, updatedColumn],
+      // ADR-0020: "My" means mine — the actor-aware sentinel makes the
+      // scaffolded personal view honest instead of listing all readable docs.
+      filters: [{ field: "createdBy", op: "in", value: "@me" }],
       sort: [{ field: "updatedAt", direction: "desc" }]
     },
     {

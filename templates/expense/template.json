@@ -64,7 +64,9 @@
       "appId": "expense",
       "docType": "expense",
       "title": "Expense",
-      "defaultReaders": ["group:finance"],
+      "defaultReaders": [
+        "group:finance"
+      ],
       "sections": [
         {
           "title": "Spend",
@@ -309,12 +311,9 @@
           "value": "expense"
         },
         {
-          "field": "readers",
+          "field": "createdBy",
           "op": "in",
-          "value": [
-            "person:alice",
-            "group:finance"
-          ]
+          "value": "@me"
         }
       ],
       "sort": [

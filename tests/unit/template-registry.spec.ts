@@ -74,6 +74,7 @@ describe("sample template registry", () => {
       "app:config",
       "audit:policy",
       "form:leave-request",
+      "view:my-approvals",
       "view:my-requests",
       "view:pending-approval",
       "workflow:leave-request"

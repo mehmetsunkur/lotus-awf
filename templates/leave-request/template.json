@@ -170,6 +170,72 @@
           "field": "docType",
           "op": "eq",
           "value": "leave-request"
+        },
+        {
+          "field": "createdBy",
+          "op": "in",
+          "value": "@me"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "view:my-approvals",
+      "kind": "view",
+      "appId": "leave-request",
+      "docType": "leave-request",
+      "title": "My Approvals",
+      "columns": [
+        {
+          "field": "payload.type",
+          "label": "Type"
+        },
+        {
+          "field": "payload.from",
+          "label": "From"
+        },
+        {
+          "field": "payload.to",
+          "label": "To"
+        },
+        {
+          "field": "payload.department",
+          "label": "Department"
+        },
+        {
+          "field": "assignee",
+          "label": "Assigned to"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "leave-request"
+        },
+        {
+          "field": "state",
+          "op": "eq",
+          "value": "submitted"
+        },
+        {
+          "field": "assignee",
+          "op": "in",
+          "value": "@me"
         }
       ],
       "sort": [

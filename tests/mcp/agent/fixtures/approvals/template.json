@@ -291,12 +291,9 @@
           "value": "request"
         },
         {
-          "field": "readers",
+          "field": "createdBy",
           "op": "in",
-          "value": [
-            "person:alice",
-            "group:finance"
-          ]
+          "value": "@me"
         }
       ],
       "sort": [
