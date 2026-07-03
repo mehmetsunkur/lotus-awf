@@ -34,7 +34,12 @@ move, generalized to an author-chosen field.
 ## Decision
 
 1. **Sentinel**: a view filter may use the reserved value `"@me"`, valid **only with
-   `op: "in"`**; shared validation rejects it on any other op. At query time the server
+   `op: "in"`**, and only as the **entire** filter value — an array containing
+   `"@me"` is rejected ("@me must be the entire filter value"), since the substitution
+   matches the whole value, not elements (review M1a). Shared validation also tightens
+   the op itself: `op: "in"` requires an array value **or** exactly `"@me"`, so
+   near-miss typos (`"@Me"`, `" @me"`) fail at authoring time instead of becoming a
+   malformed `$in` at query time (review M1b). At query time the server
    substitutes the caller's full principal set:
 
    ```jsonc
@@ -46,10 +51,18 @@ move, generalized to an author-chosen field.
    `person:me ∈ principals`, and a group-valued `assignee` (the headless-department
    `group:managers` fallback) lands in **every** member's inbox.
 
-2. **Substitution point**: `mangoSelector` gains a `principals` argument; both list
-   routes (unscoped alias and app-scoped) pass the scope they already computed. No
-   engine, envelope, client, or MCP change. **Fail-closed**: an empty principal set
-   substitutes `$in: []`, which matches nothing.
+2. **Substitution point** (corrected by review M5): there is exactly **one**
+   `mangoSelector` caller — the app-scoped list route (`GET
+   /api/apps/:appId/views/:id/documents`); unscoped requests are rejected by
+   `appContextFromRequest` (ADR-0015). `mangoSelector` gains a **required**
+   `principals` argument so any future caller must decide, and the route passes the
+   scope it already computed. No engine, envelope, client, or MCP change — MCP reaches
+   the same HTTP route through `lotus-client`, so `@me` resolves to the MCP session's
+   authenticated user, never a service principal. **Fail-closed**: an empty principal
+   set substitutes `$in: []` (matches nothing), and `$in` never matches an **absent**
+   field — a submitted document without an `assignee` appears in nobody's personal
+   inbox and remains reachable only via the shared worklist (review M8; asserted in
+   the suite).
 
 3. **Narrowing only, by construction**: the substituted predicate is AND-ed with the
    existing `accessSelector(scope)` and the JS `canReadDocument` post-filter — `@me` can
@@ -66,6 +79,27 @@ move, generalized to an author-chosen field.
 5. **Reserved token**: a document whose data value is literally `"@me"` in a filtered
    field cannot be targeted by a filter for that literal. Accepted (Notes-style reserved
    `@`-name); the token is reserved only in filter values, never in payloads.
+
+6. **Dead `readers`/`authors` filters rejected** (review M2): a `ViewFilter` on the
+   `readers` or `authors` envelope fields has always been silently dead — the route
+   spreads `accessSelector(scope)` over the same selector key *after* the view's
+   filters, so the author's predicate never applies. Validation now rejects such
+   filters at authoring time (the one shipped instance is the expense fossil this ADR
+   removes). Already-deployed definitions with dead filters keep listing unchanged
+   (validation runs on save, not read).
+
+7. **Runtime floor / mixed versions** (review M3): view definitions are replicated
+   data. A definition carrying `"@me"` that reaches a node running pre-ADR-0020 code
+   renders `{ $in: "@me" }` — a Mango 400 on that view's list route (recognizable
+   symptom). `@me` views therefore require every node at or above this build;
+   pre-release, code and definitions roll together via the reseed policy (ADR-0019
+   precedent). A capability/schema-version gate is deliberately out of scope.
+
+8. **ACL precedence is pinned, not assumed** (review M4): a regression test asserts
+   that a document whose `assignee` matches the caller but whose `readers` exclude the
+   caller is absent from that caller's inbox — so a future refactor of the selector
+   spread order or the `canReadDocument` post-filter fails a test instead of widening
+   visibility.
 
 ## Performance
 
