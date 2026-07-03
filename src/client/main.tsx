@@ -1835,6 +1835,7 @@ function DirectoryConsole({
   onSelectView,
   onBack,
   onRefresh,
+  canManage,
   onCreatePerson,
   onUpdatePerson,
   onResetPassword,
@@ -1848,6 +1849,7 @@ function DirectoryConsole({
   onSelectView: (viewId: string) => void;
   onBack: () => void;
   onRefresh: () => void;
+  canManage: boolean;
   onCreatePerson: (payload: { username: string; displayName: string; password: string }) => void;
   onUpdatePerson: (person: PublicPerson, payload: { displayName: string; active: boolean }) => void;
   onResetPassword: (person: PublicPerson, password: string) => void;
@@ -1868,6 +1870,7 @@ function DirectoryConsole({
 
   const people = directory?.people ?? [];
   const groups = directory?.groups ?? [];
+  const peopleById = new Map(people.map((person) => [person._id, person]));
   const sections = [
     { id: "view:people", title: "People" },
     { id: "view:groups", title: "Groups" },
@@ -1916,52 +1919,60 @@ function DirectoryConsole({
                       <h2>Directory people</h2>
                     </div>
                   </div>
-                  <form
-                    className="inlineForm"
-                    data-testid="person-create-form"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      onCreatePerson(newPerson);
-                      setNewPerson({ username: "", displayName: "", password: "" });
-                    }}
-                  >
-                    <input placeholder="username" value={newPerson.username} data-testid="person-new-username" onChange={(event) => setNewPerson({ ...newPerson, username: event.target.value })} />
-                    <input placeholder="display name" value={newPerson.displayName} data-testid="person-new-display" onChange={(event) => setNewPerson({ ...newPerson, displayName: event.target.value })} />
-                    <input placeholder="password" type="password" value={newPerson.password} data-testid="person-new-password" onChange={(event) => setNewPerson({ ...newPerson, password: event.target.value })} />
-                    <button className="primary" disabled={busy} data-testid="person-create">
-                      <User size={16} /> Create person
-                    </button>
-                  </form>
+                  {canManage && (
+                    <form
+                      className="inlineForm"
+                      data-testid="person-create-form"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        onCreatePerson(newPerson);
+                        setNewPerson({ username: "", displayName: "", password: "" });
+                      }}
+                    >
+                      <input placeholder="username" value={newPerson.username} data-testid="person-new-username" onChange={(event) => setNewPerson({ ...newPerson, username: event.target.value })} />
+                      <input placeholder="display name" value={newPerson.displayName} data-testid="person-new-display" onChange={(event) => setNewPerson({ ...newPerson, displayName: event.target.value })} />
+                      <input placeholder="password" type="password" value={newPerson.password} data-testid="person-new-password" onChange={(event) => setNewPerson({ ...newPerson, password: event.target.value })} />
+                      <button className="primary" disabled={busy} data-testid="person-create">
+                        <User size={16} /> Create person
+                      </button>
+                    </form>
+                  )}
                   <div className="definitionList">
                     {people.map((person) => {
                       const edit = personEdits[person._id] ?? { displayName: person.displayName, active: person.active };
                       return (
                         <article className="definitionCard directoryCard" key={person._id} data-testid={`person-row-${person.username}`}>
                           <strong>{personLabel(person)}</strong>
-                          <label>
-                            Display
-                            <input value={edit.displayName} data-testid={`person-display-${person.username}`} onChange={(event) => setPersonEdits((current) => ({ ...current, [person._id]: { ...edit, displayName: event.target.value } }))} />
-                          </label>
-                          <label className="checkLabel">
-                            <input type="checkbox" checked={edit.active} data-testid={`person-active-${person.username}`} onChange={(event) => setPersonEdits((current) => ({ ...current, [person._id]: { ...edit, active: event.target.checked } }))} />
-                            Active
-                          </label>
-                          <button onClick={() => onUpdatePerson(person, personEdits[person._id] ?? edit)} disabled={busy} data-testid={`person-save-${person.username}`}>
-                            <Save size={16} /> Save
-                          </button>
-                          {edit.active ? (
-                            <button onClick={() => onUpdatePerson(person, { ...(personEdits[person._id] ?? edit), active: false })} disabled={busy} data-testid={`person-deactivate-${person.username}`}>
-                              Deactivate
-                            </button>
+                          {canManage ? (
+                            <>
+                              <label>
+                                Display
+                                <input value={edit.displayName} data-testid={`person-display-${person.username}`} onChange={(event) => setPersonEdits((current) => ({ ...current, [person._id]: { ...edit, displayName: event.target.value } }))} />
+                              </label>
+                              <label className="checkLabel">
+                                <input type="checkbox" checked={edit.active} data-testid={`person-active-${person.username}`} onChange={(event) => setPersonEdits((current) => ({ ...current, [person._id]: { ...edit, active: event.target.checked } }))} />
+                                Active
+                              </label>
+                              <button onClick={() => onUpdatePerson(person, personEdits[person._id] ?? edit)} disabled={busy} data-testid={`person-save-${person.username}`}>
+                                <Save size={16} /> Save
+                              </button>
+                              {edit.active ? (
+                                <button onClick={() => onUpdatePerson(person, { ...(personEdits[person._id] ?? edit), active: false })} disabled={busy} data-testid={`person-deactivate-${person.username}`}>
+                                  Deactivate
+                                </button>
+                              ) : (
+                                <button onClick={() => onUpdatePerson(person, { ...(personEdits[person._id] ?? edit), active: true })} disabled={busy} data-testid={`person-activate-${person.username}`}>
+                                  Activate
+                                </button>
+                              )}
+                              <input placeholder="new password" type="password" value={passwords[person._id] ?? ""} data-testid={`person-password-${person.username}`} onChange={(event) => setPasswords((current) => ({ ...current, [person._id]: event.target.value }))} />
+                              <button onClick={() => onResetPassword(person, passwords[person._id] ?? "")} disabled={busy} data-testid={`person-reset-${person.username}`}>
+                                <RotateCcw size={16} /> Reset password
+                              </button>
+                            </>
                           ) : (
-                            <button onClick={() => onUpdatePerson(person, { ...(personEdits[person._id] ?? edit), active: true })} disabled={busy} data-testid={`person-activate-${person.username}`}>
-                              Activate
-                            </button>
+                            <span>{person.active ? "Active" : "Inactive"}</span>
                           )}
-                          <input placeholder="new password" type="password" value={passwords[person._id] ?? ""} data-testid={`person-password-${person.username}`} onChange={(event) => setPasswords((current) => ({ ...current, [person._id]: event.target.value }))} />
-                          <button onClick={() => onResetPassword(person, passwords[person._id] ?? "")} disabled={busy} data-testid={`person-reset-${person.username}`}>
-                            <RotateCcw size={16} /> Reset password
-                          </button>
                         </article>
                       );
                     })}
@@ -1976,21 +1987,23 @@ function DirectoryConsole({
                       <h2>Direct memberships</h2>
                     </div>
                   </div>
-                  <form
-                    className="inlineForm"
-                    data-testid="group-create-form"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      onCreateGroup(newGroup);
-                      setNewGroup({ slug: "", name: "", members: [] });
-                    }}
-                  >
-                    <input placeholder="slug" value={newGroup.slug} data-testid="group-new-slug" onChange={(event) => setNewGroup({ ...newGroup, slug: event.target.value })} />
-                    <input placeholder="name" value={newGroup.name} data-testid="group-new-name" onChange={(event) => setNewGroup({ ...newGroup, name: event.target.value })} />
-                    <button className="primary" disabled={busy} data-testid="group-create">
-                      <Database size={16} /> Create group
-                    </button>
-                  </form>
+                  {canManage && (
+                    <form
+                      className="inlineForm"
+                      data-testid="group-create-form"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        onCreateGroup(newGroup);
+                        setNewGroup({ slug: "", name: "", members: [] });
+                      }}
+                    >
+                      <input placeholder="slug" value={newGroup.slug} data-testid="group-new-slug" onChange={(event) => setNewGroup({ ...newGroup, slug: event.target.value })} />
+                      <input placeholder="name" value={newGroup.name} data-testid="group-new-name" onChange={(event) => setNewGroup({ ...newGroup, name: event.target.value })} />
+                      <button className="primary" disabled={busy} data-testid="group-create">
+                        <Database size={16} /> Create group
+                      </button>
+                    </form>
+                  )}
                   <div className="definitionList">
                     {groups.map((group) => {
                       const slug = group._id.replace(/^group:/, "");
@@ -1998,21 +2011,31 @@ function DirectoryConsole({
                       return (
                         <article className="definitionCard directoryCard" key={group._id} data-testid={`group-row-${slug}`}>
                           <strong>{group.name}</strong>
-                          <label>
-                            Name
-                            <input value={edit.name} data-testid={`group-name-${slug}`} onChange={(event) => setGroupEdits((current) => ({ ...current, [group._id]: { ...edit, name: event.target.value } }))} />
-                          </label>
-                          <div className="memberGrid">
-                            {people.map((person) => (
-                              <label className="checkLabel" key={person._id}>
-                                <input type="checkbox" checked={edit.members.includes(person._id)} data-testid={`group-member-${slug}-${person.username}`} onChange={(event) => toggleMember(group, person._id, event.target.checked)} />
-                                {person.displayName}
+                          {canManage ? (
+                            <>
+                              <label>
+                                Name
+                                <input value={edit.name} data-testid={`group-name-${slug}`} onChange={(event) => setGroupEdits((current) => ({ ...current, [group._id]: { ...edit, name: event.target.value } }))} />
                               </label>
-                            ))}
-                          </div>
-                          <button onClick={() => onUpdateGroup(group, groupEdits[group._id] ?? edit)} disabled={busy} data-testid={`group-save-${slug}`}>
-                            <Save size={16} /> Save group
-                          </button>
+                              <div className="memberGrid">
+                                {people.map((person) => (
+                                  <label className="checkLabel" key={person._id}>
+                                    <input type="checkbox" checked={edit.members.includes(person._id)} data-testid={`group-member-${slug}-${person.username}`} onChange={(event) => toggleMember(group, person._id, event.target.checked)} />
+                                    {person.displayName}
+                                  </label>
+                                ))}
+                              </div>
+                              <button onClick={() => onUpdateGroup(group, groupEdits[group._id] ?? edit)} disabled={busy} data-testid={`group-save-${slug}`}>
+                                <Save size={16} /> Save group
+                              </button>
+                            </>
+                          ) : (
+                            <div className="memberGrid">
+                              {group.members.map((member) => (
+                                <span key={member}>{peopleById.get(member)?.displayName ?? member}</span>
+                              ))}
+                            </div>
+                          )}
                         </article>
                       );
                     })}
@@ -2491,6 +2514,7 @@ function App() {
           onSelectView={(viewId) => navigateNsf({ kind: "view", viewId }, false, "names")}
           onBack={() => navigateApp("catalog")}
           onRefresh={() => runDirectory("Refresh directory", refreshDirectory)}
+          canManage={platformState.session.accessLevel === "manager"}
           onCreatePerson={(payload) =>
             runDirectory("Create person", async () => {
               const result = await api<{ directory: DirectoryState }>("/api/names/people", {

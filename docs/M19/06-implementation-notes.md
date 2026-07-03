@@ -7,17 +7,17 @@ Implemented in commits:
 
 ## Delivered behavior
 
-- `GET /api/platform/state` now includes `systemApps`, with `setup.nsf` always advertised as the
+- `GET /api/platform/state` now includes `systemApps`, with `names.nsf` advertised as the
   platform directory/system app.
-- The catalog renders a System apps section and opens `setup.nsf`.
+- The catalog renders a System apps section and opens `names.nsf`.
 - `/setup.nsf` still renders first-run setup while setup is incomplete.
-- After setup completes, authenticated admins open `/setup.nsf` as the Directory Console.
-- Directory APIs are manager-protected and return sanitized People/Groups only.
+- After setup completes, active authenticated users open `/names.nsf` as the Directory Console.
+- Directory read is authenticated; mutations are manager-protected and return sanitized People/Groups only.
 - Admins can create people, edit display names, reset passwords, activate/deactivate users, create
   groups, and edit direct person membership.
 - Deactivating a person deletes their active sessions from `platform_app`.
 - The server rejects updates that would leave `group:admins` with no active member.
-- `/api/reset` now recreates `setup_app` and `platform_app` before deterministic e2e seeding.
+- `/api/reset` now recreates `names_app` and `platform_app` before deterministic e2e seeding.
 
 ## Verification
 

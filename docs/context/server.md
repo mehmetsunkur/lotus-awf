@@ -100,9 +100,10 @@ the server's own behavior.
   `readers`/`authors`.
 - Directory/session (M18/M19, ADR-0012): `person:*` and `group:*` live in `names_app` (the
   `names.nsf` directory); `session:*` lives in `platform_app`. `POST /api/session/login` sets the HTTP-only `lotus_session` cookie, and
-  `requireSession()` resolves the request to a principal scope before protected routes run. M19 adds
-  manager-only `/api/names/directory`, `/api/names/people*`, and `/api/names/groups*` APIs (ADR-0012);
-  responses are sanitized and never expose password hashes/salts or session tokens.
+  `requireSession()` resolves the request to a principal scope before protected routes run. `GET
+  /api/names/directory` is readable by any active authenticated person; `/api/names/people*` and
+  `/api/names/groups*` mutations remain manager-only. Responses are sanitized and never expose
+  password hashes/salts or session tokens.
 - Formula fields (ADR-0014): `GET /api/apps/:appId/documents/:id/formulas` resolves a document's
   `type: "formula"` fields via `resolveFormulaFields` → `evaluateFormulaAsync` (the async lane). A
   per-request `DbReader` reads the LOCAL replica of the target app (`resolveBusinessApp` → `getBusinessDocs`,

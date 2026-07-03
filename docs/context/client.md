@@ -57,8 +57,10 @@ resolution panel, and M18 login/logout.
   right-content workspace as business apps. Catalog sections are System Apps, Installed Apps, and
   Sample Templates; names sections are People, Groups, and Installed Apps.
 - Directory Console (M19/M20, ADR-0012) → catalog System apps card opens `/names.nsf/views/people`; the console
-  fetches `GET /api/names/directory` and calls manager-only People/Groups APIs. It renders only public
-  person data, groups, and installed-app summaries inside the standard workspace.
+  fetches `GET /api/names/directory` for any active authenticated person and calls manager-only
+  People/Groups mutation APIs. Non-managers get a read-only directory; managers see create/edit,
+  password, active-state, and group-membership controls. It renders only public person data, groups,
+  and installed-app summaries inside the standard workspace.
 - Edit → shared `validatePayload` runs client-side → `POST/PUT /api/apps/:appId/documents` (local replica).
 - Compute (M7) → `applyComputedFields` (shared) derives `compute` fields from the live draft, offline;
   computed fields render read-only and recompute as inputs change.

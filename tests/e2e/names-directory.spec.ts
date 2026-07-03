@@ -52,7 +52,11 @@ test.describe("names.nsf system app", () => {
       data: { username: "charlie", password: "password123" }
     });
     expect(charlieLogin.ok()).toBeTruthy();
-    const forbidden = await charlieApi.get("/api/names/directory");
+    const readable = await charlieApi.get("/api/names/directory");
+    expect(readable.ok()).toBeTruthy();
+    const forbidden = await charlieApi.post("/api/names/people", {
+      data: { username: "dana", displayName: "Dana Directory", password: "password123" }
+    });
     expect(forbidden.status()).toBe(403);
     await charlieApi.dispose();
 
@@ -104,5 +108,38 @@ test.describe("names.nsf system app", () => {
     await page.getByTestId("view-tab-view:people").click();
     await page.getByTestId("person-deactivate-alice").click();
     await expect(page.getByTestId("message")).toContainText("At least one active admin is required");
+  });
+
+  test("authenticated non-admins can open names.nsf read-only", async ({ browser, apiBaseURL, bobApi }) => {
+    const directory = await bobApi.get("/api/names/directory");
+    expect(directory.ok()).toBeTruthy();
+    const body = await directory.json();
+    expect(body.people.map((person: { username: string }) => person.username)).toContain("alice");
+    expect(JSON.stringify(body)).not.toContain("passwordHash");
+
+    const forbidden = await bobApi.put("/api/names/groups/sales", {
+      data: { name: "Sales", members: ["person:bob", "person:alice"] }
+    });
+    expect(forbidden.status()).toBe(403);
+
+    const context = await browser.newContext({ baseURL: apiBaseURL });
+    const bobPage = await context.newPage();
+    await bobPage.goto("/login.nsf");
+    await bobPage.getByTestId("login-username").fill("bob");
+    await bobPage.getByTestId("login-password").fill("password123");
+    await bobPage.getByTestId("login-submit").click();
+    await expect(bobPage).toHaveURL(/\/catalog\.nsf/);
+
+    await bobPage.goto("/names.nsf");
+    await expect(bobPage.getByTestId("names-directory")).toBeVisible();
+    await expect(bobPage.getByTestId("person-row-alice")).toBeVisible();
+    await expect(bobPage.getByTestId("person-create-form")).toBeHidden();
+    await expect(bobPage.getByTestId("person-save-alice")).toBeHidden();
+
+    await bobPage.getByTestId("view-tab-view:groups").click();
+    await expect(bobPage.getByTestId("group-row-admins")).toBeVisible();
+    await expect(bobPage.getByTestId("group-create-form")).toBeHidden();
+    await expect(bobPage.getByTestId("group-save-admins")).toBeHidden();
+    await context.close();
   });
 });

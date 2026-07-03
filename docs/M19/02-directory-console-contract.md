@@ -8,11 +8,11 @@
 {
   "systemApps": [
     {
-      "appId": "setup",
-      "title": "Setup",
-      "database": "setup_app",
-      "route": "/setup.nsf",
-      "description": "Directory, groups, and platform administration."
+      "appId": "names",
+      "title": "Directory",
+      "database": "names_app",
+      "route": "/names.nsf",
+      "description": "People, groups, and directory administration."
     }
   ]
 }
@@ -22,7 +22,7 @@ System apps are always present and are not `appinstall:*` records.
 
 ## Directory response
 
-`GET /api/setup/directory` returns sanitized directory data:
+`GET /api/names/directory` returns sanitized directory data:
 
 ```json
 {
@@ -51,14 +51,15 @@ Password hashes, salts, and session tokens are never returned.
 
 ## APIs
 
-All M19 directory APIs require an authenticated manager session.
+`GET /api/names/directory` requires an active authenticated session and is readable by every logged-in
+person. Directory mutations require an authenticated manager session.
 
-- `GET /api/setup/directory`
-- `POST /api/setup/people`
-- `PUT /api/setup/people/:username`
-- `POST /api/setup/people/:username/password`
-- `POST /api/setup/groups`
-- `PUT /api/setup/groups/:slug`
+- `GET /api/names/directory`
+- `POST /api/names/people`
+- `PUT /api/names/people/:username`
+- `POST /api/names/people/:username/password`
+- `POST /api/names/groups`
+- `PUT /api/names/groups/:slug`
 
 People:
 

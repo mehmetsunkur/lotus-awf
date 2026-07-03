@@ -276,6 +276,10 @@ async function appAccessLevel(principals: string[], db = config.appDb): Promise<
   return bestAccessLevel(levels);
 }
 
+function platformAccessLevel(principals: string[]): AccessLevel {
+  return principals.includes("group:admins") ? "manager" : "reader";
+}
+
 async function sessionStateForPerson(person: PersonDocument): Promise<SessionState> {
   const groups = (await groupsForPerson("local", person._id)).map((group) => group._id);
   const principals = Array.from(new Set([person._id, ...groups]));
@@ -284,7 +288,7 @@ async function sessionStateForPerson(person: PersonDocument): Promise<SessionSta
     person: publicPerson(person),
     groups,
     principals,
-    accessLevel: await appAccessLevel(principals)
+    accessLevel: platformAccessLevel(principals)
   };
 }
 
@@ -1528,7 +1532,7 @@ app.post(
 app.get(
   "/api/names/directory",
   asyncRoute(async (request, response) => {
-    await requireSession(request, "manager");
+    await requireSession(request);
     response.json(await directoryState());
   })
 );
