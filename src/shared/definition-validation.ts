@@ -10,6 +10,7 @@ import type {
 } from "./types";
 import { evaluateBoolean } from "./expression";
 import { formulaBlockedToken, formulaSyntaxError } from "./formula";
+import { ME_SENTINEL } from "./view-query";
 import { findHandler, handlerHasKind } from "./handlers/manifest";
 import type { AgentDefinition, AuditPolicy, HandlerKind } from "./types";
 
@@ -144,6 +145,24 @@ function validateFilter(filter: ViewFilter, index: number): ValidationError[] {
   const errors: ValidationError[] = [];
   if (!nonEmpty(filter.field)) errors.push(error(`${prefix}.field`, "Filter field is required"));
   if (!FILTER_OPS.has(filter.op)) errors.push(error(`${prefix}.op`, `Filter op is invalid: ${String(filter.op)}`));
+  // ADR-0020: filters on the ACL envelope fields are always dead — the list
+  // route spreads accessSelector over the same selector keys after the view's
+  // filters, so an authored readers/authors predicate never applies (review M2).
+  if (filter.field === "readers" || filter.field === "authors") {
+    errors.push(error(`${prefix}.field`, `Filters on ${filter.field} are overridden by ACL filtering; use "@me" on a payload/envelope field instead`));
+  }
+  // ADR-0020 sentinel value-shape rules (review M1): "@me" must be the entire
+  // value and pairs only with `in`; and `in` itself requires an array or "@me",
+  // so near-miss typos fail at authoring instead of as a malformed Mango $in.
+  if (Array.isArray(filter.value) && filter.value.includes(ME_SENTINEL)) {
+    errors.push(error(`${prefix}.value`, `"@me" must be the entire filter value, not an array element`));
+  }
+  if (filter.value === ME_SENTINEL && filter.op !== "in") {
+    errors.push(error(`${prefix}.value`, `"@me" is only valid with the "in" op`));
+  }
+  if (filter.op === "in" && !Array.isArray(filter.value) && filter.value !== ME_SENTINEL) {
+    errors.push(error(`${prefix}.value`, `An "in" filter value must be an array or exactly "@me"`));
+  }
   return errors;
 }
 

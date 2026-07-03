@@ -56,6 +56,7 @@ import {
   stripDefinitionRev
 } from "../shared/template";
 import { applyComputedFields, coerceFieldValue, normalizePayload, validatePayload } from "../shared/validation";
+import { mangoSelector } from "../shared/view-query";
 import { evaluateFormulaAsync, type DbReader } from "../shared/formula";
 import {
   applyTransition,
@@ -805,18 +806,6 @@ async function conflictDetails(id: string, scope?: PrincipalScope, db = config.a
   );
 
   return { document: winning, winning, conflicts };
-}
-
-function mangoSelector(filters: ViewFilter[] = [], docType?: string) {
-  const selector: Record<string, unknown> = { kind: "document" };
-  if (docType) selector.docType = docType;
-
-  for (const filter of filters) {
-    const op = filter.op === "eq" ? "$eq" : filter.op === "ne" ? "$ne" : `$${filter.op}`;
-    selector[filter.field] = { [op]: filter.value };
-  }
-
-  return selector;
 }
 
 async function formForDocType(docType: string, db = config.appDb) {
@@ -1897,7 +1886,9 @@ app.get(
     const view = await getDoc<ViewDefinition>("local", routeParam(request.params.id), "", appContext.database);
     const sort = view.sort?.[0];
     const body: Record<string, unknown> = {
-      selector: { ...mangoSelector(view.filters, view.docType), ...accessSelector(scope) },
+      // ADR-0020: authored filters (incl. @me substitution from THIS caller's
+      // principals) first, ACL selector spread last so it always wins.
+      selector: { ...mangoSelector(view.filters, view.docType, principalsFor(scope)), ...accessSelector(scope) },
       limit: 200
     };
     if (sort && sort.field === "updatedAt") {
