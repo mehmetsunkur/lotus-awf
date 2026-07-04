@@ -1,0 +1,190 @@
+{
+  "kind": "template",
+  "templateId": "sample:kb",
+  "appId": "kb",
+  "version": "sample",
+  "createdAt": "2026-07-04T00:00:00.000Z",
+  "createdBy": "system:seed",
+  "source": "templates/kb/template.json",
+  "definitions": [
+    {
+      "_id": "acl:rules",
+      "kind": "acl",
+      "appId": "kb",
+      "policy": "kb.nsf: the company knowledge base. Handbook articles are for everyone (form defaultReaders); procedures are scoped to the team that wrote them via the ADR-0015 creator-principal mechanism — there is deliberately no per-document readers editor.",
+      "entries": [
+        {
+          "principal": "group:admins",
+          "level": "manager"
+        },
+        {
+          "principal": "group:employees",
+          "level": "reader"
+        }
+      ]
+    },
+    {
+      "_id": "app:config",
+      "kind": "app",
+      "appId": "kb",
+      "title": "Knowledge Base",
+      "database": "kb_app"
+    },
+    {
+      "_id": "audit:policy",
+      "kind": "auditpolicy",
+      "appId": "kb",
+      "retentionDays": 365
+    },
+    {
+      "_id": "form:article",
+      "kind": "form",
+      "appId": "kb",
+      "docType": "article",
+      "title": "Handbook article",
+      "defaultReaders": [
+        "group:employees"
+      ],
+      "sections": [
+        {
+          "title": "Article",
+          "fields": [
+            "title",
+            "body"
+          ]
+        }
+      ],
+      "fields": [
+        {
+          "name": "title",
+          "type": "text",
+          "label": "Title",
+          "required": true,
+          "searchable": true
+        },
+        {
+          "name": "body",
+          "type": "textarea",
+          "label": "Body",
+          "required": true,
+          "searchable": true
+        }
+      ]
+    },
+    {
+      "_id": "form:procedure",
+      "kind": "form",
+      "appId": "kb",
+      "docType": "procedure",
+      "title": "Team procedure",
+      "sections": [
+        {
+          "title": "Procedure",
+          "fields": [
+            "title",
+            "department",
+            "body"
+          ]
+        }
+      ],
+      "fields": [
+        {
+          "name": "title",
+          "type": "text",
+          "label": "Title",
+          "required": true,
+          "searchable": true
+        },
+        {
+          "name": "department",
+          "type": "text",
+          "label": "Department",
+          "required": true,
+          "searchable": true,
+          "helpText": "Slug of the owning department. Visibility comes from who CREATES the procedure (their principal set becomes the readers), not from this label."
+        },
+        {
+          "name": "body",
+          "type": "textarea",
+          "label": "Body",
+          "required": true,
+          "searchable": true
+        }
+      ]
+    },
+    {
+      "_id": "view:handbook",
+      "kind": "view",
+      "appId": "kb",
+      "docType": "article",
+      "title": "Handbook",
+      "columns": [
+        {
+          "field": "payload.title",
+          "label": "Title"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "article"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "view:procedures",
+      "kind": "view",
+      "appId": "kb",
+      "docType": "procedure",
+      "title": "Procedures",
+      "columns": [
+        {
+          "field": "payload.title",
+          "label": "Title"
+        },
+        {
+          "field": "payload.department",
+          "label": "Department"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "procedure"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    }
+  ]
+}

@@ -102,7 +102,8 @@
           "title": "Identity",
           "fields": [
             "person",
-            "title"
+            "title",
+            "jobDescription"
           ]
         },
         {
@@ -132,6 +133,13 @@
           "name": "title",
           "type": "text",
           "label": "Job title"
+        },
+        {
+          "name": "jobDescription",
+          "type": "textarea",
+          "label": "Job description",
+          "searchable": true,
+          "helpText": "What this person owns and reacts to, written at handbook altitude — responsibilities and processes, never app ids, view ids, or tools. Digital-twin agent personas (M27) receive this text as their entire brief."
         },
         {
           "name": "department",

@@ -154,6 +154,22 @@ history length, document count), so a refusing model and a substrate-thwarted mo
 Pre-staging is scripted through persona request contexts; agents perform only the behavior under
 test.
 
+The **digital-twin working day** (`tests/mcp/agent/twin.spec.ts`, M27) removes the scripted task
+entirely: one test per driver seeds `seedDigitalTwin()`
+(`tests/e2e/support/scenario-digital-twin.ts` — kb + turnaround apps under per-seed appIds, job
+descriptions on the org chart, KB articles/procedures scoped by authorship, a staged morning state
+of flights and expenses) and runs five sequential persona shifts (carol ×2, ivy, hank, grace). A
+shift's prompt is ONLY the persona's job description fetched from the org app plus one bootstrap
+pointer to the kb appId; prompt hygiene is a harness assertion (no other appId, no view/document
+id, no tool name). Per-shift oracles: liveness — every document in the shift's `@me` queue advanced
+along an allowed workflow edge (approve/reject and ramp-check/ground both pass); safety — the
+generalized security projection (`captureDocTypeProjection`/`withoutDocuments` in
+`state-snapshot.ts`) of everything outside the queue deep-equals the pre-shift snapshot. An evening
+oracle closes the day: all flights terminal with ADR-0018 hand-off cleared, the over-limit expense
+rejected per the KB finance procedure, background sets identical to morning, audit events present
+per flight. Retries are 1 in this suite (`test.describe.configure`) — a retry replays a whole
+seeded day. See `docs/M27/`.
+
 Pitfall: MCP server keys handed to the drivers must follow the `lotus-<surface>` convention. Bare
 `workspace` is a **reserved MCP server name** in the claude CLI (≥2.1.x) — a `--mcp-config` entry
 under that key is silently dropped at load (debug-level warn only), leaving the agent with no lotus

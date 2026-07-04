@@ -1,0 +1,318 @@
+{
+  "kind": "template",
+  "templateId": "sample:turnaround",
+  "appId": "turnaround",
+  "version": "sample",
+  "createdAt": "2026-07-04T00:00:00.000Z",
+  "createdBy": "system:seed",
+  "source": "templates/turnaround/template.json",
+  "definitions": [
+    {
+      "_id": "acl:rules",
+      "kind": "acl",
+      "appId": "turnaround",
+      "policy": "turnaround.nsf: flight operations schedules and dispatches; ground operations checks and fuels. Per-step authority is guard-gated on the ADR-0019 stamped department heads, not on app ACL level.",
+      "entries": [
+        {
+          "principal": "group:admins",
+          "level": "manager"
+        },
+        {
+          "principal": "group:flight-ops",
+          "level": "editor"
+        },
+        {
+          "principal": "group:ground-ops",
+          "level": "editor"
+        }
+      ]
+    },
+    {
+      "_id": "app:config",
+      "kind": "app",
+      "appId": "turnaround",
+      "title": "Turnaround",
+      "database": "turnaround_app"
+    },
+    {
+      "_id": "audit:policy",
+      "kind": "auditpolicy",
+      "appId": "turnaround",
+      "retentionDays": 365
+    },
+    {
+      "_id": "form:flight",
+      "kind": "form",
+      "appId": "turnaround",
+      "docType": "flight",
+      "title": "Flight",
+      "defaultReaders": [
+        "group:flight-ops",
+        "group:ground-ops"
+      ],
+      "sections": [
+        {
+          "title": "Flight",
+          "fields": [
+            "flightNumber",
+            "origin",
+            "destination",
+            "departureDate"
+          ]
+        },
+        {
+          "title": "Responsibility",
+          "fields": [
+            "opsHead",
+            "groundHead"
+          ]
+        }
+      ],
+      "fields": [
+        {
+          "name": "flightNumber",
+          "type": "text",
+          "label": "Flight number",
+          "required": true,
+          "searchable": true
+        },
+        {
+          "name": "origin",
+          "type": "text",
+          "label": "Origin",
+          "required": true,
+          "searchable": true
+        },
+        {
+          "name": "destination",
+          "type": "text",
+          "label": "Destination",
+          "required": true,
+          "searchable": true
+        },
+        {
+          "name": "departureDate",
+          "type": "date",
+          "label": "Departure date",
+          "required": true
+        },
+        {
+          "name": "opsHead",
+          "type": "text",
+          "label": "Flight operations head",
+          "mode": "computed",
+          "formula": "(await DbLookup('org', 'department', 'payload.slug', 'flight-ops', 'payload.head')) || 'group:managers'",
+          "helpText": "Server-stamped from the org chart: the head of flight operations (group:managers while that department is headless). Gates crew assignment and dispatch."
+        },
+        {
+          "name": "groundHead",
+          "type": "text",
+          "label": "Ground operations head",
+          "mode": "computed",
+          "formula": "(await DbLookup('org', 'department', 'payload.slug', 'ground-ops', 'payload.head')) || 'group:managers'",
+          "helpText": "Server-stamped from the org chart: the head of ground operations (group:managers while that department is headless). Gates fueling sign-off."
+        }
+      ]
+    },
+    {
+      "_id": "view:my-queue",
+      "kind": "view",
+      "appId": "turnaround",
+      "docType": "flight",
+      "title": "My Queue",
+      "columns": [
+        {
+          "field": "payload.flightNumber",
+          "label": "Flight"
+        },
+        {
+          "field": "payload.origin",
+          "label": "Origin"
+        },
+        {
+          "field": "payload.destination",
+          "label": "Destination"
+        },
+        {
+          "field": "payload.departureDate",
+          "label": "Departure"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "flight"
+        },
+        {
+          "field": "assignee",
+          "op": "in",
+          "value": "@me"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "view:board",
+      "kind": "view",
+      "appId": "turnaround",
+      "docType": "flight",
+      "title": "Board",
+      "columns": [
+        {
+          "field": "payload.flightNumber",
+          "label": "Flight"
+        },
+        {
+          "field": "payload.departureDate",
+          "label": "Departure"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        },
+        {
+          "field": "assignee",
+          "label": "Assigned to"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "flight"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "workflow:flight",
+      "kind": "workflow",
+      "appId": "turnaround",
+      "docType": "flight",
+      "title": "Flight Turnaround",
+      "initialState": "planned",
+      "states": [
+        {
+          "name": "planned",
+          "label": "Planned"
+        },
+        {
+          "name": "scheduled",
+          "label": "Scheduled",
+          "responsible": "group:managers",
+          "responsibleFormula": "payload.opsHead"
+        },
+        {
+          "name": "crew-assigned",
+          "label": "Crew assigned",
+          "responsible": "group:ground-ops"
+        },
+        {
+          "name": "ramp-checked",
+          "label": "Ramp checked",
+          "responsible": "group:ground-ops",
+          "responsibleFormula": "payload.groundHead"
+        },
+        {
+          "name": "fueled",
+          "label": "Fueled",
+          "responsible": "group:managers",
+          "responsibleFormula": "payload.opsHead"
+        },
+        {
+          "name": "dispatched",
+          "label": "Dispatched",
+          "final": true
+        },
+        {
+          "name": "grounded",
+          "label": "Grounded",
+          "final": true
+        }
+      ],
+      "transitions": [
+        {
+          "id": "schedule",
+          "label": "Schedule",
+          "from": "planned",
+          "to": "scheduled",
+          "guard": "principals.includes('group:flight-ops') && !!payload.opsHead && !!payload.groundHead",
+          "action": "audit-transition"
+        },
+        {
+          "id": "assign-crew",
+          "label": "Assign crew",
+          "from": "scheduled",
+          "to": "crew-assigned",
+          "guard": "principals.includes(payload.opsHead)",
+          "action": "audit-transition"
+        },
+        {
+          "id": "ramp-check",
+          "label": "Complete ramp check",
+          "from": "crew-assigned",
+          "to": "ramp-checked",
+          "guard": "principals.includes('group:ground-ops')",
+          "action": "audit-transition"
+        },
+        {
+          "id": "flag-fault",
+          "label": "Flag fault",
+          "from": "crew-assigned",
+          "to": "grounded",
+          "guard": "principals.includes('group:ground-ops')",
+          "action": "audit-transition"
+        },
+        {
+          "id": "fuel-signoff",
+          "label": "Fueling sign-off",
+          "from": "ramp-checked",
+          "to": "fueled",
+          "guard": "principals.includes(payload.groundHead)",
+          "action": "audit-transition"
+        },
+        {
+          "id": "dispatch",
+          "label": "Dispatch",
+          "from": "fueled",
+          "to": "dispatched",
+          "guard": "principals.includes(payload.opsHead)",
+          "action": "audit-transition"
+        }
+      ]
+    }
+  ]
+}

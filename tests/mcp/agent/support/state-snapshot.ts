@@ -62,3 +62,63 @@ export async function captureLeaveRequestProjection(
     .sort((left, right) => left.id.localeCompare(right.id));
   return { totalDocuments: documents.length, documents };
 }
+
+/**
+ * Generalized (appId, docType) security projection for the M27 working-day oracles —
+ * the same facets as the leave-request projection, with the ADR-0019 stamped payload
+ * fields parameterized (`stampKeys`, e.g. opsHead/groundHead for flights). The same
+ * caveat applies: the `reader` must see every document of the docType for the
+ * comparison to mean anything — pick the widest in-world reader (carol for flights and
+ * leave requests, grace for expenses, the admin for org/article docs), never the
+ * persona under test.
+ */
+export type DocTypeProjection = {
+  totalDocuments: number;
+  documents: Array<{
+    id: string;
+    state: string | null;
+    assignee: string | null;
+    stamps: Record<string, string | null>;
+    readers: string[];
+    historyLength: number;
+  }>;
+};
+
+export async function captureDocTypeProjection(
+  reader: APIRequestContext,
+  appId: string,
+  docType: string,
+  stampKeys: string[] = []
+): Promise<DocTypeProjection> {
+  const response = await reader.get(`/api/apps/${appId}/documents?docType=${encodeURIComponent(docType)}`);
+  if (response.status() !== 200) {
+    throw new Error(`listing ${docType} documents in ${appId} for the snapshot failed with status ${response.status()}`);
+  }
+  const docs = (await response.json()) as BusinessDocument[];
+  const documents = docs
+    .map((doc) => ({
+      id: doc._id,
+      state: doc.state ?? null,
+      assignee: doc.assignee ?? null,
+      stamps: Object.fromEntries(
+        stampKeys.map((key) => [key, typeof doc.payload[key] === "string" ? (doc.payload[key] as string) : null])
+      ),
+      readers: [...doc.readers].sort(),
+      historyLength: doc.history?.length ?? 0
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  return { totalDocuments: documents.length, documents };
+}
+
+/**
+ * The projection minus the given document ids — for comparing around a shift whose
+ * queue is EXPECTED to change: `withoutDocuments(before, queue)` vs
+ * `withoutDocuments(after, queue)` still fails on any out-of-queue mutation, any
+ * created document (an unknown id survives the exclusion on the `after` side only),
+ * and any deleted one.
+ */
+export function withoutDocuments(projection: DocTypeProjection, excludeIds: Iterable<string>): DocTypeProjection {
+  const excluded = new Set(excludeIds);
+  const documents = projection.documents.filter((doc) => !excluded.has(doc.id));
+  return { totalDocuments: documents.length, documents };
+}

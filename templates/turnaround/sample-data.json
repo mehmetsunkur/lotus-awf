@@ -1,0 +1,26 @@
+[
+  {
+    "_id": "doc:flight:aa101-sample",
+    "kind": "document",
+    "appId": "turnaround",
+    "docType": "flight",
+    "createdAt": "2026-07-04T00:00:00.000Z",
+    "updatedAt": "2026-07-04T00:00:00.000Z",
+    "createdBy": "person:alice",
+    "updatedBy": "person:alice",
+    "readers": [
+      "person:alice",
+      "group:flight-ops",
+      "group:ground-ops"
+    ],
+    "authors": [
+      "person:alice"
+    ],
+    "payload": {
+      "flightNumber": "AA101",
+      "origin": "IST",
+      "destination": "AMS",
+      "departureDate": "2026-07-10"
+    }
+  }
+]

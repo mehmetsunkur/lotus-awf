@@ -44,7 +44,9 @@ the server's own behavior.
 - `src/server/seed-data.ts` — compatibility helpers for scripts/e2e; loads the packaged Expense
   sample from the JSON template registry.
 - `src/server/template-registry.ts` — filesystem-backed bundled template loader for
-  `templates/expense/*`, `templates/org/*`, and `templates/leave-request/*` (M25); pure design validation lives in
+  `templates/expense/*`, `templates/org/*`, `templates/leave-request/*` (M25), and the M27
+  digital-twin pair `templates/kb/*` (handbook articles + authorship-scoped team procedures) and
+  `templates/turnaround/*` (multi-department flight workflow); pure design validation lives in
   `src/shared/template-validation.ts`.
 - `src/server/handlers/effects.ts` (M7) — server-only effect registry + `runEffect` (best-effort,
   in-memory log).
@@ -156,8 +158,15 @@ the server's own behavior.
   touching business docs. Runtime `agentrun:*` / `agent:state` / `auditevent:*` / `audit:state` docs
   are NOT packaged.
 - JSON templates (M17/ADR-0016): bundled templates (`templates/expense/*`, `templates/org/*`,
-  `templates/leave-request/*`) are
-  packaged design + demo docs. `instantiateTemplate` re-stamps them to a chosen appId when deploying via
+  `templates/leave-request/*`, and — M27 — `templates/kb/*` and `templates/turnaround/*`) are
+  packaged design + demo docs. The M27 pair backs the digital-twin tier: `kb` scopes team
+  procedures by AUTHORSHIP (creator principal set; no per-document readers API, by design) with a
+  `form:article`/`form:procedure` split, and `turnaround` chains a 4-hop cross-department workflow
+  (`workflow:flight`: planned → scheduled → crew-assigned → ramp-checked → fueled →
+  dispatched/grounded) whose per-hop authority is guard-gated on ADR-0019 computed heads
+  (`opsHead`/`groundHead`, org-chart DbLookups) with ADR-0020 `@me` queue views; the org
+  template's `form:employee` gained an optional `jobDescription` field (back-compatible, no
+  migration). `instantiateTemplate` re-stamps them to a chosen appId when deploying via
   `POST /api/platform/apps { fromTemplate }`; `seedDocuments()` remains a dev/scripts wrapper. The
   server validates the template artifact and each design doc, rejecting runtime/business docs from
   the design set. M18 also seeds sample directory records (Alice, Bob, `group:finance`,

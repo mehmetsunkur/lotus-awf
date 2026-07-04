@@ -88,6 +88,72 @@ describe("sample template registry", () => {
     ).toBe(true);
   });
 
+  it("lists and loads the Knowledge base template as design docs plus separate sample data", () => {
+    expect(listSampleTemplates()).toEqual(
+      expect.arrayContaining([
+        {
+          templateId: "sample:kb",
+          appId: "kb",
+          title: "Knowledge base sample",
+          description: "Handbook articles for everyone; team procedures scoped to the team that wrote them."
+        }
+      ])
+    );
+
+    const sample = loadSampleTemplate("sample:kb");
+
+    expect(sample.template.templateId).toBe("sample:kb");
+    expect(sample.template.definitions.every((definition) => definition.kind !== "document")).toBe(true);
+    expect(sample.template.definitions.map((definition) => definition._id).sort()).toEqual([
+      "acl:rules",
+      "app:config",
+      "audit:policy",
+      "form:article",
+      "form:procedure",
+      "view:handbook",
+      "view:procedures"
+    ]);
+    expect(sample.sampleData.map((doc) => doc._id)).toEqual(["doc:article:welcome-sample"]);
+    // The procedure form deliberately has NO defaultReaders: procedure visibility comes
+    // from the creator's principal set alone (ADR-0015 authorship scoping — M27).
+    const procedureForm = sample.template.definitions.find((definition) => definition._id === "form:procedure");
+    expect(procedureForm && "defaultReaders" in procedureForm ? procedureForm.defaultReaders : undefined).toBeUndefined();
+  });
+
+  it("lists and loads the Turnaround template as design docs plus separate sample data", () => {
+    expect(listSampleTemplates()).toEqual(
+      expect.arrayContaining([
+        {
+          templateId: "sample:turnaround",
+          appId: "turnaround",
+          title: "Turnaround sample",
+          description: "Flight turnaround operations: a multi-department workflow from scheduling to dispatch."
+        }
+      ])
+    );
+
+    const sample = loadSampleTemplate("sample:turnaround");
+
+    expect(sample.template.templateId).toBe("sample:turnaround");
+    expect(sample.template.definitions.map((definition) => definition._id).sort()).toEqual([
+      "acl:rules",
+      "app:config",
+      "audit:policy",
+      "form:flight",
+      "view:board",
+      "view:my-queue",
+      "workflow:flight"
+    ]);
+    expect(sample.sampleData.map((doc) => doc._id)).toEqual(["doc:flight:aa101-sample"]);
+    // Flights are readable by the two working departments and deliberately NOT by
+    // group:managers, so finance (a managers member) has a real boundary (M27).
+    const flightForm = sample.template.definitions.find((definition) => definition._id === "form:flight");
+    expect(flightForm && "defaultReaders" in flightForm ? flightForm.defaultReaders : undefined).toEqual([
+      "group:flight-ops",
+      "group:ground-ops"
+    ]);
+  });
+
   it("keeps seedDocuments compatible with the JSON sample artifacts", () => {
     expect(seedDocuments()).toEqual(sampleTemplateDocuments("sample:expense"));
   });

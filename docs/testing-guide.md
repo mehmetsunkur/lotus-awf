@@ -18,7 +18,8 @@ npm run build        # TypeScript no-emit check + Vite production build
 npm run test:unit    # Vitest shared/runtime unit tests
 npm run test:mcp     # MCP stdio integration tests; needs CouchDB pair + Express API
 npm run test:mcp:agent # Opt-in real-agent MCP acceptance (builder scenarios + M26 airline persona
-                     # scenarios over /mcp/workspace); writes playwright-report-mcp-agent
+                     # scenarios + M27 digital-twin working day over /mcp/workspace); writes
+                     # playwright-report-mcp-agent
 npm run test:e2e     # Playwright source-mode runtime tests; starts CouchDB pair
 npm run test:deploy  # M13 deploy artifact gate; requires Docker API access
 npm run seed:airline # seed the M25 Agentic Airlines scenario into a running server for manual testing
@@ -48,6 +49,8 @@ make k8s-dry-run     # Kubernetes manifest render check; requires kubectl
 | MCP agent interface | `npm run test:mcp` |
 | Runtime UI/API flows | `npm run test:e2e` |
 | Multi-persona scenario (M25) | `npm run test:e2e` — `scenario-agentic-airlines.spec.ts`; reusable fixture in `tests/e2e/support/scenario-agentic-airlines.ts` |
+| Digital-twin seeded world (M27) | `npm run test:e2e` — `scenario-digital-twin.spec.ts`; fixture in `tests/e2e/support/scenario-digital-twin.ts` |
+| Digital-twin working day (M27, agents) | `npm run test:mcp:agent` — `tests/mcp/agent/twin.spec.ts`; opt-in, self-skips without driver credentials |
 | ADR-0020 `@me` view filter performance | `npm run perf:me-filter -- --docs 10000 --runs 20`; local/dev measurements only |
 | Deploy packaging | `npm run test:deploy` |
 | Docker/compose shape | `docker compose -f deploy/compose.yml config` |

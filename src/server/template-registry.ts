@@ -53,6 +53,20 @@ const SAMPLE_TEMPLATES: Record<string, SampleTemplateFiles> = {
     appId: "leave-request",
     title: "Leave request sample",
     description: "Employees file leave requests; managers approve or reject them."
+  },
+  "sample:kb": {
+    templatePath: "templates/kb/template.json",
+    sampleDataPath: "templates/kb/sample-data.json",
+    appId: "kb",
+    title: "Knowledge base sample",
+    description: "Handbook articles for everyone; team procedures scoped to the team that wrote them."
+  },
+  "sample:turnaround": {
+    templatePath: "templates/turnaround/template.json",
+    sampleDataPath: "templates/turnaround/sample-data.json",
+    appId: "turnaround",
+    title: "Turnaround sample",
+    description: "Flight turnaround operations: a multi-department workflow from scheduling to dispatch."
   }
 };
 
