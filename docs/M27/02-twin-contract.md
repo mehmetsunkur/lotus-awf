@@ -110,7 +110,11 @@ and ivy, not carol.
 `seedDigitalTwin(admin, playwright)` composes on `seedAgenticAirlines()`:
 
 1. Deploy `kb` and `turnaround` under per-seed appIds (ADR-0016); re-point the
-   turnaround computed-field formulas to the per-seed org appId. KB access is granted
+   turnaround computed-field formulas to the per-seed org appId, and re-point
+   `form:article`'s `defaultReaders` from the template's generic `group:employees`
+   (inert in the airline world — that group intentionally does not exist) to the
+   airline staff groups, so handbook articles are company-wide here; a `sample:kb`
+   deployed OUTSIDE this fixture keeps the generic scoping. KB access is granted
    via the M22 editor (procedure authors' departments as authors, the rest as readers);
    turnaround needs no grant — its template ACL already names flight-ops and ground-ops
    as editors (the domain groups are inherent to a flight-domain template), and the
@@ -161,7 +165,10 @@ else the agent learns over `/mcp/workspace`.
 ## Shifts and oracles
 
 Oracles are scripted API reads (carol's context for flights — flight-ops covers every
-flight; grace's for expenses; admin for KB/org), never the transcript. Two oracle kinds
+flight; grace's for expenses; admin for org docs and KB articles; each department's own
+member — dave/ivy/grace — for that department's procedure slice, since authorship
+scoping means no single context, admin included, reads every procedure), never the
+transcript. Two oracle kinds
 per shift: **liveness** — the shift's queue got worked; **safety** — the security
 projection of everything else matches the pre-shift snapshot. The projection generalizes
 `state-snapshot.ts` to (appId, docType) pairs: flights, expenses, leave requests, KB

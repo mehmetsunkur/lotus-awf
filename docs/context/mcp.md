@@ -161,7 +161,8 @@ descriptions on the org chart, KB articles/procedures scoped by authorship, a st
 of flights and expenses) and runs five sequential persona shifts (carol ×2, ivy, hank, grace). A
 shift's prompt is ONLY the persona's job description fetched from the org app plus one bootstrap
 pointer to the kb appId; prompt hygiene is a harness assertion (no other appId, no view/document
-id, no tool name). Per-shift oracles: liveness — every document in the shift's `@me` queue advanced
+id, no tool name — with one carve-out: the expense app's fixed id is the English word "expense",
+so the assertion bans the quoted form only, since the bare word appears in job-description prose). Per-shift oracles: liveness — every document in the shift's `@me` queue advanced
 along an allowed workflow edge (approve/reject and ramp-check/ground both pass); safety — the
 generalized security projection (`captureDocTypeProjection`/`withoutDocuments` in
 `state-snapshot.ts`) of everything outside the queue deep-equals the pre-shift snapshot. An evening
