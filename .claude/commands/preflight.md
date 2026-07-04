@@ -6,7 +6,7 @@ allowed-tools: Bash(node:*), Read, Grep, Glob
 
 Current doc-sync state (so you can flag stale knowledge before trusting it):
 
-!`node "${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/doc-sync-scan.mjs"`
+!`node .claude/scripts/doc-sync-scan.mjs`
 
 You are running the preflight step before implementing this task:
 
