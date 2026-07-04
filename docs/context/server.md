@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `aa7ca63`
+- Last code review baseline: `fc10327`
 - Last reviewed date: `2026-07-04`
 - Code areas:
   - `src/server/**`
