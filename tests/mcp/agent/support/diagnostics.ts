@@ -13,6 +13,7 @@ type DiagnosticRole =
   | "spawn"
   | "stderr"
   | "stdout"
+  | "tool_transcript"
   | "config"
   | "template_before"
   | "template_after"

@@ -162,7 +162,10 @@ boundary probe with positive-oracle scenarios in the same run.
 
 Every real-agent run writes redacted diagnostics into the Playwright test output and attaches them
 to `playwright-report-mcp-agent`. The default report always includes `manifest.json`, `exit.json`,
-`events.jsonl`, `spawn.json`, `prompt.txt`, `final_message.txt`, and the oracle-exported app template
+`events.jsonl`, `spawn.json`, `prompt.txt`, `final_message.txt`, `tool-transcript.jsonl` (one line
+per MCP tool call — name plus input capped at 2 KB — distilled from the claude driver's
+`stream-json` stdout, so the report shows the agent's side of the run, not just the spec's scripted
+API steps), and the oracle-exported app template
 artifacts (`template-before-<appId>.json`, `template-after-<appId>.json`,
 `template-diff-<appId>.json`, `template-validation-<appId>.json`). The before/after diff compares
 normalized design definitions only, so volatile export metadata (`createdAt`, `version`,
@@ -175,7 +178,10 @@ artifacts provide local correlation data (run id, model, base URL, timestamps, e
 counts, and final text) for matching against LiteLLM logs; they do not by themselves prove
 server-side LiteLLM receipt.
 
-- **`ClaudeCodeDriver`** — `claude -p` with a temp `--mcp-config` (Bearer header). Reads the
+- **`ClaudeCodeDriver`** — `claude -p` with a temp `--mcp-config` (Bearer header), run with
+  `--output-format stream-json --verbose`: the NDJSON stream's final `result` line is the same
+  envelope the plain `json` format printed (parsing contract unchanged), and the assistant lines
+  feed `tool-transcript.jsonl`. Reads the
   suite-namespaced `LOTUS_AGENT_CLAUDE_*` vars and maps them onto the provider-native `ANTHROPIC_*`
   the CLI reads; each falls back to its `ANTHROPIC_*` counterpart, so inside a Claude Code session
   (where `ANTHROPIC_*` are pre-injected) it runs with zero extra config. Scrubs the parent's

@@ -159,8 +159,13 @@ export class ClaudeCodeDriver implements AgentDriver {
       "--mcp-config",
       configPath,
       "--strict-mcp-config",
+      // stream-json (NDJSON, requires --verbose in -p mode) instead of json: the stream
+      // carries every assistant turn including tool_use blocks, so the diagnostics can
+      // keep a tool-by-tool transcript. The final `result` line is the same envelope the
+      // plain json format used to print, so downstream parsing is unchanged in shape.
       "--output-format",
-      "json",
+      "stream-json",
+      "--verbose",
       "--dangerously-skip-permissions",
       "--allowedTools",
       allowedTools,
@@ -199,15 +204,48 @@ export class ClaudeCodeDriver implements AgentDriver {
         result?: string;
         total_cost_usd?: number;
       };
-      try {
-        raw = JSON.parse(stdout) as typeof raw;
-      } catch (error) {
+      // stream-json stdout is NDJSON. The last `type: "result"` line is the same envelope
+      // the plain json format printed; the assistant lines before it carry the tool_use
+      // blocks we distill into a compact, always-attached transcript.
+      const streamLines: Array<Record<string, unknown>> = [];
+      for (const line of stdout.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("{")) continue;
+        try {
+          streamLines.push(JSON.parse(trimmed) as Record<string, unknown>);
+        } catch {
+          // Non-JSON noise on stdout (e.g. a stray warning) — the raw line stays in stdout.log.
+        }
+      }
+      const resultLine = [...streamLines].reverse().find((entry) => entry.type === "result");
+      if (resultLine) {
+        raw = resultLine as typeof raw;
+      } else {
         raw = {
           is_error: true,
           subtype: "parse_error",
-          result: `Claude output was not valid JSON: ${error instanceof Error ? error.message : String(error)}`
+          result: `Claude stream output contained no result line (${streamLines.length} JSON lines parsed)`
         };
       }
+      const toolTranscript = streamLines
+        .filter((entry) => entry.type === "assistant")
+        .flatMap((entry) => {
+          const content = (entry as { message?: { content?: Array<Record<string, unknown>> } }).message?.content ?? [];
+          return content
+            .filter((block) => block.type === "tool_use")
+            .map((block) => ({
+              tool: String(block.name ?? ""),
+              // Inputs are capped so one bulky payload can't bloat the report; the full
+              // stream stays in stdout.log for verbose diagnostics.
+              input: JSON.stringify(block.input ?? {}).slice(0, 2000)
+            }));
+        });
+      diagnostics?.writeText(
+        "tool-transcript.jsonl",
+        "tool_transcript",
+        toolTranscript.map((call) => JSON.stringify(call)).join("\n"),
+        { attach: "always" }
+      );
       const ok = code === 0 && raw.is_error === false && raw.subtype === "success";
       const finalText = typeof raw.result === "string" ? raw.result : "";
       diagnostics?.writeText("final_message.txt", "final_message", finalText, { attach: "always" });
