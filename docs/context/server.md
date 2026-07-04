@@ -53,7 +53,9 @@ the server's own behavior.
 - `scripts/*.ts` — `seed`, `reset`, `replicate`, `force-conflict`, `force-state-conflict`,
   `acl-spike`, and `app` (M7 definitions-as-code `extract`/`apply` CLI). M25 adds
   `seed-airline.ts` (seed the Agentic Airlines scenario into a running server) and
-  `deploy-seed.sh` (deploy-stack one-shot: endpoint discovery, first-run setup, seed).
+  `deploy-seed.sh` (deploy-stack one-shot: endpoint discovery, first-run setup, seed);
+  `perf-me-filter.ts` is the ADR-0020 `@me` view-filter performance harness
+  (`npm run perf:me-filter`, see `docs/testing-guide.md`).
 - `Dockerfile` / `deploy/compose.yml` / `deploy/k8s/` — M13 deployable artifact topologies; no source
   bind mount; the image includes `templates/` for JSON-backed app installs.
 

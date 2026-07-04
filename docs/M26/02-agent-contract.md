@@ -37,7 +37,10 @@ submit it. Oracle:
   `payload.department = flight-ops` (ADR-0019 — any approver value the agent may have
   supplied was discarded); `assignee = person:carol` with `assignedAt` (ADR-0018).
 - `readers` are dave's principal set plus `group:managers`; audit trail records the
-  submit; grace/hank sessions cannot read it.
+  submit; hank's session cannot read it (hank is the head outside `group:managers`).
+  Grace CAN read it — she holds `group:managers`, and the form's `defaultReaders`
+  admit the whole group; read-scoping by department would be a substrate change, out
+  of scope here.
 
 ### P2 — Work the inbox (carol, Director of Flight Operations)
 

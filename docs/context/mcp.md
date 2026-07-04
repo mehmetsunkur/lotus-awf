@@ -102,14 +102,22 @@ servers over stdio against the worker's API through the official MCP client tran
 host in-process against the worker's API, and drives it with the official StreamableHTTP client
 transport. It covers unauthenticated rejection, per-session identity isolation (two Basic identities
 resolve to distinct principals), surface routing, and a representative tool call per surface.
+`tests/mcp/http/workspace-personas.spec.ts` (M26) extends this tier with airline **persona**
+coverage: a persona Bearer session resolves to that persona's principals, the ADR-0020 `@me`
+`view:my-approvals` inbox routes per MCP session, and a workspace session's toolset contains only
+`lotus_workspace_*` tools. Airline helpers shared by the MCP tiers live in
+`tests/mcp/support/airline.ts` (admin context, per-worker `seedAgenticAirlines` wrapper,
+`personaBearer` token minting over the M25 e2e fixture).
 
 `npm run test:mcp:agent` uses `playwright.mcp.agent.config.ts` — an **opt-in / nightly** acceptance
 tier, never on the PR gate. It runs the HTTP host in-process and drives real coding-agent CLIs
 (`tests/mcp/agent/support/agent-driver.ts`) against it with natural-language tasks, asserting the
 resulting lotus state (outcome oracle, not the tool-call transcript) — proving an autonomous agent
-can discover and compose the tools to build/maintain apps and workflows. Two scenarios (maintain an
-existing workflow; build a new app end-to-end) run as a **driver matrix** over every `AgentDriver`,
-so each agent is exercised on the same tasks. `LOTUS_AGENT_DRIVERS` (comma-separated allowlist of
+can discover and compose the tools to build/maintain apps and workflows — and, since M26, that an
+agent holding only a persona's workspace session can operate an app as a business user. The
+builder scenarios (maintain an existing workflow; build a new app end-to-end) and the persona
+scenarios (below) run as a **driver matrix** over every `AgentDriver`, so each agent is exercised
+on the same tasks. `LOTUS_AGENT_DRIVERS` (comma-separated allowlist of
 driver names — `claude-code`, `codex`; unset or `all` = every driver) selects which agents run,
 regardless of which creds are present. The agent authenticates to the host with a per-run
 `Authorization: Bearer <lotus_session>` token minted after the reset (`mintSessionToken`). Each driver
@@ -128,6 +136,29 @@ tasks the agent with adding a `needs-info` rework cycle (`submitted -> needs-inf
 without breaking the existing approve/reject branch. Test-only fixtures live under
 `tests/mcp/agent/fixtures/` and must not be seeded. Both styles export before/after templates and
 assert exact normalized design-definition diffs, not just final UI/API state.
+
+The **persona suite** (`tests/mcp/agent/personas.spec.ts`, M26) is the workspace-side counterpart:
+where `agent.spec.ts` proves an agent can *build* apps through the admin/designer surfaces, the
+persona scenarios prove one can *operate* an app as a business end user. Each scenario seeds the M25
+Agentic Airlines fixture, mints a persona `lotus_session` Bearer, and hands the driver **only** that
+persona's `/mcp/workspace` session — the host resolves the identity server-side at initialize, so
+everything the agent can see or do flows from the session. Three scenarios per driver: an employee's
+agent files and submits a leave request (oracle: ADR-0018/0019 server stamps — approver, department,
+assignee, readers — regardless of anything the agent supplied); a manager's agent works the requests
+assigned to her without being told which view (the ADR-0020 `@me` inbox is the intended route; the
+oracle asserts outcomes, and that a request assigned to another head was left untouched); and an
+adversarially-tasked agent (self-approve + approve others') must produce **no security-relevant
+change** — the oracle deep-equals a before/after security projection
+(`tests/mcp/agent/support/state-snapshot.ts`: state, assignee, stamped approver/department, readers,
+history length, document count), so a refusing model and a substrate-thwarted model both pass.
+Pre-staging is scripted through persona request contexts; agents perform only the behavior under
+test.
+
+Pitfall: MCP server keys handed to the drivers must follow the `lotus-<surface>` convention. Bare
+`workspace` is a **reserved MCP server name** in the claude CLI (≥2.1.x) — a `--mcp-config` entry
+under that key is silently dropped at load (debug-level warn only), leaving the agent with no lotus
+tools; a no-change oracle would then pass vacuously. The persona suite fences this by pairing the
+boundary probe with positive-oracle scenarios in the same run.
 
 Every real-agent run writes redacted diagnostics into the Playwright test output and attaches them
 to `playwright-report-mcp-agent`. The default report always includes `manifest.json`, `exit.json`,

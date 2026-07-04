@@ -16,5 +16,5 @@ deploy stack, `make deploy-seed` (`scripts/deploy-seed.sh`) is the one-shot: it 
 the reachable endpoint, completes first-run setup if needed, and seeds — so the full cycle
 is `make deploy-down && make deploy-up && make deploy-seed`.
 
-The AI-agents-via-MCP tier (Claude-driven personas over `/mcp/workspace`) is a planned
-follow-up, not part of M25.
+The AI-agents-via-MCP tier (agent personas over `/mcp/workspace`) landed as **M26** — see
+`docs/M26/`.
