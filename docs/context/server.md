@@ -57,7 +57,10 @@ the server's own behavior.
   `seed-airline.ts` (seed the Agentic Airlines scenario into a running server) and
   `deploy-seed.sh` (deploy-stack one-shot: endpoint discovery, first-run setup, seed);
   `perf-me-filter.ts` is the ADR-0020 `@me` view-filter performance harness
-  (`npm run perf:me-filter`, see `docs/testing-guide.md`).
+  (`npm run perf:me-filter`, see `docs/testing-guide.md`). M27 adds `explore-twin.ts`
+  (`npm run explore:twin`): boots the isolated testcontainers harness, seeds the
+  digital-twin world, and stays up for manual exploring — no compose stack or fixed
+  ports needed.
 - `Dockerfile` / `deploy/compose.yml` / `deploy/k8s/` — M13 deployable artifact topologies; no source
   bind mount; the image includes `templates/` for JSON-backed app installs.
 
