@@ -65,9 +65,11 @@ Per tick:
 4. Spawn the driver with ONLY `lotus-workspace` (persona Bearer) as in M26/M27;
    diagnostics land in a per-session directory on the daemon's disk.
 5. On completion: redact + cap each diagnostics file to 64 KB and `POST` it as an
-   `artifact` document (`sessionId` = the session's `_id`); `PUT` the outcome facts
-   onto the session payload; transition `complete` (run finished cleanly) or `fail`
-   (with `outcome` naming the reason). A failing run never crashes the tick.
+   `artifact` document (`sessionId` = the session's `_id`); write the outcome facts as
+   an operator-authored `outcome.json` artifact (NEVER a session-payload write —
+   `canEditDocument` is authors-only; see the form section above and the ADR-0021
+   amendment); transition `complete` (run finished cleanly) or `fail` (with the
+   artifact's `outcome` naming the reason). A failing run never crashes the tick.
 
 Startup sweep: any session already in `running` belongs to a dead operator
 (single-operator deployment) — `fail` it with `outcome: orphaned` before entering the

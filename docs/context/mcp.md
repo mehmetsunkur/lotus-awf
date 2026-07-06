@@ -6,9 +6,12 @@
 - Last reviewed date: `2026-07-06`
 - Code areas:
   - `src/mcp/**`
+  - `src/operator/**`
 - Tests:
   - `tests/unit/workflow-patches.spec.ts`
+  - `tests/unit/operator-prompt.spec.ts`
   - `tests/mcp/**`
+  - `tests/e2e/agent-operator.spec.ts`
 - Config/runtime areas:
   - `package.json`
   - `deploy/k8s/**`
@@ -111,7 +114,8 @@ coverage: a persona Bearer session resolves to that persona's principals, the AD
 
 `npm run test:mcp:agent` uses `playwright.mcp.agent.config.ts` — an **opt-in / nightly** acceptance
 tier, never on the PR gate. It runs the HTTP host in-process and drives real coding-agent CLIs
-(`tests/mcp/agent/support/agent-driver.ts`) against it with natural-language tasks, asserting the
+(`src/operator/agent-driver.ts` — promoted from test support in M28) against it with
+natural-language tasks, asserting the
 resulting lotus state (outcome oracle, not the tool-call transcript) — proving an autonomous agent
 can discover and compose the tools to build/maintain apps and workflows — and, since M26, that an
 agent holding only a persona's workspace session can operate an app as a business user. The

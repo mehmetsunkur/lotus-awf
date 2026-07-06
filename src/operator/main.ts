@@ -14,6 +14,18 @@ function required(name: string): string {
   return value;
 }
 
+/** Numeric env with the same startup strictness as required(): a malformed value must
+ *  fail loudly here, not become NaN downstream (a NaN daily cap would fail OPEN). */
+function numeric(name: string, fallback: number, minimum: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < minimum) {
+    throw new Error(`${name} must be a number >= ${minimum} (got "${raw}")`);
+  }
+  return value;
+}
+
 function main(): void {
   const config: OperatorConfig = {
     apiUrl: required("LOTUS_OPERATOR_API_URL"),
@@ -25,8 +37,8 @@ function main(): void {
     orgAppId: process.env.LOTUS_OPERATOR_ORG_APP_ID?.trim() || "org",
     kbAppId: process.env.LOTUS_OPERATOR_KB_APP_ID?.trim() || "kb",
     companyName: process.env.LOTUS_OPERATOR_COMPANY_NAME?.trim() || "the company",
-    pollMs: Number(process.env.LOTUS_OPERATOR_POLL_MS ?? 15000),
-    maxSessionsPerDay: Number(process.env.LOTUS_OPERATOR_MAX_SESSIONS_PER_DAY ?? 20),
+    pollMs: numeric("LOTUS_OPERATOR_POLL_MS", 15000, 250),
+    maxSessionsPerDay: numeric("LOTUS_OPERATOR_MAX_SESSIONS_PER_DAY", 20, 0),
     diagnosticsRoot: resolve(process.env.LOTUS_OPERATOR_DIAGNOSTICS_DIR ?? "agent-operator-diagnostics")
   };
   mkdirSync(config.diagnosticsRoot, { recursive: true });

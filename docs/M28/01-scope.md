@@ -2,9 +2,10 @@
 
 ## In scope
 
-- **A sixth bundled template, `agent-ops`**: `form:agent-session` (persona, driver,
-  requestedBy, and operator-stamped outcome facts: startedAt/finishedAt, exit summary,
-  final text excerpt), `form:artifact` (sessionId, name, capped text content),
+- **A sixth bundled template, `agent-ops`**: `form:agent-session` (persona and driver
+  only — outcome facts moved to an operator-authored `outcome.json` artifact at
+  implementation, since `canEditDocument` is authors-only; see the ADR-0021 amendment
+  and `02-operator-contract.md`), `form:artifact` (sessionId, name, capped text content),
   `workflow:agent-session` (`requested → running → completed | failed`; `requested` is
   responsible `group:agent-operators` so sessions land in the operator's ADR-0020 `@me`
   queue; the `claim` transition `requested → running` is guard-gated on

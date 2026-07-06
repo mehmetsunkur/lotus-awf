@@ -73,10 +73,17 @@ export async function mintPersonaToken(apiUrl: string, username: string, passwor
   return token;
 }
 
-/** Cap artifact content for document storage; the full file stays on disk. */
+/** Cap artifact content for document storage; the full file stays on disk. The cap is
+ *  in BYTES (documents replicate to every reader's local replica), and truncation
+ *  lands on a code-point boundary — a cut multibyte sequence decodes to U+FFFD, which
+ *  is stripped from the tail rather than stored. */
 export function capArtifactContent(content: string): string {
-  if (content.length <= ARTIFACT_CONTENT_CAP) return content;
-  return `${content.slice(0, ARTIFACT_CONTENT_CAP)}\n[truncated by operator: full file retained on the operator host]`;
+  if (Buffer.byteLength(content, "utf8") <= ARTIFACT_CONTENT_CAP) return content;
+  const truncated = Buffer.from(content, "utf8")
+    .subarray(0, ARTIFACT_CONTENT_CAP)
+    .toString("utf8")
+    .replace(/�+$/, "");
+  return `${truncated}\n[truncated by operator: full file retained on the operator host]`;
 }
 
 export class AgentOperator {
@@ -155,7 +162,10 @@ export class AgentOperator {
     await this.sweepOrphans();
     while (!this.stopping) {
       const result = await this.tick();
-      if (result.kind === "idle" || result.kind === "capped") {
+      // Sleep on everything that didn't just finish a session: idle/capped obviously,
+      // and lost-claim too — a second instance winning races while the view still
+      // reports `requested` must not spin claim -> 422 -> re-query without backoff.
+      if (result.kind !== "completed" && result.kind !== "failed") {
         await new Promise((resolve) => setTimeout(resolve, this.config.pollMs));
       }
     }
