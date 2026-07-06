@@ -1,8 +1,8 @@
 import { test, expect } from "../support/fixtures";
 import { startAgentMcpHost, ALICE_AUTH, mintSessionToken, type AgentMcpHost } from "./support/mcp-host";
 import { connectHttpMcp, type LotusHttpMcpClient } from "../http/support/http-client";
-import { ClaudeCodeDriver, CodexDriver, type AgentDriver } from "./support/agent-driver";
-import { createAgentDiagnostics, type AgentDiagnostics } from "./support/diagnostics";
+import { ClaudeCodeDriver, CodexDriver, type AgentDriver } from "../../../src/operator/agent-driver";
+import { createAgentDiagnostics, type AgentDiagnostics } from "../../../src/operator/diagnostics";
 import {
   assertTemplateDiff,
   exportValidateAndDiffTemplate,

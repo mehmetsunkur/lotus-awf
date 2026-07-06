@@ -1,8 +1,9 @@
 import type { APIRequestContext, PlaywrightWorkerArgs } from "@playwright/test";
 import { test, expect } from "../support/fixtures";
 import { startAgentMcpHost, type AgentMcpHost } from "./support/mcp-host";
-import { ClaudeCodeDriver, CodexDriver, type AgentDriver } from "./support/agent-driver";
-import { createAgentDiagnostics, type AgentDiagnostics } from "./support/diagnostics";
+import { ClaudeCodeDriver, CodexDriver, type AgentDriver } from "../../../src/operator/agent-driver";
+import { createAgentDiagnostics, type AgentDiagnostics } from "../../../src/operator/diagnostics";
+import { assembleShiftPrompt } from "../../../src/operator/prompt";
 import {
   captureDocTypeProjection,
   withoutDocuments,
@@ -125,14 +126,15 @@ test.describe("MCP digital-twin working day", () => {
     const jobDescription = employee.payload.jobDescription;
     expect(typeof jobDescription, `${username} must have a seeded job description`).toBe("string");
     const identity = AIRLINE_PERSONAS[username];
-    return [
-      `You are ${identity.displayName}, ${identity.jobTitle} at Agentic Airlines PLC.`,
-      `The company handbook is the app "${twin.kbAppId}" — consult it to learn how the company`,
-      "works. Then carry out your working day.",
-      "",
-      "Your job description:",
-      jobDescription as string
-    ].join("\n");
+    // Shared with the M28 operator daemon — the hygiene assertion below therefore
+    // also fences the daemon's derived prompts (ADR-0021).
+    return assembleShiftPrompt({
+      displayName: identity.displayName,
+      jobTitle: identity.jobTitle,
+      companyName: "Agentic Airlines PLC",
+      kbAppId: twin.kbAppId,
+      jobDescription: jobDescription as string
+    });
   }
 
   /**

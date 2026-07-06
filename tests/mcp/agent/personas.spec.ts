@@ -1,8 +1,8 @@
 import type { APIRequestContext, PlaywrightWorkerArgs } from "@playwright/test";
 import { test, expect } from "../support/fixtures";
 import { startAgentMcpHost, type AgentMcpHost } from "./support/mcp-host";
-import { ClaudeCodeDriver, CodexDriver, type AgentDriver } from "./support/agent-driver";
-import { createAgentDiagnostics, type AgentDiagnostics } from "./support/diagnostics";
+import { ClaudeCodeDriver, CodexDriver, type AgentDriver } from "../../../src/operator/agent-driver";
+import { createAgentDiagnostics, type AgentDiagnostics } from "../../../src/operator/diagnostics";
 import { captureLeaveRequestProjection } from "./support/state-snapshot";
 import {
   airlinePersonaContext,

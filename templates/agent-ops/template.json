@@ -1,0 +1,344 @@
+{
+  "kind": "template",
+  "templateId": "sample:agent-ops",
+  "appId": "agent-ops",
+  "version": "sample",
+  "createdAt": "2026-07-06T00:00:00.000Z",
+  "createdBy": "system:seed",
+  "source": "templates/agent-ops/template.json",
+  "definitions": [
+    {
+      "_id": "acl:rules",
+      "kind": "acl",
+      "appId": "agent-ops",
+      "policy": "agent-ops.nsf: agent sessions as documents (ADR-0021). Requesters file sessions; the operator daemon claims and works them. Sessions carry NO prompt text — prompts are derived from governed company data by the operator.",
+      "entries": [
+        {
+          "principal": "group:admins",
+          "level": "manager"
+        },
+        {
+          "principal": "group:agent-operators",
+          "level": "editor"
+        },
+        {
+          "principal": "group:employees",
+          "level": "author"
+        }
+      ]
+    },
+    {
+      "_id": "app:config",
+      "kind": "app",
+      "appId": "agent-ops",
+      "title": "Agent Operations",
+      "database": "agent-ops_app"
+    },
+    {
+      "_id": "audit:policy",
+      "kind": "auditpolicy",
+      "appId": "agent-ops",
+      "retentionDays": 365
+    },
+    {
+      "_id": "form:agent-session",
+      "kind": "form",
+      "appId": "agent-ops",
+      "docType": "agent-session",
+      "title": "Agent session",
+      "defaultReaders": [
+        "group:agent-operators",
+        "group:admins"
+      ],
+      "sections": [
+        {
+          "title": "Request",
+          "fields": [
+            "persona",
+            "driver"
+          ]
+        }
+      ],
+      "fields": [
+        {
+          "name": "persona",
+          "type": "text",
+          "label": "Persona",
+          "required": true,
+          "searchable": true,
+          "helpText": "Directory id of the persona whose shift to run, e.g. person:carol. The prompt is DERIVED from this persona's org job description — there is deliberately no prompt field (ADR-0021).",
+          "validate": [
+            {
+              "expression": "(payload.persona || '').startsWith('person:')",
+              "message": "Persona must be a directory id like person:carol"
+            }
+          ]
+        },
+        {
+          "name": "driver",
+          "type": "select",
+          "label": "Driver",
+          "required": true,
+          "defaultValue": "claude-code",
+          "options": [
+            {
+              "label": "Claude Code",
+              "value": "claude-code"
+            },
+            {
+              "label": "Codex",
+              "value": "codex"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "_id": "form:artifact",
+      "kind": "form",
+      "appId": "agent-ops",
+      "docType": "artifact",
+      "title": "Session artifact",
+      "defaultReaders": [
+        "group:admins"
+      ],
+      "sections": [
+        {
+          "title": "Artifact",
+          "fields": [
+            "sessionId",
+            "name",
+            "content"
+          ]
+        }
+      ],
+      "fields": [
+        {
+          "name": "sessionId",
+          "type": "text",
+          "label": "Session",
+          "required": true,
+          "searchable": true,
+          "helpText": "_id of the agent-session document this artifact belongs to."
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "label": "Name",
+          "required": true,
+          "searchable": true,
+          "helpText": "Diagnostics file name, e.g. prompt.txt, final_message.txt, tool-transcript.jsonl."
+        },
+        {
+          "name": "content",
+          "type": "textarea",
+          "label": "Content",
+          "searchable": true,
+          "helpText": "Redacted and capped (64 KB) by the operator before writing; the full verbose file stays on the operator host."
+        }
+      ]
+    },
+    {
+      "_id": "view:my-sessions",
+      "kind": "view",
+      "appId": "agent-ops",
+      "docType": "agent-session",
+      "title": "My Sessions",
+      "columns": [
+        {
+          "field": "payload.persona",
+          "label": "Persona"
+        },
+        {
+          "field": "payload.driver",
+          "label": "Driver"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "agent-session"
+        },
+        {
+          "field": "assignee",
+          "op": "in",
+          "value": "@me"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "asc"
+        }
+      ]
+    },
+    {
+      "_id": "view:sessions",
+      "kind": "view",
+      "appId": "agent-ops",
+      "docType": "agent-session",
+      "title": "Sessions",
+      "columns": [
+        {
+          "field": "payload.persona",
+          "label": "Persona"
+        },
+        {
+          "field": "payload.driver",
+          "label": "Driver"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        },
+        {
+          "field": "assignee",
+          "label": "Assigned to"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "agent-session"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "view:artifacts",
+      "kind": "view",
+      "appId": "agent-ops",
+      "docType": "artifact",
+      "title": "Artifacts",
+      "columns": [
+        {
+          "field": "payload.sessionId",
+          "label": "Session"
+        },
+        {
+          "field": "payload.name",
+          "label": "Name"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "artifact"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "workflow:agent-session",
+      "kind": "workflow",
+      "appId": "agent-ops",
+      "docType": "agent-session",
+      "title": "Agent Session",
+      "initialState": "draft",
+      "states": [
+        {
+          "name": "draft",
+          "label": "Draft"
+        },
+        {
+          "name": "requested",
+          "label": "Requested",
+          "responsible": "group:agent-operators"
+        },
+        {
+          "name": "running",
+          "label": "Running",
+          "responsible": "group:agent-operators"
+        },
+        {
+          "name": "completed",
+          "label": "Completed",
+          "final": true
+        },
+        {
+          "name": "failed",
+          "label": "Failed",
+          "final": true
+        }
+      ],
+      "transitions": [
+        {
+          "id": "submit",
+          "label": "Submit",
+          "from": "draft",
+          "to": "requested",
+          "guard": "!!payload.persona && !!payload.driver",
+          "action": "audit-transition"
+        },
+        {
+          "id": "claim",
+          "label": "Claim",
+          "from": "requested",
+          "to": "running",
+          "guard": "principals.includes('group:agent-operators')",
+          "action": "audit-transition"
+        },
+        {
+          "id": "complete",
+          "label": "Complete",
+          "from": "running",
+          "to": "completed",
+          "guard": "principals.includes('group:agent-operators')",
+          "action": "audit-transition"
+        },
+        {
+          "id": "fail",
+          "label": "Fail",
+          "from": "running",
+          "to": "failed",
+          "guard": "principals.includes('group:agent-operators')",
+          "action": "audit-transition"
+        }
+      ]
+    }
+  ]
+}

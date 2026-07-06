@@ -154,6 +154,41 @@ describe("sample template registry", () => {
     ]);
   });
 
+  it("lists and loads the Agent operations template as design docs plus separate sample data", () => {
+    expect(listSampleTemplates()).toEqual(
+      expect.arrayContaining([
+        {
+          templateId: "sample:agent-ops",
+          appId: "agent-ops",
+          title: "Agent operations sample",
+          description: "Agent sessions as documents: request, claim, run, and audit autonomous agent shifts."
+        }
+      ])
+    );
+
+    const sample = loadSampleTemplate("sample:agent-ops");
+
+    expect(sample.template.templateId).toBe("sample:agent-ops");
+    expect(sample.template.definitions.map((definition) => definition._id).sort()).toEqual([
+      "acl:rules",
+      "app:config",
+      "audit:policy",
+      "form:agent-session",
+      "form:artifact",
+      "view:artifacts",
+      "view:my-sessions",
+      "view:sessions",
+      "workflow:agent-session"
+    ]);
+    expect(sample.sampleData.map((doc) => doc._id)).toEqual(["doc:agent-session:sample-draft"]);
+    // ADR-0021: sessions carry NO prompt field — prompts are derived from governed
+    // company data by the operator, never supplied by a requester. Statically checkable.
+    const sessionForm = sample.template.definitions.find((definition) => definition._id === "form:agent-session") as {
+      fields?: Array<{ name: string }>;
+    };
+    expect(sessionForm.fields?.map((field) => field.name)).toEqual(["persona", "driver"]);
+  });
+
   it("keeps seedDocuments compatible with the JSON sample artifacts", () => {
     expect(seedDocuments()).toEqual(sampleTemplateDocuments("sample:expense"));
   });

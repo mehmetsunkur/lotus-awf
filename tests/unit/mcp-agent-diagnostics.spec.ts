@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { AgentDiagnosticsRedactor, createAgentDiagnostics } from "../mcp/agent/support/diagnostics";
+import { AgentDiagnosticsRedactor, createAgentDiagnostics } from "../../src/operator/diagnostics";
 
 const tmpRoots: string[] = [];
 

@@ -4,7 +4,7 @@ import { diffTemplateDefinitions } from "../../../../src/shared/template";
 import { validateTemplateDefinitions } from "../../../../src/shared/template-validation";
 import type { DesignDocument, TemplateArtifact, TemplateDiff, TemplateDiffEntry } from "../../../../src/shared/types";
 import type { LotusHttpMcpClient } from "../../http/support/http-client";
-import type { AgentDiagnostics } from "./diagnostics";
+import type { AgentDiagnostics } from "../../../../src/operator/diagnostics";
 
 export type AppTemplateFixture = {
   fixtureId: string;

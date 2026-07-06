@@ -1,0 +1,24 @@
+[
+  {
+    "_id": "doc:agent-session:sample-draft",
+    "kind": "document",
+    "appId": "agent-ops",
+    "docType": "agent-session",
+    "createdAt": "2026-07-06T00:00:00.000Z",
+    "updatedAt": "2026-07-06T00:00:00.000Z",
+    "createdBy": "person:alice",
+    "updatedBy": "person:alice",
+    "readers": [
+      "person:alice",
+      "group:agent-operators",
+      "group:admins"
+    ],
+    "authors": [
+      "person:alice"
+    ],
+    "payload": {
+      "persona": "person:alice",
+      "driver": "claude-code"
+    }
+  }
+]

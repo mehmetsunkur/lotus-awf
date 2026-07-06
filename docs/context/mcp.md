@@ -171,6 +171,18 @@ rejected per the KB finance procedure, background sets identical to morning, aud
 per flight. Retries are 1 in this suite (`test.describe.configure`) — a retry replays a whole
 seeded day. See `docs/M27/`.
 
+The **agent operator** (M28, ADR-0021) promoted the driver seam out of the test bed:
+`AgentDriver` (claude-code/codex CLI spawning, budgets, redaction) and the diagnostics
+writer now live in `src/operator/` (`agent-driver.ts`, `diagnostics.ts`) and the agent
+suites import them from there — runtime code never imports from `tests/`. The operator
+daemon itself (`src/operator/operator.ts`, `npm run agent-operator`) is an authenticated
+API client in this host's mold (ADR-0011 rules verbatim: session identities, no CouchDB,
+no new authority) that works the agent-ops app's `@me` queue and reuses
+`src/mcp/lotus-client.ts`; shift prompts come from the shared `src/operator/prompt.ts`
+the M27 working-day spec asserts hygiene on. Its lifecycle is covered by a deterministic
+FakeDriver spec on the PR gate (`tests/e2e/agent-operator.spec.ts`) plus one real-driver
+session in this opt-in tier (`tests/mcp/agent/operator.spec.ts`).
+
 Pitfall: MCP server keys handed to the drivers must follow the `lotus-<surface>` convention. Bare
 `workspace` is a **reserved MCP server name** in the claude CLI (≥2.1.x) — a `--mcp-config` entry
 under that key is silently dropped at load (debug-level warn only), leaving the agent with no lotus

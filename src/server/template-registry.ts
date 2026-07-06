@@ -67,6 +67,13 @@ const SAMPLE_TEMPLATES: Record<string, SampleTemplateFiles> = {
     appId: "turnaround",
     title: "Turnaround sample",
     description: "Flight turnaround operations: a multi-department workflow from scheduling to dispatch."
+  },
+  "sample:agent-ops": {
+    templatePath: "templates/agent-ops/template.json",
+    sampleDataPath: "templates/agent-ops/sample-data.json",
+    appId: "agent-ops",
+    title: "Agent operations sample",
+    description: "Agent sessions as documents: request, claim, run, and audit autonomous agent shifts."
   }
 };
 

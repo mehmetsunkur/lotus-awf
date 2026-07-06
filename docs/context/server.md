@@ -44,10 +44,14 @@ the server's own behavior.
 - `src/server/seed-data.ts` — compatibility helpers for scripts/e2e; loads the packaged Expense
   sample from the JSON template registry.
 - `src/server/template-registry.ts` — filesystem-backed bundled template loader for
-  `templates/expense/*`, `templates/org/*`, `templates/leave-request/*` (M25), and the M27
+  `templates/expense/*`, `templates/org/*`, `templates/leave-request/*` (M25), the M27
   digital-twin pair `templates/kb/*` (handbook articles + authorship-scoped team procedures) and
-  `templates/turnaround/*` (multi-department flight workflow); pure design validation lives in
-  `src/shared/template-validation.ts`.
+  `templates/turnaround/*` (multi-department flight workflow), and M28's
+  `templates/agent-ops/*` (ADR-0021 agent sessions: draft → submit → requested → claim →
+  running → completed/failed, operator `@me` queue, artifact child docs; the session form
+  deliberately has NO prompt field and no operator-stamped payload — outcome facts live in an
+  operator-authored `outcome.json` artifact because `canEditDocument` is authors-only); pure
+  design validation lives in `src/shared/template-validation.ts`.
 - `src/server/handlers/effects.ts` (M7) — server-only effect registry + `runEffect` (best-effort,
   in-memory log).
 - `src/server/handlers/agents.ts` (M8) — server-only agent-handler registry + `runAgentHandler`
