@@ -46,8 +46,8 @@ not a production backend authority.
 npm run playground -- field-services
 npm run playground -- field-services --once
 npm run playground -- field-services --sidecar mailpit --sidecar nginx
-npm run playground -- field-services --run dana --driver codex --once
-npm run playground -- field-services --run-day --driver claude-code
+npm run playground -- field-services --run dana --driver codex --model gpt-5-codex --once
+npm run playground -- field-services --run-day --driver claude-code --model claude-sonnet-4-5
 ```
 
 The command prints:
@@ -65,6 +65,8 @@ The command prints:
   real-agent drivers. It must not write CouchDB directly.
 - Persona runs receive only a Bearer-authenticated `/mcp/workspace` server named
   `lotus-workspace`; the MCP host resolves identity server-side.
+- `--model` is a per-run CLI override for the selected driver's existing model environment
+  (`LOTUS_AGENT_CODEX_MODEL` or `LOTUS_AGENT_CLAUDE_MODEL`) and requires `--driver`.
 - Prompt assembly follows the working-day acceptance pattern: handbook app id plus job description,
   with a hygiene check that bans direct business app ids, document ids, view ids, and tool names.
 - Sidecars are disposable Testcontainers joined to the harness network. They are advertised as URLs

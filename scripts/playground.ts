@@ -22,6 +22,7 @@ type SidecarName = "mailpit" | "nginx" | "gitea";
 type PlaygroundOptions = {
   company: "field-services";
   driver?: string;
+  model?: string;
   runPersona?: FieldPersonaName;
   runDay: boolean;
   sidecars: SidecarName[];
@@ -74,6 +75,7 @@ async function main(): Promise<void> {
     printSummary({ harness, host, appId: seeded.scenario.appId, kbAppId, sidecars, runDir });
 
     if (options.runPersona || options.runDay) {
+      applyModelOverride(options);
       const driver = selectDriver(options.driver);
       const shifts = options.runDay ? FIELD_DAY : [options.runPersona ?? "dana"];
       for (const [index, persona] of shifts.entries()) {
@@ -203,6 +205,22 @@ function selectDriver(name?: string): AgentDriver {
   return selected;
 }
 
+function applyModelOverride(options: PlaygroundOptions): void {
+  if (!options.model) return;
+  if (!options.driver) {
+    throw new Error("--model requires --driver so the playground knows which driver model env var to override");
+  }
+  if (options.driver === "claude-code") {
+    process.env.LOTUS_AGENT_CLAUDE_MODEL = options.model;
+    return;
+  }
+  if (options.driver === "codex") {
+    process.env.LOTUS_AGENT_CODEX_MODEL = options.model;
+    return;
+  }
+  throw new Error(`Unknown driver "${options.driver}". Valid drivers: ${DRIVERS.map((driver) => driver.name).join(", ")}`);
+}
+
 function printSummary(options: {
   harness: Harness;
   host: AgentMcpHost;
@@ -242,8 +260,8 @@ Diagnostics:
 
   console.log(`
 Run examples:
-  npm run playground -- field-services --run dana --once
-  npm run playground -- field-services --run-day --driver codex --sidecar mailpit
+  npm run playground -- field-services --run dana --driver claude-code --model claude-sonnet-4-5 --once
+  npm run playground -- field-services --run-day --driver codex --model gpt-5-codex --sidecar mailpit
 `);
 }
 
@@ -267,6 +285,8 @@ function parseArgs(args: string[]): PlaygroundOptions {
       options.runDay = true;
     } else if (arg === "--driver") {
       options.driver = requiredValue(arg, rest.shift());
+    } else if (arg === "--model") {
+      options.model = requiredValue(arg, rest.shift());
     } else if (arg === "--sidecar") {
       options.sidecars.push(parseSidecar(rest.shift()));
     } else if (arg === "--once") {
@@ -310,6 +330,7 @@ Options:
   --run <persona>       Run one persona shift: dana, taylor, iris, blake
   --run-day             Run the default Field Services day: dispatch, technician, inventory, technician, billing
   --driver <name>       Agent driver: claude-code or codex (default: first available)
+  --model <name>        Override the selected driver's model for this run; requires --driver
   --sidecar <name>      Start optional sidecar: mailpit, nginx, gitea; repeatable
   --once                Stop containers after bootstrap/runs instead of staying up
   --help                Show this help
