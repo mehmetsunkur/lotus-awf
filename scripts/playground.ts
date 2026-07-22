@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { request, type APIRequestContext, type PlaywrightWorkerArgs } from "@playwright/test";
 import { GenericContainer, Wait, type StartedTestContainer } from "testcontainers";
@@ -13,9 +13,16 @@ import {
   seedFieldServicesHandbook,
   type FieldPersonaName
 } from "../tests/mcp/agent/support/field-services";
+import {
+  decideFieldServiceSpawn,
+  FIELD_SCHEDULER_ORDER,
+  type FieldServiceDocSet,
+  type FieldSpawnDecision
+} from "../tests/mcp/agent/support/field-services-scheduler";
 import { assembleShiftPrompt } from "../src/operator/prompt";
 import { ClaudeCodeDriver, CodexDriver, type AgentDriver } from "../src/operator/agent-driver";
 import { createAgentDiagnostics } from "../src/operator/diagnostics";
+import type { BusinessDocument } from "../src/shared/types";
 
 type SidecarName = "mailpit" | "nginx" | "gitea";
 
@@ -25,6 +32,11 @@ type PlaygroundOptions = {
   model?: string;
   runPersona?: FieldPersonaName;
   runDay: boolean;
+  watchWork: boolean;
+  emptyOk: boolean;
+  pollMs: number;
+  maxRuns: number;
+  idlePolls: number;
   sidecars: SidecarName[];
   once: boolean;
 };
@@ -36,7 +48,7 @@ type StartedSidecar = {
 };
 
 const DRIVERS: AgentDriver[] = [new ClaudeCodeDriver(), new CodexDriver()];
-const FIELD_DAY: FieldPersonaName[] = ["dana", "taylor", "iris", "taylor", "blake"];
+const FIELD_APP_ID = "agent-field-services";
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
@@ -50,17 +62,17 @@ async function main(): Promise<void> {
   const contexts: APIRequestContext[] = [];
   const mcpClients: LotusHttpMcpClient[] = [];
 
-  const shutdown = async () => {
+  const shutdown = async (exitCode = 0) => {
     console.log("\nStopping playground...");
     await Promise.allSettled(mcpClients.splice(0).map((client) => client.close()));
     await Promise.allSettled(contexts.splice(0).map((context) => context.dispose()));
     await Promise.allSettled(sidecars.map((sidecar) => sidecar.container.stop()));
     await host.stop();
     await harness.stop();
-    process.exit(0);
+    process.exit(exitCode);
   };
-  process.once("SIGINT", shutdown);
-  process.once("SIGTERM", shutdown);
+  process.once("SIGINT", () => void shutdown(0));
+  process.once("SIGTERM", () => void shutdown(0));
 
   try {
     await resetLotus(harness.baseURL);
@@ -74,20 +86,44 @@ async function main(): Promise<void> {
 
     printSummary({ harness, host, appId: seeded.scenario.appId, kbAppId, sidecars, runDir });
 
-    if (options.runPersona || options.runDay) {
+    if (options.runDay) {
+      await seedFieldServicesMorningState(seeded.admin, await seeded.as("dana"), seeded.scenario.appId);
+    }
+
+    if (options.runPersona || options.runDay || options.watchWork) {
       applyModelOverride(options);
-      const driver = selectDriver(options.driver);
-      const shifts = options.runDay ? FIELD_DAY : [options.runPersona ?? "dana"];
-      for (const [index, persona] of shifts.entries()) {
+      if (options.runPersona) {
+        const driver = selectDriver(options.driver);
+        const docs = await loadFieldServiceDocs(await seeded.as("dana"), seeded.scenario.appId);
+        const decision = decideFieldServiceSpawn(options.runPersona, docs);
+        const queue = await workQueue(await seeded.as(options.runPersona));
+        logPersonaProbe(options.runPersona, decision, queue);
+        if (!decision.shouldSpawn && !options.emptyOk) {
+          throw new Error(`Refusing to spawn ${options.runPersona}: ${decision.reason}. Use --empty-ok to force an empty shift.`);
+        }
         await runPersonaShift({
           apiUrl: harness.baseURL,
           host,
           appId: seeded.scenario.appId,
           kbAppId,
-          persona,
+          persona: options.runPersona,
           driver,
           runDir,
-          shiftKey: `${String(index + 1).padStart(2, "0")}-${persona}`
+          shiftKey: `manual-${options.runPersona}`
+        });
+      } else {
+        const driver = options.maxRuns > 0 ? selectDriver(options.driver) : undefined;
+        await runFieldServicesScheduler({
+          apiUrl: harness.baseURL,
+          host,
+          appId: seeded.scenario.appId,
+          kbAppId,
+          as: seeded.as,
+          driver,
+          runDir,
+          pollMs: options.pollMs,
+          maxRuns: options.maxRuns,
+          idlePolls: options.idlePolls
         });
       }
     }
@@ -97,8 +133,171 @@ async function main(): Promise<void> {
     await new Promise(() => {});
   } catch (error) {
     console.error(error);
-    await shutdown();
+    await shutdown(1);
   }
+}
+
+async function seedFieldServicesMorningState(admin: APIRequestContext, dana: APIRequestContext, appId: string): Promise<void> {
+  const existing = await listDocuments(admin, appId, "service-request");
+  if (existing.some((doc) => doc.payload.customer === "Meridian Labs" && doc.state === "triaged")) {
+    console.log("Morning state already has Meridian Labs triaged request.");
+    return;
+  }
+  const request = await createDocument(admin, appId, "service-request", {
+    customer: "Meridian Labs",
+    site: "Clean Room 3",
+    contact: "Dr. Lee",
+    problem:
+      "Vacuum pump seal failure. Create a repair work order for person:taylor on 2026-08-09. " +
+      "Estimated hours 4. Required part VAC-SEAL-42 must be allocated by Inventory before completion. " +
+      "Work notes: Replace vacuum pump seal after parts pickup. Billable hours 4.",
+    priority: "emergency",
+    requestedDate: "2026-08-09"
+  });
+  const triaged = await transitionDocument(dana, appId, request._id, "triage");
+  console.log(`Seeded morning work: ${triaged._id} -> ${triaged.state} (${triaged.assignee ?? "unassigned"})`);
+}
+
+async function runFieldServicesScheduler(options: {
+  apiUrl: string;
+  host: AgentMcpHost;
+  appId: string;
+  kbAppId: string;
+  as: (username: FieldPersonaName) => Promise<APIRequestContext>;
+  driver?: AgentDriver;
+  runDir: string;
+  pollMs: number;
+  maxRuns: number;
+  idlePolls: number;
+}): Promise<void> {
+  const attempted = new Set<string>();
+  let runs = 0;
+  let idle = 0;
+  console.log(`\nWatching Field Services queues (poll=${options.pollMs}ms, maxRuns=${options.maxRuns}, idlePolls=${options.idlePolls})...`);
+
+  while (runs < options.maxRuns || options.maxRuns === 0) {
+    const observer = await options.as("dana");
+    const docs = await loadFieldServiceDocs(observer, options.appId);
+    writeSnapshot(options.runDir, `snapshot-${String(runs).padStart(2, "0")}-${Date.now()}.json`, docs);
+
+    for (const persona of FIELD_SCHEDULER_ORDER) {
+      const queue = await workQueue(await options.as(persona));
+      logPersonaProbe(persona, decideFieldServiceSpawn(persona, docs), queue);
+    }
+    if (options.maxRuns === 0) break;
+
+    const next = nextUnattemptedSpawn(docs, attempted);
+    if (!next) {
+      idle += 1;
+      console.log(`No new spawnable Field Services work (${idle}/${options.idlePolls} idle polls).`);
+      if (idle >= options.idlePolls || options.maxRuns === 0) break;
+      await delay(options.pollMs);
+      continue;
+    }
+
+    idle = 0;
+    const key = spawnKey(next);
+    attempted.add(key);
+    if (!options.driver) throw new Error("Scheduler needs a driver when --max-runs is greater than 0");
+    runs += 1;
+    console.log(`\nSpawn ${next.persona}: ${next.reason}; items=${next.itemIds.join(", ")}`);
+    await runPersonaShift({
+      apiUrl: options.apiUrl,
+      host: options.host,
+      appId: options.appId,
+      kbAppId: options.kbAppId,
+      persona: next.persona,
+      driver: options.driver,
+      runDir: options.runDir,
+      shiftKey: `${String(runs).padStart(2, "0")}-${next.persona}`
+    });
+    await delay(options.pollMs);
+  }
+  console.log(`Scheduler stopped after ${runs} agent run${runs === 1 ? "" : "s"}.`);
+}
+
+function nextUnattemptedSpawn(docs: FieldServiceDocSet, attempted: Set<string>): FieldSpawnDecision | undefined {
+  return FIELD_SCHEDULER_ORDER.map((persona) => decideFieldServiceSpawn(persona, docs)).find(
+    (decision) => decision.shouldSpawn && !attempted.has(spawnKey(decision))
+  );
+}
+
+function spawnKey(decision: FieldSpawnDecision): string {
+  return `${decision.persona}:${decision.itemIds.join(",")}`;
+}
+
+function logPersonaProbe(persona: FieldPersonaName, decision: FieldSpawnDecision, queue: WorkQueueResult): void {
+  const appQueue = queue.byApp.find((entry) => entry.appId === FIELD_APP_ID);
+  const queueText = appQueue ? `${appQueue.count} assigned` : "0 assigned";
+  console.log(`${persona.padEnd(7)} ${queueText.padEnd(12)} ${decision.shouldSpawn ? "spawn" : "skip"} - ${decision.reason}`);
+}
+
+async function loadFieldServiceDocs(reader: APIRequestContext, appId: string): Promise<FieldServiceDocSet> {
+  const [serviceRequests, workOrders, partsReservations, invoices] = await Promise.all([
+    listDocuments(reader, appId, "service-request"),
+    listDocuments(reader, appId, "work-order"),
+    listDocuments(reader, appId, "parts-reservation"),
+    listDocuments(reader, appId, "invoice")
+  ]);
+  return { serviceRequests, workOrders, partsReservations, invoices };
+}
+
+function writeSnapshot(runDir: string, fileName: string, docs: FieldServiceDocSet): void {
+  const summary = Object.fromEntries(
+    Object.entries(docs).map(([key, values]) => [
+      key,
+      values.map((doc) => ({
+        id: doc._id,
+        state: doc.state ?? null,
+        assignee: doc.assignee ?? null,
+        payload: doc.payload
+      }))
+    ])
+  );
+  writeFileSync(join(runDir, fileName), JSON.stringify(summary, null, 2), "utf8");
+}
+
+async function listDocuments(context: APIRequestContext, appId: string, docType: string): Promise<BusinessDocument[]> {
+  const response = await context.get(`/api/apps/${appId}/documents?docType=${encodeURIComponent(docType)}`);
+  if (response.status() !== 200) throw new Error(`${docType} list failed with ${response.status()}: ${await response.text()}`);
+  return (await response.json()) as BusinessDocument[];
+}
+
+async function createDocument(
+  context: APIRequestContext,
+  appId: string,
+  docType: string,
+  payload: Record<string, unknown>
+): Promise<BusinessDocument> {
+  const response = await context.post(`/api/apps/${appId}/documents`, { data: { docType, payload } });
+  if (response.status() !== 201) throw new Error(`${docType} create failed with ${response.status()}: ${await response.text()}`);
+  return (await response.json()) as BusinessDocument;
+}
+
+async function transitionDocument(
+  context: APIRequestContext,
+  appId: string,
+  id: string,
+  transition: string
+): Promise<BusinessDocument> {
+  const response = await context.post(`/api/apps/${appId}/documents/${encodeURIComponent(id)}/transition`, { data: { transition } });
+  if (response.status() !== 200) throw new Error(`${transition} failed with ${response.status()}: ${await response.text()}`);
+  return (await response.json()) as BusinessDocument;
+}
+
+type WorkQueueResult = {
+  total: number;
+  byApp: Array<{ appId: string; count: number; items?: Array<{ _id: string; docType: string; state: string | null }> }>;
+};
+
+async function workQueue(context: APIRequestContext): Promise<WorkQueueResult> {
+  const response = await context.get("/api/work-queue?items=true");
+  if (response.status() !== 200) throw new Error(`work-queue failed with ${response.status()}: ${await response.text()}`);
+  return (await response.json()) as WorkQueueResult;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function resetLotus(baseURL: string): Promise<void> {
@@ -269,6 +468,11 @@ function parseArgs(args: string[]): PlaygroundOptions {
   const options: PlaygroundOptions = {
     company: "field-services",
     runDay: false,
+    watchWork: false,
+    emptyOk: false,
+    pollMs: 2_000,
+    maxRuns: 10,
+    idlePolls: 3,
     sidecars: [],
     once: false
   };
@@ -283,6 +487,16 @@ function parseArgs(args: string[]): PlaygroundOptions {
       options.runPersona = parsePersona(rest.shift());
     } else if (arg === "--run-day") {
       options.runDay = true;
+    } else if (arg === "--watch-work") {
+      options.watchWork = true;
+    } else if (arg === "--empty-ok") {
+      options.emptyOk = true;
+    } else if (arg === "--poll-ms") {
+      options.pollMs = parsePositiveInteger(arg, rest.shift());
+    } else if (arg === "--max-runs") {
+      options.maxRuns = parseNonNegativeInteger(arg, rest.shift());
+    } else if (arg === "--idle-polls") {
+      options.idlePolls = parsePositiveInteger(arg, rest.shift());
     } else if (arg === "--driver") {
       options.driver = requiredValue(arg, rest.shift());
     } else if (arg === "--model") {
@@ -297,6 +511,12 @@ function parseArgs(args: string[]): PlaygroundOptions {
     } else {
       throw new Error(`Unknown argument "${arg ?? ""}". Use --help for usage.`);
     }
+  }
+  if (options.runPersona && (options.runDay || options.watchWork)) {
+    throw new Error("--run cannot be combined with --run-day or --watch-work");
+  }
+  if (options.runDay && options.watchWork) {
+    throw new Error("--run-day and --watch-work are mutually exclusive");
   }
   return options;
 }
@@ -318,6 +538,22 @@ function requiredValue(flag: string, value: string | undefined): string {
   return value;
 }
 
+function parsePositiveInteger(flag: string, value: string | undefined): number {
+  const raw = requiredValue(flag, value);
+  if (!/^\d+$/.test(raw)) throw new Error(`${flag} requires a positive integer`);
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) throw new Error(`${flag} requires a positive integer`);
+  return parsed;
+}
+
+function parseNonNegativeInteger(flag: string, value: string | undefined): number {
+  const raw = requiredValue(flag, value);
+  if (!/^\d+$/.test(raw)) throw new Error(`${flag} requires a non-negative integer`);
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) throw new Error(`${flag} requires a non-negative integer`);
+  return parsed;
+}
+
 function timestamp(): string {
   return new Date().toISOString().replace(/[:.]/g, "-");
 }
@@ -328,7 +564,12 @@ function printHelp(): void {
 
 Options:
   --run <persona>       Run one persona shift: dana, taylor, iris, blake
-  --run-day             Run the default Field Services day: dispatch, technician, inventory, technician, billing
+  --run-day             Seed morning work and run the queue scheduler until idle
+  --watch-work          Run the queue scheduler without seeding morning work
+  --empty-ok            Allow --run <persona> even when the persona has no detected work
+  --poll-ms <n>         Scheduler polling delay in milliseconds (default: 2000)
+  --max-runs <n>        Maximum scheduler agent runs; 0 probes only (default: 10)
+  --idle-polls <n>      Stop after this many polls with no new spawnable work (default: 3)
   --driver <name>       Agent driver: claude-code or codex (default: first available)
   --model <name>        Override the selected driver's model for this run; requires --driver
   --sidecar <name>      Start optional sidecar: mailpit, nginx, gitea; repeatable
