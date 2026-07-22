@@ -54,7 +54,8 @@ The command prints:
 
 - Lotus Web/API URL and seeded app URLs.
 - MCP URLs for `admin`, `designer`, and `workspace`.
-- Field Services personas and shared fixture password.
+- Local fixture logins: `alice / password123` plus Field Services personas using the shared fixture
+  password.
 - Optional sidecar URLs.
 - Diagnostics root for spawned agent runs.
 

@@ -224,9 +224,10 @@ MCP:
   designer:    ${options.host.surfaceUrl("designer")}
   workspace:   ${options.host.surfaceUrl("workspace")}
 
-Personas (password "${FIELD_PASSWORD}"):
+Local playground logins:
+  alice    password123            Admin / Designer
 ${Object.values(FIELD_PERSONAS)
-  .map((persona) => `  ${persona.username.padEnd(8)} ${persona.displayName.padEnd(20)} ${persona.title}`)
+  .map((persona) => `  ${persona.username.padEnd(8)} ${FIELD_PASSWORD.padEnd(22)} ${persona.displayName} - ${persona.title}`)
   .join("\n")}
 
 Diagnostics:
