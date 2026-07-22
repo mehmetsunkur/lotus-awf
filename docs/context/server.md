@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `add7ca7`
-- Last reviewed date: `2026-07-06`
+- Last code review baseline: `7dd93a6`
+- Last reviewed date: `2026-07-22`
 - Code areas:
   - `src/server/**`
   - `scripts/**`
@@ -143,6 +143,15 @@ the server's own behavior.
   an illegal/refused transition, `409` on a concurrent-write conflict. (M7) After the
   authoritative write, a transition's `action` effect runs best-effort via `runEffect`, surfaced as
   `effects[]`.
+- Work queue (ADR-0022): `GET /api/work-queue` aggregates the ADR-0018 assignee envelope across every
+  `installedApps()` database for the **authenticated caller** (never a `?principal=` — same
+  caller-scoping as ADR-0020 `@me`) → `{ total, byApp: [{ appId, database, count, items? }] }`. Per app:
+  skip below-`reader` access (no 403, no leak), then `findDocs` on `{ kind: "document", assignee: {$in:
+  principals}, ...accessSelector }` binding the existing **`m2-readers`** ACL index (no new index; assignee
+  is an in-memory predicate — final states carry no assignee, so completed work never matches) →
+  `canReadDocument` post-filter. `?actionable=true` keeps only docs with an available transition
+  (`availableTransitions`); `?items=true` returns doc refs for a spawn payload. Motivating consumer: the
+  ADR-0021 operator, so a controller spawns agents on demand instead of polling per-app inbox views.
 - Compute (M7): `POST/PUT /api/documents` apply `applyComputedFields` (shared) so computed fields are
   derived identically to the client. `GET /api/plugins/manifest` and `GET /api/plugins/log` expose
   the handler manifest and the in-memory effect log (cleared on `/api/reset`).

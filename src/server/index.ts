@@ -60,6 +60,7 @@ import { mangoSelector } from "../shared/view-query";
 import { evaluateFormulaAsync, type DbReader } from "../shared/formula";
 import {
   applyTransition,
+  availableTransitions,
   currentState,
   normalizeResolvedPrincipals,
   type ResolvedTransitionContext
@@ -1376,6 +1377,96 @@ app.get(
       localPlatformInstalled,
       serverPlatformInstalled,
       setupComplete: state.setupComplete
+    });
+  })
+);
+
+// ADR-0022: cross-app work queue. Answers "does the AUTHENTICATED caller have
+// actionable work anywhere?" so a controller can spawn an agent on demand instead
+// of each agent polling per-app inbox views (the operator's ADR-0021 poll loop is
+// the motivating consumer). Caller-scoped by construction: identity is the session
+// (never a caller-supplied `?principal=`), so this stays inside the Identity and
+// ACL invariants — to ask about a persona's queue the caller authenticates AS that
+// persona (the M27/M28 persona-bearer mechanism), exactly as `@me` resolves to the
+// session in ADR-0020.
+//
+// The cheap gate is a single selector per app db: `assignee ∈ principals`. It needs
+// no workflow definition and no explicit final-state filter — `applyTransition`
+// CLEARS `assignee` on entry to a final state (ADR-0018), so a completed/failed
+// document carries no assignee and never matches. `?actionable=true` tightens this
+// to "has a transition the caller may take right now" by loading the workflow def
+// per docType; `?items=true` returns the document refs for the spawn payload.
+app.get(
+  "/api/work-queue",
+  asyncRoute(async (request, response) => {
+    // Platform-level session (spans apps); per-app authority is checked below.
+    const scope = await requireSession(request);
+    const principals = principalsFor(scope);
+    const wantItems = request.query.items === "true";
+    const wantActionable = request.query.actionable === "true";
+
+    const apps = await installedApps();
+    const byApp = await Promise.all(
+      apps.map(async (app) => {
+        // Skip apps the caller cannot even read — never a 403 (this is an
+        // aggregate, not a per-app request) and never a leak of their contents.
+        const level = await appAccessLevel(scope.principals, app.database);
+        if (accessRank(level) < accessRank("reader")) return null;
+        const appScope: PrincipalScope = { ...scope, accessLevel: level };
+
+        // Bind the existing ACL index (`m2-readers`): the `readers ∈ principals`
+        // predicate is the selective one, and `assignee`/`kind` are in-memory
+        // predicates on the scanned rows — the ADR-0020 cost class, literally the
+        // same index the ACL filter already relies on (no new index; three-site
+        // rule untouched).
+        const result = await findDocs<BusinessDocument>(
+          "local",
+          {
+            selector: { kind: "document", assignee: { $in: principals }, ...accessSelector(appScope) },
+            use_index: "m2-readers",
+            limit: 200
+          },
+          app.database
+        );
+        // ACL post-filter mirrors every list route: the Mango `readers` predicate
+        // is a coarse gate; `canReadDocument` is the authority.
+        let readable = result.docs.filter((doc) => canReadDocument(doc, appScope));
+
+        if (wantActionable) {
+          const defs = new Map<string, WorkflowDefinition | null>();
+          const actionable: BusinessDocument[] = [];
+          for (const doc of readable) {
+            if (!defs.has(doc.docType)) defs.set(doc.docType, await workflowForDocType(doc.docType, app.database));
+            const def = defs.get(doc.docType);
+            // No workflow for the type ⇒ the assignee stamp is inert; treat it as
+            // non-actionable rather than guessing a transition exists.
+            if (def && availableTransitions(doc, def, scope.person, principals).length > 0) actionable.push(doc);
+          }
+          readable = actionable;
+        }
+
+        return {
+          appId: app.appId,
+          database: app.database,
+          count: readable.length,
+          ...(wantItems
+            ? {
+                items: readable.map((doc) => ({
+                  _id: doc._id,
+                  docType: doc.docType,
+                  state: doc.state ?? null,
+                  assignedAt: doc.assignedAt ?? null
+                }))
+              }
+            : {})
+        };
+      })
+    );
+
+    const visible = byApp.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+    response.json({
+      total: visible.reduce((sum, entry) => sum + entry.count, 0),
+      byApp: visible
     });
   })
 );

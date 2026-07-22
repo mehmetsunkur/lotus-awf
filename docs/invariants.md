@@ -90,7 +90,7 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 
 ## ACL / readers
 
-- `readers`/`authors` must be set correctly on documents this code creates, no row/field/select-option may leak across people or groups, and new query paths must still honour `readers` filtering.
+- `readers`/`authors` must be set correctly on documents this code creates, no row/field/select-option may leak across people or groups, and new query paths must still honour `readers` filtering — including cross-app aggregates (ADR-0022 `GET /api/work-queue`), which resolve the caller from the session (never a `?principal=`), apply `accessSelector` + `canReadDocument` in EVERY app db, and skip apps below `reader` without leaking their contents.
   - Paths: `src/shared/access.ts`, `src/server/seed-data.ts`, `src/server/index.ts`, `scripts/acl-spike.ts`, `templates/**`
 
 ## Identity & sessions
@@ -117,7 +117,7 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 
 ## Index & query
 
-- A new view `sort`/`filter` field may need a Mango index, and the three indexes (`m2-kind-docType-updatedAt`, `m2-readers`, `m3-docType-state-updatedAt`) are defined in THREE places (`scripts/seed.ts`, `scripts/reset.ts`, `ensureIndexes` in `src/server/index.ts`) that must be kept in sync. `createIndex` pins `ddoc === name` so a `use_index: "<name>"` hint resolves and binds. ADR-0020's `@me` adds an in-memory predicate to the existing index scan (no new index; same cost class as the ACL filter; index binding is asserted via `_explain` in e2e, and the designed escape hatch is a partial index on `assignee` for `state == submitted` if inbox selectivity ever degrades).
+- A new view `sort`/`filter` field may need a Mango index, and the three indexes (`m2-kind-docType-updatedAt`, `m2-readers`, `m3-docType-state-updatedAt`) are defined in THREE places (`scripts/seed.ts`, `scripts/reset.ts`, `ensureIndexes` in `src/server/index.ts`) that must be kept in sync. `createIndex` pins `ddoc === name` so a `use_index: "<name>"` hint resolves and binds. ADR-0020's `@me` adds an in-memory predicate to the existing index scan (no new index; same cost class as the ACL filter; index binding is asserted via `_explain` in e2e, and the designed escape hatch is a partial index on `assignee` for `state == submitted` if inbox selectivity ever degrades); ADR-0022's `GET /api/work-queue` reuses this posture — it binds `m2-readers` (the ACL index) with `assignee`/`kind` as in-memory predicates, adding no index.
   - Paths: `src/server/couch.ts`, `src/server/index.ts`, `scripts/seed.ts`, `scripts/reset.ts`
 
 ## Documentation & acceptance
