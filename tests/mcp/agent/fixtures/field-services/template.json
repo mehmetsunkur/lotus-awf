@@ -523,6 +523,54 @@
       ]
     },
     {
+      "_id": "view:dispatch-queue",
+      "kind": "view",
+      "appId": "field-services",
+      "docType": "service-request",
+      "title": "Dispatch Queue",
+      "columns": [
+        {
+          "field": "payload.customer",
+          "label": "Customer"
+        },
+        {
+          "field": "payload.priority",
+          "label": "Priority"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "service-request"
+        },
+        {
+          "field": "assignee",
+          "op": "in",
+          "value": "@me"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "asc"
+        }
+      ]
+    },
+    {
       "_id": "view:my-work-orders",
       "kind": "view",
       "appId": "field-services",
@@ -610,6 +658,54 @@
         {
           "field": "updatedAt",
           "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "view:inventory-queue",
+      "kind": "view",
+      "appId": "field-services",
+      "docType": "parts-reservation",
+      "title": "Inventory Queue",
+      "columns": [
+        {
+          "field": "payload.partNumber",
+          "label": "Part"
+        },
+        {
+          "field": "payload.quantity",
+          "label": "Qty"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "parts-reservation"
+        },
+        {
+          "field": "assignee",
+          "op": "in",
+          "value": "@me"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "asc"
         }
       ]
     },
