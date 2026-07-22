@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `ade83be`
+- Last code review baseline: `d6c747b`
 - Last reviewed date: `2026-07-22`
 - Code areas:
   - `src/mcp/**`
@@ -209,8 +209,11 @@ writer now live in `src/operator/` (`agent-driver.ts`, `diagnostics.ts`) and the
 suites import them from there — runtime code never imports from `tests/`. The operator
 daemon itself (`src/operator/operator.ts`, `npm run agent-operator`) is an authenticated
 API client in this host's mold (ADR-0011 rules verbatim: session identities, no CouchDB,
-no new authority) that works the agent-ops app's `@me` queue and reuses
-`src/mcp/lotus-client.ts`; shift prompts come from the shared `src/operator/prompt.ts`
+no new authority). Its poll loop gates on the ADR-0022 cross-app work-queue
+(`lotus-client.ts`'s `workQueue()` → `GET /api/work-queue?items=true`) rather than a single
+per-app inbox view: one aggregate read answers "do I have work anywhere?" and hands back the
+requested `agent-session` refs to claim — the assignee routing is still an ADR-0018/0020
+`@me` queue, and the `claim` transition stays the authoritative dedupe. Shift prompts come from the shared `src/operator/prompt.ts`
 the M27 working-day spec asserts hygiene on. Its lifecycle is covered by a deterministic
 FakeDriver spec on the PR gate (`tests/e2e/agent-operator.spec.ts`) plus one real-driver
 session in this opt-in tier (`tests/mcp/agent/operator.spec.ts`).

@@ -232,6 +232,34 @@ test.describe("M28 agent operator (FakeDriver)", () => {
     expect(await operator.tick()).toEqual({ kind: "idle" });
   });
 
+  test("gates the poll loop on the ADR-0022 cross-app work-queue", async ({ world }) => {
+    type Queue = { total: number; byApp: Array<{ appId: string; count: number; items?: Array<{ _id: string; state: string | null }> }> };
+    const operatorApi = await world.operatorContext();
+    const opsEntry = async (): Promise<Queue["byApp"][number] | undefined> => {
+      const queue = (await (await operatorApi.get("/api/work-queue?items=true")).json()) as Queue;
+      return queue.byApp.find((entry) => entry.appId === world.ops.agentOpsAppId);
+    };
+
+    // An empty queue: the operator's own aggregate read reports no agent-ops work, so a
+    // tick idles without ever attempting a claim — this is the spawn gate the daemon runs.
+    expect((await opsEntry())?.count ?? 0).toBe(0);
+    const operator = new AgentOperator(world.operatorConfig(), [new FakeDriver()]);
+    expect(await operator.tick()).toEqual({ kind: "idle" });
+
+    // A filed session surfaces in the SAME cross-app read as a requested agent-session
+    // ref (assignee routed to group:agent-operators) — the exact signal the gate keys on.
+    const carol = await world.as("carol");
+    const session = await fileAgentSession(carol, world.ops.agentOpsAppId, {
+      persona: "person:ivy",
+      driver: "claude-code"
+    });
+    const queued = (await opsEntry())?.items?.find((item) => item._id === session._id);
+    expect(queued?.state).toBe("requested");
+
+    // ...and the gate hands the tick that ref to claim and run to completion.
+    expect(await operator.tick()).toEqual({ kind: "completed", sessionId: session._id });
+  });
+
   test("sweeps orphaned running sessions and enforces the daily cap", async ({ world, page }) => {
     const carol = await world.as("carol");
     const orphan = await fileAgentSession(carol, world.ops.agentOpsAppId, {

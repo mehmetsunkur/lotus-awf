@@ -24,6 +24,28 @@ export type LotusClientConfig = {
   sessionToken?: string;
 };
 
+/** One document ref in a `GET /api/work-queue` app entry (ADR-0022 `?items=true`). */
+export type WorkQueueItem = {
+  _id: string;
+  docType: string;
+  state: string | null;
+  assignedAt: string | null;
+};
+
+/** Per-app slice of the cross-app work queue (ADR-0022). Apps below `reader` are absent. */
+export type WorkQueueEntry = {
+  appId: string;
+  database: string;
+  count: number;
+  items?: WorkQueueItem[];
+};
+
+/** `GET /api/work-queue` response: the caller's assigned-and-readable work, per app. */
+export type WorkQueueResult = {
+  total: number;
+  byApp: WorkQueueEntry[];
+};
+
 export class LotusApiError extends Error {
   constructor(
     public readonly method: string,
@@ -159,6 +181,20 @@ export class LotusClient {
       "GET",
       `/api/apps/${encodeURIComponent(appId)}/views/${encodeURIComponent(viewId)}/documents${suffix}`
     );
+  }
+
+  /**
+   * Cross-app work queue (ADR-0022): "does the authenticated caller have work anywhere?"
+   * Caller-scoped by construction — the endpoint resolves identity from the session and
+   * never accepts a principal, so this is a read adapter, not an app-scoped tool. The
+   * operator uses it as its ADR-0021 poll gate in place of a single per-app inbox view.
+   */
+  async workQueue(options: { items?: boolean; actionable?: boolean } = {}): Promise<WorkQueueResult> {
+    const query = new URLSearchParams();
+    if (options.items) query.set("items", "true");
+    if (options.actionable) query.set("actionable", "true");
+    const suffix = query.size ? `?${query.toString()}` : "";
+    return this.request<WorkQueueResult>("GET", `/api/work-queue${suffix}`);
   }
 
   async getDocument(appId: string, id: string): Promise<Record<string, unknown>> {

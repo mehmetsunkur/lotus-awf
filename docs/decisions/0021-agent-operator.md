@@ -99,3 +99,11 @@ WHO may cause an agent to run as WHOM.
 - Scheduler that files session requests (changes who files, not the mechanism).
 - Deploy packaging (sidecar) under the deployable-artifact invariant.
 - Requester-visible artifacts if/when a governed readers-widening mechanism exists.
+
+## Amendments
+
+- 2026-07-22 (ADR-0022): the operator's poll gate is now the cross-app work-queue
+  (`GET /api/work-queue`), not a direct read of the per-app `view:my-sessions`. The
+  `requested`-state `@me` routing (decision 1) is unchanged — the daemon reads that same
+  assignee envelope through the aggregate and still claims via the workflow transition. A
+  single-app daemon simply filters the aggregate to its own app.

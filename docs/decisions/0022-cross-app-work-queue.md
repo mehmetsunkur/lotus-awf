@@ -98,8 +98,12 @@ an **aggregate read** of it.
 
 ## Follow-Ups
 
-- Wire the operator spawn gate to `/api/work-queue` (supplements, does not replace,
-  the `claim` transition).
+- ~~Wire the operator spawn gate to `/api/work-queue`~~ — **done** (2026-07-22): the
+  ADR-0021 daemon's `tick()` now polls `workQueue({ items: true })` in place of the
+  per-app `view:my-sessions`, filters its own app's requested `agent-session` refs, and
+  claims the oldest. The `claim` transition remains the authoritative dedupe; the gate
+  only decides whether to attempt it. (`src/operator/operator.ts`,
+  `tests/e2e/agent-operator.spec.ts`.)
 - Event-driven spawn on the assignee stamp (Alternative 3), with this endpoint as the
   reconciler.
 - Revisit a privileged all-principals aggregate only if a concrete controller needs it.
