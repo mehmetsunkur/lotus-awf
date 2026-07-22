@@ -1,0 +1,1001 @@
+{
+  "kind": "template",
+  "templateId": "fixture:field-services",
+  "appId": "field-services",
+  "version": "fixture",
+  "createdAt": "2026-07-22T00:00:00.000Z",
+  "createdBy": "system:seed",
+  "source": "tests/mcp/agent/fixtures/field-services/template.json",
+  "definitions": [
+    {
+      "_id": "acl:rules",
+      "kind": "acl",
+      "appId": "field-services",
+      "policy": "Dispatch triages requests and schedules work; technicians complete work orders; inventory allocates parts; billing invoices completed work.",
+      "entries": [
+        {
+          "principal": "group:admins",
+          "level": "manager"
+        },
+        {
+          "principal": "group:dispatch",
+          "level": "editor"
+        },
+        {
+          "principal": "group:technicians",
+          "level": "editor"
+        },
+        {
+          "principal": "group:inventory",
+          "level": "editor"
+        },
+        {
+          "principal": "group:billing",
+          "level": "editor"
+        }
+      ]
+    },
+    {
+      "_id": "app:config",
+      "kind": "app",
+      "appId": "field-services",
+      "title": "Field Services",
+      "database": "field_services_app"
+    },
+    {
+      "_id": "audit:policy",
+      "kind": "auditpolicy",
+      "appId": "field-services",
+      "retentionDays": 365
+    },
+    {
+      "_id": "form:service-request",
+      "kind": "form",
+      "appId": "field-services",
+      "docType": "service-request",
+      "title": "Service Request",
+      "defaultReaders": [
+        "group:dispatch",
+        "group:managers"
+      ],
+      "sections": [
+        {
+          "title": "Customer",
+          "fields": [
+            "customer",
+            "site",
+            "contact"
+          ]
+        },
+        {
+          "title": "Request",
+          "fields": [
+            "problem",
+            "priority",
+            "requestedDate"
+          ]
+        }
+      ],
+      "fields": [
+        {
+          "name": "customer",
+          "type": "text",
+          "label": "Customer",
+          "required": true,
+          "searchable": true
+        },
+        {
+          "name": "site",
+          "type": "text",
+          "label": "Site",
+          "required": true,
+          "searchable": true
+        },
+        {
+          "name": "contact",
+          "type": "text",
+          "label": "Contact",
+          "required": true
+        },
+        {
+          "name": "problem",
+          "type": "textarea",
+          "label": "Problem",
+          "required": true,
+          "searchable": true
+        },
+        {
+          "name": "priority",
+          "type": "select",
+          "label": "Priority",
+          "required": true,
+          "defaultValue": "standard",
+          "options": [
+            {
+              "label": "Emergency",
+              "value": "emergency"
+            },
+            {
+              "label": "Standard",
+              "value": "standard"
+            },
+            {
+              "label": "Planned",
+              "value": "planned"
+            }
+          ]
+        },
+        {
+          "name": "requestedDate",
+          "type": "date",
+          "label": "Requested date",
+          "required": true
+        }
+      ]
+    },
+    {
+      "_id": "form:work-order",
+      "kind": "form",
+      "appId": "field-services",
+      "docType": "work-order",
+      "title": "Work Order",
+      "defaultReaders": [
+        "group:dispatch",
+        "group:technicians",
+        "group:inventory",
+        "group:billing",
+        "group:managers"
+      ],
+      "sections": [
+        {
+          "title": "Job",
+          "fields": [
+            "requestRef",
+            "customer",
+            "site",
+            "serviceType"
+          ]
+        },
+        {
+          "title": "Schedule",
+          "fields": [
+            "technician",
+            "scheduledDate",
+            "estimatedHours"
+          ]
+        },
+        {
+          "title": "Completion",
+          "fields": [
+            "workPerformed",
+            "billableHours"
+          ]
+        }
+      ],
+      "fields": [
+        {
+          "name": "requestRef",
+          "type": "select",
+          "label": "Service request",
+          "source": {
+            "docType": "service-request",
+            "labelField": "payload.customer"
+          }
+        },
+        {
+          "name": "customer",
+          "type": "text",
+          "label": "Customer",
+          "required": true,
+          "searchable": true
+        },
+        {
+          "name": "site",
+          "type": "text",
+          "label": "Site",
+          "required": true,
+          "searchable": true
+        },
+        {
+          "name": "serviceType",
+          "type": "select",
+          "label": "Service type",
+          "required": true,
+          "defaultValue": "repair",
+          "options": [
+            {
+              "label": "Repair",
+              "value": "repair"
+            },
+            {
+              "label": "Install",
+              "value": "install"
+            },
+            {
+              "label": "Inspection",
+              "value": "inspection"
+            }
+          ]
+        },
+        {
+          "name": "technician",
+          "type": "text",
+          "label": "Technician",
+          "required": true,
+          "helpText": "Principal assigned by dispatch, such as person:taylor or group:technicians."
+        },
+        {
+          "name": "scheduledDate",
+          "type": "date",
+          "label": "Scheduled date",
+          "required": true
+        },
+        {
+          "name": "estimatedHours",
+          "type": "number",
+          "label": "Estimated hours",
+          "validate": [
+            {
+              "expression": "!payload.estimatedHours || payload.estimatedHours > 0",
+              "message": "Estimated hours must be greater than zero"
+            }
+          ]
+        },
+        {
+          "name": "workPerformed",
+          "type": "textarea",
+          "label": "Work performed",
+          "requiredWhen": "doc.state == 'in-progress' || doc.state == 'parts-ready'"
+        },
+        {
+          "name": "billableHours",
+          "type": "number",
+          "label": "Billable hours",
+          "requiredWhen": "doc.state == 'in-progress' || doc.state == 'parts-ready'",
+          "validate": [
+            {
+              "expression": "!payload.billableHours || payload.billableHours >= 0",
+              "message": "Billable hours cannot be negative"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "_id": "form:parts-reservation",
+      "kind": "form",
+      "appId": "field-services",
+      "docType": "parts-reservation",
+      "title": "Parts Reservation",
+      "defaultReaders": [
+        "group:inventory",
+        "group:technicians",
+        "group:dispatch",
+        "group:managers"
+      ],
+      "sections": [
+        {
+          "title": "Reservation",
+          "fields": [
+            "workOrderRef",
+            "partNumber",
+            "quantity",
+            "neededBy"
+          ]
+        },
+        {
+          "title": "Fulfillment",
+          "fields": [
+            "warehouse",
+            "shortageReason"
+          ]
+        }
+      ],
+      "fields": [
+        {
+          "name": "workOrderRef",
+          "type": "select",
+          "label": "Work order",
+          "required": true,
+          "source": {
+            "docType": "work-order",
+            "labelField": "payload.customer"
+          }
+        },
+        {
+          "name": "partNumber",
+          "type": "text",
+          "label": "Part number",
+          "required": true,
+          "searchable": true
+        },
+        {
+          "name": "quantity",
+          "type": "number",
+          "label": "Quantity",
+          "required": true,
+          "validate": [
+            {
+              "expression": "payload.quantity > 0",
+              "message": "Quantity must be greater than zero"
+            }
+          ]
+        },
+        {
+          "name": "neededBy",
+          "type": "date",
+          "label": "Needed by"
+        },
+        {
+          "name": "warehouse",
+          "type": "select",
+          "label": "Warehouse",
+          "defaultValue": "main",
+          "options": [
+            {
+              "label": "Main",
+              "value": "main"
+            },
+            {
+              "label": "East",
+              "value": "east"
+            },
+            {
+              "label": "West",
+              "value": "west"
+            }
+          ]
+        },
+        {
+          "name": "shortageReason",
+          "type": "textarea",
+          "label": "Shortage reason",
+          "requiredWhen": "doc.state == 'backordered'"
+        }
+      ]
+    },
+    {
+      "_id": "form:invoice",
+      "kind": "form",
+      "appId": "field-services",
+      "docType": "invoice",
+      "title": "Invoice",
+      "defaultReaders": [
+        "group:billing",
+        "group:dispatch",
+        "group:managers"
+      ],
+      "sections": [
+        {
+          "title": "Invoice",
+          "fields": [
+            "workOrderRef",
+            "customer",
+            "amount",
+            "dueDate"
+          ]
+        },
+        {
+          "title": "Collection",
+          "fields": [
+            "paymentReference",
+            "voidReason"
+          ]
+        }
+      ],
+      "fields": [
+        {
+          "name": "workOrderRef",
+          "type": "select",
+          "label": "Work order",
+          "required": true,
+          "source": {
+            "docType": "work-order",
+            "labelField": "payload.customer"
+          }
+        },
+        {
+          "name": "customer",
+          "type": "text",
+          "label": "Customer",
+          "required": true,
+          "searchable": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "label": "Amount",
+          "required": true,
+          "validate": [
+            {
+              "expression": "payload.amount > 0",
+              "message": "Amount must be greater than zero"
+            }
+          ]
+        },
+        {
+          "name": "dueDate",
+          "type": "date",
+          "label": "Due date",
+          "required": true
+        },
+        {
+          "name": "paymentReference",
+          "type": "text",
+          "label": "Payment reference"
+        },
+        {
+          "name": "voidReason",
+          "type": "textarea",
+          "label": "Void reason",
+          "requiredWhen": "doc.state == 'void'"
+        }
+      ]
+    },
+    {
+      "_id": "view:service-requests",
+      "kind": "view",
+      "appId": "field-services",
+      "docType": "service-request",
+      "title": "Service Requests",
+      "columns": [
+        {
+          "field": "payload.customer",
+          "label": "Customer"
+        },
+        {
+          "field": "payload.priority",
+          "label": "Priority"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "service-request"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "view:work-orders",
+      "kind": "view",
+      "appId": "field-services",
+      "docType": "work-order",
+      "title": "Work Orders",
+      "columns": [
+        {
+          "field": "payload.customer",
+          "label": "Customer"
+        },
+        {
+          "field": "payload.site",
+          "label": "Site"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        },
+        {
+          "field": "assignee",
+          "label": "Assigned to"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "work-order"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "view:my-work-orders",
+      "kind": "view",
+      "appId": "field-services",
+      "docType": "work-order",
+      "title": "My Work Orders",
+      "columns": [
+        {
+          "field": "payload.customer",
+          "label": "Customer"
+        },
+        {
+          "field": "payload.serviceType",
+          "label": "Type"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "work-order"
+        },
+        {
+          "field": "assignee",
+          "op": "in",
+          "value": "@me"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "asc"
+        }
+      ]
+    },
+    {
+      "_id": "view:parts-reservations",
+      "kind": "view",
+      "appId": "field-services",
+      "docType": "parts-reservation",
+      "title": "Parts Reservations",
+      "columns": [
+        {
+          "field": "payload.partNumber",
+          "label": "Part"
+        },
+        {
+          "field": "payload.quantity",
+          "label": "Qty"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        },
+        {
+          "field": "assignee",
+          "label": "Assigned to"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "parts-reservation"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "view:invoices",
+      "kind": "view",
+      "appId": "field-services",
+      "docType": "invoice",
+      "title": "Invoices",
+      "columns": [
+        {
+          "field": "payload.customer",
+          "label": "Customer"
+        },
+        {
+          "field": "payload.amount",
+          "label": "Amount"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "invoice"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "view:billing-queue",
+      "kind": "view",
+      "appId": "field-services",
+      "docType": "invoice",
+      "title": "Billing Queue",
+      "columns": [
+        {
+          "field": "payload.customer",
+          "label": "Customer"
+        },
+        {
+          "field": "payload.amount",
+          "label": "Amount"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        },
+        {
+          "field": "assignee",
+          "label": "Assigned to"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "invoice"
+        },
+        {
+          "field": "assignee",
+          "op": "in",
+          "value": "@me"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "asc"
+        }
+      ]
+    },
+    {
+      "_id": "workflow:service-request",
+      "kind": "workflow",
+      "appId": "field-services",
+      "docType": "service-request",
+      "title": "Service Request Intake",
+      "initialState": "new",
+      "states": [
+        {
+          "name": "new",
+          "label": "New",
+          "responsible": "group:dispatch"
+        },
+        {
+          "name": "triaged",
+          "label": "Triaged",
+          "responsible": "group:dispatch"
+        },
+        {
+          "name": "converted",
+          "label": "Converted",
+          "final": true
+        },
+        {
+          "name": "declined",
+          "label": "Declined",
+          "final": true
+        }
+      ],
+      "transitions": [
+        {
+          "id": "triage",
+          "label": "Triage",
+          "from": "new",
+          "to": "triaged",
+          "requiredRole": "group:dispatch",
+          "action": "audit-transition"
+        },
+        {
+          "id": "convert",
+          "label": "Convert to work order",
+          "from": "triaged",
+          "to": "converted",
+          "requiredRole": "group:dispatch",
+          "action": "audit-transition"
+        },
+        {
+          "id": "decline",
+          "label": "Decline",
+          "from": "triaged",
+          "to": "declined",
+          "requiredRole": "group:dispatch",
+          "action": "audit-transition"
+        }
+      ]
+    },
+    {
+      "_id": "workflow:work-order",
+      "kind": "workflow",
+      "appId": "field-services",
+      "docType": "work-order",
+      "title": "Work Order Fulfillment",
+      "initialState": "scheduled",
+      "states": [
+        {
+          "name": "scheduled",
+          "label": "Scheduled",
+          "responsible": "group:technicians",
+          "responsibleFormula": "payload.technician"
+        },
+        {
+          "name": "in-progress",
+          "label": "In progress",
+          "responsible": "group:technicians",
+          "responsibleFormula": "payload.technician"
+        },
+        {
+          "name": "needs-parts",
+          "label": "Needs parts",
+          "responsible": "group:inventory"
+        },
+        {
+          "name": "parts-ready",
+          "label": "Parts ready",
+          "responsible": "group:technicians",
+          "responsibleFormula": "payload.technician"
+        },
+        {
+          "name": "completed",
+          "label": "Completed",
+          "responsible": "group:billing"
+        },
+        {
+          "name": "cancelled",
+          "label": "Cancelled",
+          "final": true
+        }
+      ],
+      "transitions": [
+        {
+          "id": "start",
+          "label": "Start work",
+          "from": "scheduled",
+          "to": "in-progress",
+          "guard": "principals.includes(payload.technician) || principals.includes('group:technicians')",
+          "action": "audit-transition"
+        },
+        {
+          "id": "request-parts",
+          "label": "Request parts",
+          "from": "in-progress",
+          "to": "needs-parts",
+          "requiredRole": "group:technicians",
+          "action": "audit-transition"
+        },
+        {
+          "id": "parts-ready",
+          "label": "Mark parts ready",
+          "from": "needs-parts",
+          "to": "parts-ready",
+          "requiredRole": "group:inventory",
+          "action": "audit-transition"
+        },
+        {
+          "id": "resume-after-parts",
+          "label": "Resume after parts",
+          "from": "parts-ready",
+          "to": "in-progress",
+          "requiredRole": "group:technicians",
+          "action": "audit-transition"
+        },
+        {
+          "id": "complete",
+          "label": "Complete",
+          "from": "in-progress",
+          "to": "completed",
+          "guard": "!!payload.workPerformed && payload.billableHours >= 0",
+          "requiredRole": "group:technicians",
+          "action": "audit-transition"
+        },
+        {
+          "id": "complete-after-parts",
+          "label": "Complete after parts",
+          "from": "parts-ready",
+          "to": "completed",
+          "guard": "!!payload.workPerformed && payload.billableHours >= 0",
+          "requiredRole": "group:technicians",
+          "action": "audit-transition"
+        },
+        {
+          "id": "cancel",
+          "label": "Cancel",
+          "from": "*",
+          "to": "cancelled",
+          "requiredRole": "group:dispatch",
+          "action": "audit-transition"
+        }
+      ]
+    },
+    {
+      "_id": "workflow:parts-reservation",
+      "kind": "workflow",
+      "appId": "field-services",
+      "docType": "parts-reservation",
+      "title": "Parts Reservation",
+      "initialState": "requested",
+      "states": [
+        {
+          "name": "requested",
+          "label": "Requested",
+          "responsible": "group:inventory"
+        },
+        {
+          "name": "allocated",
+          "label": "Allocated",
+          "responsible": "group:technicians"
+        },
+        {
+          "name": "picked-up",
+          "label": "Picked up",
+          "final": true
+        },
+        {
+          "name": "backordered",
+          "label": "Backordered",
+          "responsible": "group:inventory"
+        }
+      ],
+      "transitions": [
+        {
+          "id": "allocate",
+          "label": "Allocate",
+          "from": "requested",
+          "to": "allocated",
+          "requiredRole": "group:inventory",
+          "action": "audit-transition"
+        },
+        {
+          "id": "backorder",
+          "label": "Backorder",
+          "from": "requested",
+          "to": "backordered",
+          "requiredRole": "group:inventory",
+          "action": "audit-transition"
+        },
+        {
+          "id": "receive-stock",
+          "label": "Receive stock",
+          "from": "backordered",
+          "to": "allocated",
+          "requiredRole": "group:inventory",
+          "action": "audit-transition"
+        },
+        {
+          "id": "pick-up",
+          "label": "Pick up",
+          "from": "allocated",
+          "to": "picked-up",
+          "requiredRole": "group:technicians",
+          "action": "audit-transition"
+        }
+      ]
+    },
+    {
+      "_id": "workflow:invoice",
+      "kind": "workflow",
+      "appId": "field-services",
+      "docType": "invoice",
+      "title": "Invoice Collection",
+      "initialState": "draft",
+      "states": [
+        {
+          "name": "draft",
+          "label": "Draft",
+          "responsible": "group:billing"
+        },
+        {
+          "name": "ready",
+          "label": "Ready",
+          "responsible": "group:billing"
+        },
+        {
+          "name": "sent",
+          "label": "Sent",
+          "responsible": "group:billing"
+        },
+        {
+          "name": "paid",
+          "label": "Paid",
+          "final": true
+        },
+        {
+          "name": "void",
+          "label": "Void",
+          "final": true
+        }
+      ],
+      "transitions": [
+        {
+          "id": "mark-ready",
+          "label": "Mark ready",
+          "from": "draft",
+          "to": "ready",
+          "requiredRole": "group:billing",
+          "action": "audit-transition"
+        },
+        {
+          "id": "send",
+          "label": "Send",
+          "from": "ready",
+          "to": "sent",
+          "requiredRole": "group:billing",
+          "action": "audit-transition"
+        },
+        {
+          "id": "record-payment",
+          "label": "Record payment",
+          "from": "sent",
+          "to": "paid",
+          "guard": "!!payload.paymentReference",
+          "requiredRole": "group:billing",
+          "action": "audit-transition"
+        },
+        {
+          "id": "void",
+          "label": "Void",
+          "from": "*",
+          "to": "void",
+          "requiredRole": "group:billing",
+          "action": "audit-transition"
+        }
+      ]
+    }
+  ]
+}

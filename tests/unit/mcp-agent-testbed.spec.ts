@@ -21,6 +21,15 @@ const approvalsFixture: AppTemplateFixture = {
   starterDocTypeTitle: "Request"
 };
 
+const fieldServicesFixture: AppTemplateFixture = {
+  fixtureId: "field-services-multi",
+  sourceTemplate: loadTemplateFixture("tests/mcp/agent/fixtures/field-services/template.json"),
+  appId: "agent-field-services",
+  title: "Agent Field Services",
+  starterDocType: "service-request",
+  starterDocTypeTitle: "Service Request"
+};
+
 describe("MCP agent testbed", () => {
   it("rewrites a template fixture to an isolated app id and database", () => {
     const rewritten = rewriteTemplateForApp(fixture);
@@ -56,6 +65,23 @@ describe("MCP agent testbed", () => {
 
   it("keeps the rewritten approvals fixture valid", () => {
     const rewritten = rewriteTemplateForApp(approvalsFixture);
+    expect(validateTemplateDefinitions(rewritten)).toEqual([]);
+  });
+
+  it("rewrites the field services fixture to an isolated app id and database", () => {
+    const rewritten = rewriteTemplateForApp(fieldServicesFixture);
+
+    expect(rewritten.appId).toBe("agent-field-services");
+    expect(rewritten.templateId).toBe("agent-field-services:fixture:field-services-multi");
+    expect(rewritten.source).toBe("agent-fixture:field-services-multi");
+    for (const definition of rewritten.definitions) {
+      if ("appId" in definition) expect(definition.appId).toBe("agent-field-services");
+      if (definition.kind === "app") expect(definition.database).toBe("agent_field_services_app");
+    }
+  });
+
+  it("keeps the rewritten field services fixture valid", () => {
+    const rewritten = rewriteTemplateForApp(fieldServicesFixture);
     expect(validateTemplateDefinitions(rewritten)).toEqual([]);
   });
 

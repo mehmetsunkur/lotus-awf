@@ -50,6 +50,17 @@ const APPROVALS_FIXTURE: AppTemplateFixture = {
   starterDocType: "request",
   starterDocTypeTitle: "Request"
 };
+// Multi-department field services fixture (dispatch + technicians + inventory + billing).
+// Scenario D asks the agent to edit one workflow in a larger business system and proves it
+// leaves the neighboring department workflows untouched by exact design diff.
+const FIELD_SERVICES_FIXTURE: AppTemplateFixture = {
+  fixtureId: "field-services-multi",
+  sourceTemplate: loadTemplateFixture("tests/mcp/agent/fixtures/field-services/template.json"),
+  appId: "agent-field-services",
+  title: "Agent Field Services",
+  starterDocType: "service-request",
+  starterDocTypeTitle: "Service Request"
+};
 
 /**
  * Which agents to run. `LOTUS_AGENT_DRIVERS` is an optional comma-separated allowlist of
@@ -339,6 +350,81 @@ test.describe("MCP real-agent acceptance", () => {
         );
         expect(templateValidation.ok, `template invalid: ${JSON.stringify(templateValidation.errors)}`).toBe(true);
         assertTemplateDiff(diff, { changed: ["workflow:request"] });
+        await diagnostics.attachTo(test.info(), true);
+      });
+
+      // Scenario D — edit one workflow inside a richer multi-department app.
+      // Field Services has service-request, work-order, parts-reservation, and invoice workflows;
+      // the agent must add a technician/customer hold loop only to work orders.
+      test("agent adds a customer-hold loop to the field services work-order workflow", async () => {
+        const diagnostics = createDiagnostics(driver);
+        const admin = await oracle("admin");
+        const beforeDesigner = await oracle("designer");
+        await installTemplateFixture(admin, beforeDesigner, FIELD_SERVICES_FIXTURE);
+        const before = await tryExportTemplate(beforeDesigner, diagnostics, FIELD_SERVICES_FIXTURE.appId, "before");
+        await runAgent(
+          driver,
+          [
+            "You manage a Lotus Notes field-services app via the lotus designer MCP tools.",
+            `The \`${FIELD_SERVICES_FIXTURE.appId}\` app has separate workflows for service requests,`,
+            "work orders, parts reservations, and invoices. Add a customer availability hold loop",
+            "to ONLY the `work-order` workflow: a new non-final state named `customer-hold`",
+            "(label \"Customer hold\", responsible `group:dispatch`), a transition `place-customer-hold`",
+            "from `in-progress` to `customer-hold` (label \"Place customer hold\", requiredRole",
+            "`group:technicians`), and a transition `resume-from-customer-hold` from",
+            "`customer-hold` back to `in-progress` (label \"Resume from customer hold\",",
+            "requiredRole `group:dispatch`). Preserve the existing parts and completion paths,",
+            "do not change any other workflow, inspect the current design first, then apply the",
+            "change and confirm it validates."
+          ].join(" "),
+          ["designer"],
+          diagnostics
+        );
+
+        const designer = await oracle("designer");
+        const defs = await designer.callJsonTool<AppDefinitions>("lotus_designer_get_app_definitions", {
+          appId: FIELD_SERVICES_FIXTURE.appId
+        });
+        const workflow = defs.workflows.find((w) => w._id === "workflow:work-order");
+        expect(workflow, "work-order workflow should exist").toBeTruthy();
+
+        const customerHold = workflow!.states.find((s) => s.name === "customer-hold");
+        expect(customerHold, "customer-hold state should be added").toBeTruthy();
+        expect(customerHold!.label).toBe("Customer hold");
+        expect(customerHold!.final ?? false, "customer-hold must not be final").toBe(false);
+        expect(customerHold!.responsible).toBe("group:dispatch");
+
+        const placeHold = workflow!.transitions.find(
+          (t) => t.id === "place-customer-hold" && t.from === "in-progress" && t.to === "customer-hold"
+        );
+        expect(placeHold, "in-progress -> customer-hold transition should be added").toBeTruthy();
+        expect(placeHold!.requiredRole).toBe("group:technicians");
+
+        const resume = workflow!.transitions.find(
+          (t) => t.id === "resume-from-customer-hold" && t.from === "customer-hold" && t.to === "in-progress"
+        );
+        expect(resume, "customer-hold -> in-progress transition should be added").toBeTruthy();
+        expect(resume!.requiredRole).toBe("group:dispatch");
+
+        // Existing cross-department paths must survive the edit.
+        expect(workflow!.transitions.find((t) => t.id === "request-parts")).toBeTruthy();
+        expect(workflow!.transitions.find((t) => t.id === "parts-ready")).toBeTruthy();
+        expect(workflow!.transitions.find((t) => t.id === "complete")).toBeTruthy();
+        expect(defs.workflows.find((w) => w._id === "workflow:parts-reservation")).toBeTruthy();
+        expect(defs.workflows.find((w) => w._id === "workflow:invoice")).toBeTruthy();
+
+        const validation = await designer.callJsonTool<ValidationResult>("lotus_designer_validate_definition", {
+          definition: workflow!
+        });
+        expect(validation.ok, `workflow invalid: ${JSON.stringify(validation.errors)}`).toBe(true);
+        const { diff, validation: templateValidation } = await exportValidateAndDiffTemplate(
+          designer,
+          diagnostics,
+          FIELD_SERVICES_FIXTURE.appId,
+          before
+        );
+        expect(templateValidation.ok, `template invalid: ${JSON.stringify(templateValidation.errors)}`).toBe(true);
+        assertTemplateDiff(diff, { changed: ["workflow:work-order"] });
         await diagnostics.attachTo(test.info(), true);
       });
     });

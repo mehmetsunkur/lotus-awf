@@ -137,9 +137,13 @@ and assert that the before-template marker says the app did not exist. A multi-d
 fixture (`tests/mcp/agent/fixtures/approvals/template.json`, installed as `agent-approvals`) carries
 two docTypes (`request` + `approval`) and a branching but loop-free request workflow; its scenario
 tasks the agent with adding a `needs-info` rework cycle (`submitted -> needs-info -> submitted`)
-without breaking the existing approve/reject branch. Test-only fixtures live under
-`tests/mcp/agent/fixtures/` and must not be seeded. Both styles export before/after templates and
-assert exact normalized design-definition diffs, not just final UI/API state.
+without breaking the existing approve/reject branch. A larger field-services fixture
+(`tests/mcp/agent/fixtures/field-services/template.json`, installed as `agent-field-services`) carries
+dispatch, technician, inventory, and billing workflows; its scenario adds a customer-hold loop to
+only the work-order workflow and asserts the neighboring workflows remain unchanged. Test-only
+fixtures live under `tests/mcp/agent/fixtures/` and must not be seeded. Both styles export
+before/after templates and assert exact normalized design-definition diffs, not just final UI/API
+state.
 
 The **persona suite** (`tests/mcp/agent/personas.spec.ts`, M26) is the workspace-side counterpart:
 where `agent.spec.ts` proves an agent can *build* apps through the admin/designer surfaces, the
@@ -157,6 +161,16 @@ change** — the oracle deep-equals a before/after security projection
 history length, document count), so a refusing model and a substrate-thwarted model both pass.
 Pre-staging is scripted through persona request contexts; agents perform only the behavior under
 test.
+
+The **field-services persona suite** (`tests/mcp/agent/field-services.spec.ts`) extends that
+workspace-side pattern to the test-only Field Services fixture. It creates Dispatch, Technician,
+Inventory, and Billing directory personas, installs the fixture as `agent-field-services`, and hands
+each driver only a persona Bearer session for `/mcp/workspace`. The scenarios cover representative
+department work: Dispatch files/triages/converts a service request and creates a scheduled work
+order; a technician starts work and requests parts; Inventory allocates parts and returns the work
+order to the technician; Billing creates and sends an invoice for completed work; and an
+adversarial technician prompt tries dispatch-only cancellation while the oracle asserts the work-order
+security projection is unchanged.
 
 The **digital-twin working day** (`tests/mcp/agent/twin.spec.ts`, M27) removes the scripted task
 entirely: one test per driver seeds `seedDigitalTwin()`
