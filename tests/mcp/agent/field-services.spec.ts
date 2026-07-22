@@ -4,6 +4,7 @@ import { startAgentMcpHost, ALICE_AUTH, mintSessionToken, type AgentMcpHost } fr
 import { connectHttpMcp, type LotusHttpMcpClient } from "../http/support/http-client";
 import { ClaudeCodeDriver, CodexDriver, type AgentDriver } from "../../../src/operator/agent-driver";
 import { createAgentDiagnostics, type AgentDiagnostics } from "../../../src/operator/diagnostics";
+import { assembleShiftPrompt } from "../../../src/operator/prompt";
 import { captureDocTypeProjection } from "./support/state-snapshot";
 import {
   installTemplateFixture,
@@ -61,6 +62,37 @@ type FieldPersonaName = keyof typeof FIELD_PERSONAS;
 
 type FieldScenario = {
   appId: string;
+};
+
+const FIELD_STAFF_GROUPS = [
+  "group:dispatch",
+  "group:technicians",
+  "group:inventory",
+  "group:billing",
+  "group:managers"
+];
+
+const FIELD_JOB_DESCRIPTIONS: Record<FieldPersonaName, string> = {
+  dana:
+    "As Dispatch Coordinator you work the dispatch queue for service requests. Convert triaged requests into " +
+    "scheduled work orders assigned to the named technician, preserving the customer, site, service type, date, " +
+    "estimated hours, work notes, and billable hours from the request. Work everything waiting on dispatch and " +
+    "leave technician, inventory, and billing work to those teams.",
+  taylor:
+    "As Field Technician you work your technician schedule and your assigned work-order queue. Start scheduled " +
+    "work orders assigned to you. When the work notes say a part is required, create a parts reservation for the " +
+    "named part, request parts on the work order, and stop that work order until Inventory allocates the part. " +
+    "Never complete a work order that still needs a required part. When parts are ready, pick up the allocated " +
+    "reservation and complete the work order if the work notes and billable hours are present. Leave dispatch and " +
+    "billing work to those teams.",
+  iris:
+    "As Inventory Coordinator you work parts reservations waiting on inventory. Allocate requested parts when the " +
+    "needed part is available, then mark the linked work order's parts ready so the technician can resume. Leave " +
+    "technician completion and billing work to those teams.",
+  blake:
+    "As Billing Specialist you work completed work orders waiting on billing. Create an invoice for each completed " +
+    "work order using the billable hours at 180 per hour, then mark the invoice ready and send it. Leave service " +
+    "requests, parts, and technician work to those teams."
 };
 
 const ALL_DRIVERS: AgentDriver[] = [new ClaudeCodeDriver(), new CodexDriver()];
@@ -194,6 +226,132 @@ async function seedFieldServices(
   };
 }
 
+async function seedFieldServicesHandbook(
+  admin: APIRequestContext,
+  as: (username: FieldPersonaName) => Promise<APIRequestContext>,
+  fieldAppId: string
+): Promise<{ kbAppId: string }> {
+  const kbAppId = "field-services-kb";
+  await requestJson(
+    admin,
+    "post",
+    "/api/platform/apps",
+    { appId: kbAppId, title: "Northstar Field Services Handbook", fromTemplate: "kb" },
+    [201]
+  );
+
+  await requestJson(admin, "put", `/api/apps/${kbAppId}/access`, {
+    entries: [
+      { principal: "group:admins", level: "manager" },
+      { principal: "group:dispatch", level: "author" },
+      { principal: "group:technicians", level: "author" },
+      { principal: "group:inventory", level: "author" },
+      { principal: "group:billing", level: "author" },
+      { principal: "group:managers", level: "reader" }
+    ]
+  });
+
+  const kbDefinitions = await requestJson<{ forms: Array<Json & { _id: string }> }>(
+    admin,
+    "get",
+    `/api/apps/${kbAppId}/definitions`
+  );
+  const articleForm = kbDefinitions.forms.find((definition) => definition._id === "form:article");
+  if (!articleForm) throw new Error("field services handbook is missing form:article");
+  await requestJson(admin, "put", `/api/apps/${kbAppId}/definitions/${encodeURIComponent("form:article")}`, {
+    ...articleForm,
+    defaultReaders: FIELD_STAFF_GROUPS
+  });
+
+  await requestJson(
+    admin,
+    "post",
+    `/api/apps/${kbAppId}/documents`,
+    {
+      docType: "article",
+      payload: {
+        title: "Welcome to Northstar Field Services",
+        body:
+          "Northstar Field Services coordinates customer service requests across Dispatch, Technicians, " +
+          "Inventory, and Billing. Company systems by app id:\n" +
+          `- "${kbAppId}" - this handbook: articles for everyone, procedures for your team.\n` +
+          `- "${fieldAppId}" - field service operations: service requests, work orders, parts reservations, and invoices.\n` +
+          "Start your day from your queue views and your team's procedures. Do only the work owned by your role."
+      }
+    },
+    [201]
+  );
+  await requestJson(
+    admin,
+    "post",
+    `/api/apps/${kbAppId}/documents`,
+    {
+      docType: "article",
+      payload: {
+        title: "How work moves through Field Services",
+        body:
+          "A service request is triaged by Dispatch, converted into a work order, worked by the assigned " +
+          "technician, routed to Inventory when parts are needed, returned to the technician when parts are ready, " +
+          "completed by the technician, and invoiced by Billing."
+      }
+    },
+    [201]
+  );
+
+  const procedures: Array<{ username: FieldPersonaName; department: string; title: string; body: string }> = [
+    {
+      username: "dana",
+      department: "dispatch",
+      title: "Dispatch procedure",
+      body:
+        "Work service requests assigned to Dispatch. For a triaged request, create one scheduled work order. " +
+        "Use the request's customer, site, requested date, estimated hours, work notes, billable hours, service type, " +
+        "technician, and required part fields. After the work order exists, convert the service request."
+    },
+    {
+      username: "taylor",
+      department: "technicians",
+      title: "Technician procedure",
+      body:
+        "Work orders assigned to you name you in the Technician field. Start scheduled work. If Required part is " +
+        "present in the work notes, create one parts reservation with that part number and quantity one, then request " +
+        "parts on the work order and stop until Inventory allocates the part. Do not complete a required-part work " +
+        "order from in-progress. When a linked parts reservation is allocated, pick it up and complete the work order."
+    },
+    {
+      username: "iris",
+      department: "inventory",
+      title: "Inventory procedure",
+      body:
+        "Work requested parts reservations. Allocate available stock, then move the linked work order from needs-parts " +
+        "to parts-ready. Do not complete work orders; technicians do that after pickup."
+    },
+    {
+      username: "blake",
+      department: "billing",
+      title: "Billing procedure",
+      body:
+        "Work completed work orders assigned to Billing. Create one invoice per completed work order for billable hours " +
+        "times 180, using a due date thirty days after the scheduled date when available. Mark each invoice ready, then send it."
+    }
+  ];
+  for (const procedure of procedures) {
+    const author = await as(procedure.username);
+    await requestJson(
+      author,
+      "post",
+      `/api/apps/${kbAppId}/documents`,
+      {
+        docType: "procedure",
+        payload: { title: procedure.title, department: procedure.department, body: procedure.body }
+      },
+      [201]
+    );
+  }
+
+  return { kbAppId };
+}
+
 async function getDocument(context: APIRequestContext, appId: string, id: string): Promise<BusinessDocument> {
   const response = await context.get(`/api/apps/${appId}/documents/${encodeURIComponent(id)}`);
   expect(response.status(), `${id} should be readable for the oracle`).toBe(200);
@@ -258,6 +416,32 @@ test.describe("MCP real-agent field services personas", () => {
     });
   }
 
+  function createShiftDiagnostics(driver: AgentDriver, shiftKey: string): AgentDiagnostics {
+    return createAgentDiagnostics({
+      rootDir: test.info().outputPath("agent-diagnostics", driver.name, shiftKey),
+      driverName: driver.name,
+      testTitle: `${test.info().title} - ${shiftKey}`
+    });
+  }
+
+  function shiftPrompt(kbAppId: string, username: FieldPersonaName): string {
+    const persona = FIELD_PERSONAS[username];
+    return assembleShiftPrompt({
+      displayName: persona.displayName,
+      jobTitle: persona.title,
+      companyName: "Northstar Field Services",
+      kbAppId,
+      jobDescription: FIELD_JOB_DESCRIPTIONS[username]
+    });
+  }
+
+  function assertPromptHygiene(prompt: string, kbAppId: string, fieldAppId: string): void {
+    expect(prompt).toContain(kbAppId);
+    for (const banned of [fieldAppId, "view:", "doc:", "lotus_"]) {
+      expect(prompt, `shift prompt must not contain ${banned}`).not.toContain(banned);
+    }
+  }
+
   async function runFieldAgent(
     driver: AgentDriver,
     username: FieldPersonaName,
@@ -298,6 +482,128 @@ test.describe("MCP real-agent field services personas", () => {
 
   for (const driver of drivers) {
     test.describe(driver.name, () => {
+      test("works a field services day from handbook instructions", async ({ playwright }) => {
+        test.setTimeout(3_600_000);
+        if (!driver.isAvailable()) {
+          const reason = driver.unavailableReason();
+          console.warn(`[mcp-agent] skipping "${test.info().title}" - ${driver.name} unavailable: ${reason}`);
+          test.skip(true, `${driver.name} unavailable: ${reason}`);
+        }
+
+        const { admin, scenario, as } = await seedFieldServices(playwright, apiUrl, host, contexts, mcpClients);
+        const app = scenario.appId;
+        const { kbAppId } = await seedFieldServicesHandbook(admin, as, app);
+        const dana = await as("dana");
+        const taylor = await as("taylor");
+        const iris = await as("iris");
+        const blake = await as("blake");
+
+        const request = await createDocument(admin, app, "service-request", {
+          customer: "Meridian Labs",
+          site: "Clean Room 3",
+          contact: "Dr. Lee",
+          problem:
+            "Vacuum pump seal failure. Create a repair work order for person:taylor on 2026-08-09. " +
+            "Estimated hours 4. Required part VAC-SEAL-42 must be allocated by Inventory before completion. " +
+            "Work notes: Replace vacuum pump seal after parts pickup. Billable hours 4.",
+          priority: "emergency",
+          requestedDate: "2026-08-09"
+        });
+        const triaged = await transitionDocument(dana, app, request._id, "triage");
+        expect(triaged.state).toBe("triaged");
+        expect(triaged.assignee).toBe("group:dispatch");
+
+        const capture = async () => ({
+          serviceRequests: await captureDocTypeProjection(dana, app, "service-request"),
+          workOrders: await captureDocTypeProjection(dana, app, "work-order"),
+          partsReservations: await captureDocTypeProjection(dana, app, "parts-reservation"),
+          invoices: await captureDocTypeProjection(dana, app, "invoice"),
+          handbookArticles: await captureDocTypeProjection(admin, kbAppId, "article"),
+          handbookProcedures: await captureDocTypeProjection(admin, kbAppId, "procedure")
+        });
+        const morning = await capture();
+
+        const runShift = async (shiftKey: string, username: FieldPersonaName) => {
+          const prompt = shiftPrompt(kbAppId, username);
+          assertPromptHygiene(prompt, kbAppId, app);
+          await runFieldAgent(driver, username, prompt, createShiftDiagnostics(driver, shiftKey));
+        };
+
+        await runShift("s1-dispatch", "dana");
+        const afterDispatchRequest = await getDocument(dana, app, request._id);
+        expect(afterDispatchRequest.state).toBe("converted");
+        expect(afterDispatchRequest.stateUpdatedBy).toBe("person:dana");
+        const workOrdersAfterDispatch = await listDocuments(dana, app, "work-order");
+        const meridianOrders = workOrdersAfterDispatch.filter((doc) => doc.payload.customer === "Meridian Labs");
+        expect(meridianOrders, "dispatch should create one Meridian Labs work order").toHaveLength(1);
+        const workOrderId = meridianOrders[0]._id;
+        expect(meridianOrders[0].payload).toMatchObject({
+          customer: "Meridian Labs",
+          site: "Clean Room 3",
+          technician: "person:taylor",
+          serviceType: "repair",
+          scheduledDate: "2026-08-09",
+          estimatedHours: 4,
+          billableHours: 4
+        });
+        expect((await capture()).invoices).toEqual(morning.invoices);
+
+        await runShift("s2-technician-am", "taylor");
+        const afterTechAm = await getDocument(taylor, app, workOrderId);
+        expect(afterTechAm.state).toBe("needs-parts");
+        expect(afterTechAm.assignee).toBe("group:inventory");
+        expect(afterTechAm.stateUpdatedBy).toBe("person:taylor");
+        expect(afterTechAm.history?.map((event) => event.transition)).toContain("request-parts");
+        const reservationsAfterTech = await listDocuments(taylor, app, "parts-reservation");
+        const reservations = reservationsAfterTech.filter((doc) => doc.payload.workOrderRef === workOrderId);
+        expect(reservations, "technician should create one linked parts reservation").toHaveLength(1);
+        const reservationId = reservations[0]._id;
+        expect(String(reservations[0].payload.partNumber).toLowerCase()).toContain("seal");
+        expect(reservations[0].payload.quantity).toBe(1);
+
+        await runShift("s3-inventory", "iris");
+        const afterInventoryReservation = await getDocument(iris, app, reservationId);
+        expect(afterInventoryReservation.state).toBe("allocated");
+        expect(afterInventoryReservation.assignee).toBe("group:technicians");
+        expect(afterInventoryReservation.stateUpdatedBy).toBe("person:iris");
+        const afterInventoryOrder = await getDocument(iris, app, workOrderId);
+        expect(afterInventoryOrder.state).toBe("parts-ready");
+        expect(afterInventoryOrder.assignee).toBe("person:taylor");
+        expect(afterInventoryOrder.stateUpdatedBy).toBe("person:iris");
+
+        await runShift("s4-technician-pm", "taylor");
+        const afterTechPmReservation = await getDocument(taylor, app, reservationId);
+        expect(afterTechPmReservation.state).toBe("picked-up");
+        expect(afterTechPmReservation.assignee).toBeUndefined();
+        const afterTechPmOrder = await getDocument(taylor, app, workOrderId);
+        expect(afterTechPmOrder.state).toBe("completed");
+        expect(afterTechPmOrder.assignee).toBe("group:billing");
+        expect(afterTechPmOrder.stateUpdatedBy).toBe("person:taylor");
+        expect(afterTechPmOrder.history?.map((event) => event.transition)).toContain("complete-after-parts");
+
+        await runShift("s5-billing", "blake");
+        const invoices = await listDocuments(blake, app, "invoice");
+        const meridianInvoices = invoices.filter((doc) => doc.payload.workOrderRef === workOrderId);
+        expect(meridianInvoices, "billing should create one linked invoice").toHaveLength(1);
+        const invoice = meridianInvoices[0];
+        expect(invoice.payload).toMatchObject({
+          customer: "Meridian Labs",
+          amount: 720
+        });
+        expect(invoice.state).toBe("sent");
+        expect(invoice.assignee).toBe("group:billing");
+        expect(invoice.stateUpdatedBy).toBe("person:blake");
+        expect(invoice.history?.map((event) => event.transition)).toEqual(["mark-ready", "send"]);
+
+        const evening = await capture();
+        expect(evening.handbookArticles).toEqual(morning.handbookArticles);
+        expect(evening.handbookProcedures).toEqual(morning.handbookProcedures);
+        expect(evening.serviceRequests.totalDocuments).toBe(1);
+        expect(evening.workOrders.totalDocuments).toBe(1);
+        expect(evening.partsReservations.totalDocuments).toBe(1);
+        expect(evening.invoices.totalDocuments).toBe(1);
+      });
+
       test("dispatch converts a service request and creates a scheduled work order", async ({ playwright }) => {
         const diagnostics = createDiagnostics(driver);
         const { scenario, as } = await seedFieldServices(playwright, apiUrl, host, contexts, mcpClients);

@@ -619,6 +619,54 @@
       ]
     },
     {
+      "_id": "view:technician-schedule",
+      "kind": "view",
+      "appId": "field-services",
+      "docType": "work-order",
+      "title": "Technician Schedule",
+      "columns": [
+        {
+          "field": "payload.customer",
+          "label": "Customer"
+        },
+        {
+          "field": "payload.site",
+          "label": "Site"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "work-order"
+        },
+        {
+          "field": "payload.technician",
+          "op": "in",
+          "value": "@me"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "asc"
+        }
+      ]
+    },
+    {
       "_id": "view:parts-reservations",
       "kind": "view",
       "appId": "field-services",

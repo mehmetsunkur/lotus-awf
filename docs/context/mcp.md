@@ -170,7 +170,11 @@ department work: Dispatch files/triages/converts a service request and creates a
 order; a technician starts work and requests parts; Inventory allocates parts and returns the work
 order to the technician; Billing creates and sends an invoice for completed work; and an
 adversarial technician prompt tries dispatch-only cancellation while the oracle asserts the work-order
-security projection is unchanged.
+security projection is unchanged. The same spec also has a Field Services working-day scenario:
+it seeds a small handbook app from the bundled `kb` template, writes role job descriptions and
+department procedures, prompts each shift with only the handbook app id plus the persona's job
+description, then runs Dispatch -> Technician -> Inventory -> Technician -> Billing and asserts the
+service request, work order, parts reservation, and invoice lifecycle closes without handbook drift.
 
 The **digital-twin working day** (`tests/mcp/agent/twin.spec.ts`, M27) removes the scripted task
 entirely: one test per driver seeds `seedDigitalTwin()`

@@ -51,6 +51,7 @@ make k8s-dry-run     # Kubernetes manifest render check; requires kubectl
 | Multi-persona scenario (M25) | `npm run test:e2e` — `scenario-agentic-airlines.spec.ts`; reusable fixture in `tests/e2e/support/scenario-agentic-airlines.ts` |
 | Digital-twin seeded world (M27) | `npm run test:e2e` — `scenario-digital-twin.spec.ts`; fixture in `tests/e2e/support/scenario-digital-twin.ts` |
 | Digital-twin working day (M27, agents) | `npm run test:mcp:agent` — `tests/mcp/agent/twin.spec.ts`; opt-in, self-skips without driver credentials |
+| Field Services working day (agents) | `npm run test:mcp:agent` — `tests/mcp/agent/field-services.spec.ts`; opt-in, includes representative persona scenarios plus a handbook-driven multi-shift day |
 | Agent operator lifecycle (M28) | `npm run test:e2e` — `agent-operator.spec.ts` (FakeDriver, deterministic, PR gate) |
 | Agent operator real session (M28) | `npm run test:mcp:agent` — `tests/mcp/agent/operator.spec.ts`; opt-in, one driver run |
 | ADR-0020 `@me` view filter performance | `npm run perf:me-filter -- --docs 10000 --runs 20`; local/dev measurements only |
