@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `ade83be`
+- Last code review baseline: `d65684a`
 - Last reviewed date: `2026-07-22`
 - Code areas:
   - `src/shared/**`
