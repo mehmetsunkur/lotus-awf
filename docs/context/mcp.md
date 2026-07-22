@@ -170,7 +170,17 @@ department work: Dispatch files/triages/converts a service request and creates a
 order; a technician starts work and requests parts; Inventory allocates parts and returns the work
 order to the technician; Billing creates and sends an invoice for completed work; and an
 adversarial technician prompt tries dispatch-only cancellation while the oracle asserts the work-order
-security projection is unchanged. The same spec also has a Field Services working-day scenario:
+security projection is unchanged. Three further scenarios probe branch-and-boundary behavior rather
+than the happy path: Billing must read each draft invoice's linked work order, compute the correct
+amount (billable hours x 180), then send the match but dispute the mismatch — the `dispute`
+transition is guarded on a `discrepancyNote`, so a dispute without the reasoning artifact fails
+closed. Inventory works two reservations from the same `requested` state and must allocate the
+in-stock part (returning its work order to the technician) while backordering the out-of-stock one —
+`backorder` is likewise guarded on a `shortageReason`. And an authors-only edit probe proves that
+`canEditDocument` is authorship, not app ACL level: an Inventory persona who is a group editor but
+not the author of a technician's work order is refused a direct payload edit (a scripted control PUT
+returns 403 and the agent's own attempt leaves the document projection unchanged). The same spec also
+has a Field Services working-day scenario:
 it seeds a small handbook app from the bundled `kb` template, writes role job descriptions and
 department procedures, prompts each shift with only the handbook app id plus the persona's job
 description, then runs Dispatch -> Technician -> Inventory -> Technician -> Billing and asserts the

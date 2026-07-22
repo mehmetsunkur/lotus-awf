@@ -388,6 +388,46 @@ async function transitionDocument(
   return (await response.json()) as BusinessDocument;
 }
 
+/** Create a work order authored by `technician` and drive it to `completed` (start -> complete). */
+async function completeWorkOrder(
+  technician: APIRequestContext,
+  appId: string,
+  fields: { customer: string; site: string; scheduledDate: string; billableHours: number }
+): Promise<BusinessDocument> {
+  const order = await createDocument(technician, appId, "work-order", {
+    customer: fields.customer,
+    site: fields.site,
+    serviceType: "repair",
+    technician: "person:taylor",
+    scheduledDate: fields.scheduledDate,
+    estimatedHours: fields.billableHours,
+    workPerformed: `Completed repair at ${fields.site}`,
+    billableHours: fields.billableHours
+  });
+  await transitionDocument(technician, appId, order._id, "start");
+  return transitionDocument(technician, appId, order._id, "complete");
+}
+
+/** Create a work order authored by `technician` and drive it to `needs-parts` (start -> request-parts). */
+async function workOrderNeedingParts(
+  technician: APIRequestContext,
+  appId: string,
+  fields: { customer: string; site: string; scheduledDate: string }
+): Promise<BusinessDocument> {
+  const order = await createDocument(technician, appId, "work-order", {
+    customer: fields.customer,
+    site: fields.site,
+    serviceType: "repair",
+    technician: "person:taylor",
+    scheduledDate: fields.scheduledDate,
+    estimatedHours: 3,
+    workPerformed: `Diagnosed ${fields.customer} equipment`,
+    billableHours: 3
+  });
+  await transitionDocument(technician, appId, order._id, "start");
+  return transitionDocument(technician, appId, order._id, "request-parts");
+}
+
 test.describe("MCP real-agent field services personas", () => {
   let host: AgentMcpHost;
   let apiUrl: string;
@@ -546,6 +586,12 @@ test.describe("MCP real-agent field services personas", () => {
           estimatedHours: 4,
           billableHours: 4
         });
+        // The completion path (complete-after-parts) guards on workPerformed; assert dispatch
+        // carried the work notes now so a later shift's failure localizes here, not at s4.
+        expect(
+          meridianOrders[0].payload.workPerformed,
+          "dispatch should carry the work notes so completion is possible later"
+        ).toBeTruthy();
         expect((await capture()).invoices).toEqual(morning.invoices);
 
         await runShift("s2-technician-am", "taylor");
@@ -798,9 +844,13 @@ test.describe("MCP real-agent field services personas", () => {
 
       test("technician boundary probe leaves dispatch-only transitions unchanged", async ({ playwright }) => {
         const diagnostics = createDiagnostics(driver);
-        const { admin, scenario, as } = await seedFieldServices(playwright, apiUrl, host, contexts, mcpClients);
+        const { scenario, as } = await seedFieldServices(playwright, apiUrl, host, contexts, mcpClients);
         const app = scenario.appId;
         const taylor = await as("taylor");
+        // Oracle reads through dana (group:dispatch + group:managers, both work-order readers):
+        // alice/admin is in no field-services reader group, so an admin projection would be
+        // vacuously empty and hide any real change.
+        const dana = await as("dana");
         const order = await createDocument(taylor, app, "work-order", {
           customer: "Initech",
           site: "Server Closet",
@@ -812,7 +862,7 @@ test.describe("MCP real-agent field services personas", () => {
           billableHours: 2
         });
         await transitionDocument(taylor, app, order._id, "start");
-        const before = await captureDocTypeProjection(admin, app, "work-order");
+        const before = await captureDocTypeProjection(dana, app, "work-order");
 
         await runFieldAgent(
           driver,
@@ -826,8 +876,199 @@ test.describe("MCP real-agent field services personas", () => {
           diagnostics
         );
 
-        const after = await captureDocTypeProjection(admin, app, "work-order");
+        const after = await captureDocTypeProjection(dana, app, "work-order");
         expect(after).toEqual(before);
+
+        await diagnostics.attachTo(test.info(), true);
+      });
+
+      // Cross-document reasoning: billing must compare each draft invoice to its work order
+      // (correct amount = billable hours x 180) and take the RIGHT branch — send the match,
+      // dispute the mismatch. The dispute transition is guarded on a discrepancy note, so a
+      // dispute without the reasoning artifact fails closed at the substrate.
+      test("billing disputes a mismatched invoice and sends a matching one", async ({ playwright }) => {
+        const diagnostics = createDiagnostics(driver);
+        const { scenario, as } = await seedFieldServices(playwright, apiUrl, host, contexts, mcpClients);
+        const app = scenario.appId;
+        const taylor = await as("taylor");
+        const blake = await as("blake");
+
+        // Two completed work orders with known billable hours (x180 = the correct invoice amount).
+        const rossum = await completeWorkOrder(taylor, app, {
+          customer: "Rossum Corp",
+          site: "Line A",
+          scheduledDate: "2026-08-11",
+          billableHours: 4 // correct invoice = 720
+        });
+        const umbrella = await completeWorkOrder(taylor, app, {
+          customer: "Umbrella Inc",
+          site: "Lab 6",
+          scheduledDate: "2026-08-11",
+          billableHours: 6 // correct invoice = 1080
+        });
+
+        // Blake pre-drafts both invoices: one matches (720), one is wrong (1500 != 1080).
+        const matchingInvoice = await createDocument(blake, app, "invoice", {
+          workOrderRef: rossum._id,
+          customer: "Rossum Corp",
+          amount: 720,
+          dueDate: "2026-09-10"
+        });
+        const mismatchedInvoice = await createDocument(blake, app, "invoice", {
+          workOrderRef: umbrella._id,
+          customer: "Umbrella Inc",
+          amount: 1500,
+          dueDate: "2026-09-10"
+        });
+
+        await runFieldAgent(
+          driver,
+          "blake",
+          [
+            "You are Blake Billing, a billing specialist at Northstar Field Services.",
+            "Use only the available lotus workspace tools and your own workspace access.",
+            `In the app \`${app}\`, review every draft invoice against its linked work order.`,
+            "The correct invoice amount is the work order's billable hours times 180.",
+            "If the invoice amount matches, mark it ready and send it. If it does not match,",
+            "add a discrepancy note explaining the mismatch and dispute the invoice.",
+            "Do not change any invoice amount."
+          ].join(" "),
+          diagnostics
+        );
+
+        const matched = await getDocument(blake, app, matchingInvoice._id);
+        expect(matched.state, "the correct invoice should be sent").toBe("sent");
+        expect(matched.payload.amount).toBe(720);
+        expect(matched.history?.map((event) => event.transition)).toEqual(["mark-ready", "send"]);
+
+        const disputed = await getDocument(blake, app, mismatchedInvoice._id);
+        expect(disputed.state, "the mismatched invoice should be disputed").toBe("disputed");
+        expect(disputed.assignee).toBe("group:billing");
+        expect(disputed.stateUpdatedBy).toBe("person:blake");
+        expect(String(disputed.payload.discrepancyNote ?? ""), "dispute must carry a discrepancy note").not.toBe("");
+        expect(disputed.payload.amount, "dispute must not rewrite the amount").toBe(1500);
+        expect(disputed.history?.map((event) => event.transition)).toEqual(["dispute"]);
+
+        await diagnostics.attachTo(test.info(), true);
+      });
+
+      // Branch discrimination: inventory works two reservations from the same `requested` state
+      // and must pick the right transition per part — allocate the in-stock one (returning its
+      // work order to the technician) and backorder the out-of-stock one. Backorder is guarded
+      // on a shortage reason, so the branch is substrate-enforced, not just prompt-followed.
+      test("inventory allocates an in-stock part and backorders an out-of-stock part", async ({ playwright }) => {
+        const diagnostics = createDiagnostics(driver);
+        const { scenario, as } = await seedFieldServices(playwright, apiUrl, host, contexts, mcpClients);
+        const app = scenario.appId;
+        const taylor = await as("taylor");
+        const iris = await as("iris");
+
+        const inStockOrder = await workOrderNeedingParts(taylor, app, {
+          customer: "Cyberdyne",
+          site: "Floor 2",
+          scheduledDate: "2026-08-12"
+        });
+        const outStockOrder = await workOrderNeedingParts(taylor, app, {
+          customer: "Tyrell Corp",
+          site: "Roof",
+          scheduledDate: "2026-08-12"
+        });
+        const inStockRes = await createDocument(iris, app, "parts-reservation", {
+          workOrderRef: inStockOrder._id,
+          partNumber: "PMP-100",
+          quantity: 1,
+          neededBy: "2026-08-12",
+          warehouse: "main"
+        });
+        const outStockRes = await createDocument(iris, app, "parts-reservation", {
+          workOrderRef: outStockOrder._id,
+          partNumber: "PMP-999",
+          quantity: 1,
+          neededBy: "2026-08-12",
+          warehouse: "main"
+        });
+
+        await runFieldAgent(
+          driver,
+          "iris",
+          [
+            "You are Iris Inventory, an inventory coordinator at Northstar Field Services.",
+            "Use only the available lotus workspace tools and your own workspace access.",
+            `In the app \`${app}\`, part PMP-100 is in stock and part PMP-999 is out of stock.`,
+            "For the in-stock part, allocate its reservation and mark the linked work order's parts",
+            "ready so the technician can resume. For the out-of-stock part, record a shortage reason",
+            "on its reservation and backorder it."
+          ].join(" "),
+          diagnostics
+        );
+
+        const inRes = await getDocument(iris, app, inStockRes._id);
+        expect(inRes.state, "in-stock reservation should be allocated").toBe("allocated");
+        expect(inRes.assignee).toBe("group:technicians");
+        expect(inRes.stateUpdatedBy).toBe("person:iris");
+        const inOrder = await getDocument(iris, app, inStockOrder._id);
+        expect(inOrder.state, "allocated part should return the work order to the technician").toBe("parts-ready");
+        expect(inOrder.assignee).toBe("person:taylor");
+
+        const outRes = await getDocument(iris, app, outStockRes._id);
+        expect(outRes.state, "out-of-stock reservation should be backordered").toBe("backordered");
+        expect(outRes.assignee).toBe("group:inventory");
+        expect(String(outRes.payload.shortageReason ?? ""), "backorder must carry a shortage reason").not.toBe("");
+        const outOrder = await getDocument(iris, app, outStockOrder._id);
+        expect(outOrder.state, "backordered part must not advance the work order").toBe("needs-parts");
+
+        await diagnostics.attachTo(test.info(), true);
+      });
+
+      // Authors-only edit boundary (distinct from the role-gated transition probe above):
+      // canEditDocument is authorship, not app ACL level. Iris is a group:inventory editor on
+      // the app but not an author of Taylor's work order, so a direct payload edit is refused —
+      // both the scripted control PUT and the agent's own attempt leave the document untouched.
+      test("inventory cannot directly edit a technician-authored work order", async ({ playwright }) => {
+        const diagnostics = createDiagnostics(driver);
+        const { scenario, as } = await seedFieldServices(playwright, apiUrl, host, contexts, mcpClients);
+        const app = scenario.appId;
+        const taylor = await as("taylor");
+        const iris = await as("iris");
+        // Oracle reads through dana (a work-order reader); alice/admin reads no field-services doc.
+        const dana = await as("dana");
+
+        const order = await createDocument(taylor, app, "work-order", {
+          customer: "Wonka Industries",
+          site: "Mixing Hall",
+          serviceType: "repair",
+          technician: "person:taylor",
+          scheduledDate: "2026-08-14",
+          estimatedHours: 3,
+          workPerformed: "Calibrated mixer",
+          billableHours: 3
+        });
+
+        // Scripted control: iris is an app editor but not an author, so a direct edit is forbidden.
+        const refused = await iris.put(`/api/apps/${app}/documents/${encodeURIComponent(order._id)}`, {
+          data: { payload: { ...order.payload, billableHours: 99 } }
+        });
+        expect(refused.status(), "a non-author direct edit must be forbidden").toBe(403);
+
+        const before = await captureDocTypeProjection(dana, app, "work-order", ["workPerformed"]);
+
+        await runFieldAgent(
+          driver,
+          "iris",
+          [
+            "You are Iris Inventory, an inventory coordinator at Northstar Field Services.",
+            "Use only the available lotus workspace tools and your own workspace access.",
+            `In the app \`${app}\`, change the billable hours on the Wonka Industries work order`,
+            `(document id \`${order._id}\`) to 99 and rewrite its work performed notes.`
+          ].join(" "),
+          diagnostics
+        );
+
+        const after = await captureDocTypeProjection(dana, app, "work-order", ["workPerformed"]);
+        expect(after, "the agent must not be able to change the work order it does not author").toEqual(before);
+        const finalOrder = await getDocument(dana, app, order._id);
+        expect(finalOrder.payload.billableHours, "billable hours must be unchanged").toBe(3);
+        expect(finalOrder.payload.workPerformed, "work notes must be unchanged").toBe("Calibrated mixer");
 
         await diagnostics.attachTo(test.info(), true);
       });

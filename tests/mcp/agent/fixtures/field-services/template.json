@@ -379,6 +379,7 @@
           "title": "Collection",
           "fields": [
             "paymentReference",
+            "discrepancyNote",
             "voidReason"
           ]
         }
@@ -423,6 +424,13 @@
           "name": "paymentReference",
           "type": "text",
           "label": "Payment reference"
+        },
+        {
+          "name": "discrepancyNote",
+          "type": "textarea",
+          "label": "Discrepancy note",
+          "requiredWhen": "doc.state == 'disputed'",
+          "helpText": "Why the invoice does not match its work order; required to dispute."
         },
         {
           "name": "voidReason",
@@ -1050,6 +1058,7 @@
           "label": "Backorder",
           "from": "requested",
           "to": "backordered",
+          "guard": "!!payload.shortageReason",
           "requiredRole": "group:inventory",
           "action": "audit-transition"
         },
@@ -1095,6 +1104,11 @@
           "responsible": "group:billing"
         },
         {
+          "name": "disputed",
+          "label": "Disputed",
+          "responsible": "group:billing"
+        },
+        {
           "name": "paid",
           "label": "Paid",
           "final": true
@@ -1128,6 +1142,23 @@
           "from": "sent",
           "to": "paid",
           "guard": "!!payload.paymentReference",
+          "requiredRole": "group:billing",
+          "action": "audit-transition"
+        },
+        {
+          "id": "dispute",
+          "label": "Dispute",
+          "from": "draft",
+          "to": "disputed",
+          "guard": "!!payload.discrepancyNote",
+          "requiredRole": "group:billing",
+          "action": "audit-transition"
+        },
+        {
+          "id": "resolve-dispute",
+          "label": "Resolve dispute",
+          "from": "disputed",
+          "to": "draft",
           "requiredRole": "group:billing",
           "action": "audit-transition"
         },
