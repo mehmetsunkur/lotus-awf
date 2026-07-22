@@ -26,6 +26,7 @@
     "test:mcp:agent": "playwright test -c playwright.mcp.agent.config.ts",
     "seed:airline": "tsx scripts/seed-airline.ts",
     "explore:twin": "tsx scripts/explore-twin.ts",
+    "playground": "tsx -r ./tests/support/load-env.ts scripts/playground.ts",
     "agent-operator": "tsx src/operator/main.ts",
     "perf:me-filter": "tsx scripts/perf-me-filter.ts",
     "test:e2e": "xvfb-run -a playwright test",

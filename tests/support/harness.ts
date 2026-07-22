@@ -35,6 +35,8 @@ const SERVER_ALIAS = "server-couchdb";
 export type Harness = {
   /** Base URL of this worker's Express server (SPA + /api). */
   baseURL: string;
+  /** Private Docker network shared by this harness's containers. */
+  network: StartedNetwork;
   /** The "local" replica container — stop/start it to exercise offline flows. */
   localCouch: StartedTestContainer;
   /** The "server" replica container. */
@@ -205,6 +207,7 @@ export async function startHarness(): Promise<Harness> {
     child = started.child;
     return {
       baseURL: started.baseURL,
+      network,
       localCouch,
       serverCouch,
       localCouchUrl: `http://${localCouch.getHost()}:${localCouch.getMappedPort(COUCH_PORT)}`,

@@ -80,7 +80,7 @@ export async function tryExportTemplate(
     });
     return { exists: true, template };
   } catch (error) {
-    const marker = { exists: false, appId, error: error instanceof Error ? error.message : String(error) };
+    const marker = { exists: false as const, appId, error: error instanceof Error ? error.message : String(error) };
     diagnostics.writeJson(`template-${phase}-${appId}.json`, phase === "before" ? "template_before" : "template_after", marker, {
       attach: "always"
     });
