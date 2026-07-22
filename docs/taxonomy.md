@@ -26,6 +26,7 @@ Classes map to the path-tagged aspects in `docs/invariants.md`.
 | Server | Express API over two CouchDB replicas: definitions, documents, replication, conflicts, indexes | `src/server/**`, `scripts/**` | `docs/context/server.md` | `npm run test:e2e` |
 | Client | React metadata-driven runtime UI (forms, views, definition editor, conflict panel) | `src/client/**` | `docs/context/client.md` | `npm run test:e2e` |
 | MCP Adapter | Stdio MCP server exposing agent-safe app/design operations over the Express API | `src/mcp/**` | `docs/context/mcp.md` | `npm run build`, `npm run test:unit` |
+| Playground | Local company testbed runner for isolated Lotus stacks, MCP HTTP, sidecars, and persona agents | `scripts/playground.ts`, `tests/mcp/agent/support/**`, `tests/support/harness.ts` | `docs/context/playground.md` | `npx tsc --noEmit`, `npm run playground -- field-services --once` |
 
 ## Domain Areas
 
@@ -78,6 +79,7 @@ Mapped to the path-tagged aspects in `docs/invariants.md`.
 | Internal API | Express endpoints (`src/server`) | API behavior via e2e; caller-impact |
 | MCP Stdio | Local MCP process (`src/mcp`) | Build + unit tests; tool contract docs |
 | CLI/Script | `scripts/*.ts` (seed, reset, replicate, force-conflict, acl-spike) | Dry run or fixture-based check |
+| Playground CLI | `scripts/playground.ts` (company bootstraps, sidecars, persona shifts) | `npx tsc --noEmit`; `npm run playground -- field-services --once`; sidecar smoke when sidecar code changes |
 | Deploy Artifact | Docker image + `deploy/compose.yml` | `npm run test:deploy` |
 
 ## Maintenance Rules

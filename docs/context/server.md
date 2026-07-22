@@ -64,7 +64,9 @@ the server's own behavior.
   (`npm run perf:me-filter`, see `docs/testing-guide.md`). M27 adds `explore-twin.ts`
   (`npm run explore:twin`): boots the isolated testcontainers harness, seeds the
   digital-twin world, and stays up for manual exploring — no compose stack or fixed
-  ports needed.
+  ports needed. M29 adds `playground.ts` (`npm run playground -- field-services`):
+  boots the same isolated harness, seeds a company testbed, starts MCP HTTP, optionally
+  adds sidecar containers, and can spawn persona-scoped real-agent shifts.
 - `Dockerfile` / `deploy/compose.yml` / `deploy/k8s/` — M13 deployable artifact topologies; no source
   bind mount; the image includes `templates/` for JSON-backed app installs.
 

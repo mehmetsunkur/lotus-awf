@@ -24,6 +24,9 @@ npm run test:e2e     # Playwright source-mode runtime tests; starts CouchDB pair
 npm run test:deploy  # M13 deploy artifact gate; requires Docker API access
 npm run seed:airline # seed the M25 Agentic Airlines scenario into a running server for manual testing
                      # (env: API_URL, ADMIN_USER/ADMIN_PASSWORD, ORG_APP_ID/LEAVE_APP_ID, RESET=1)
+npm run playground -- field-services
+                     # boot an isolated Testcontainers Lotus stack, seed Field Services,
+                     # start MCP HTTP, optionally add sidecars/persona agent shifts
 npm run perf:me-filter -- --docs 10000 --runs 20
                      # local/dev benchmark for ADR-0020 @me view filters; starts an isolated
                      # CouchDB/API harness, seeds Agentic Airlines, bulk-loads synthetic docs,
@@ -52,6 +55,7 @@ make k8s-dry-run     # Kubernetes manifest render check; requires kubectl
 | Digital-twin seeded world (M27) | `npm run test:e2e` — `scenario-digital-twin.spec.ts`; fixture in `tests/e2e/support/scenario-digital-twin.ts` |
 | Digital-twin working day (M27, agents) | `npm run test:mcp:agent` — `tests/mcp/agent/twin.spec.ts`; opt-in, self-skips without driver credentials |
 | Field Services working day (agents) | `npm run test:mcp:agent` — `tests/mcp/agent/field-services.spec.ts`; opt-in, includes representative persona scenarios plus a handbook-driven multi-shift day |
+| Playground bootstrap | `npm run playground -- field-services --once`; add `--sidecar nginx --once` when sidecar lifecycle changes |
 | Agent operator lifecycle (M28) | `npm run test:e2e` — `agent-operator.spec.ts` (FakeDriver, deterministic, PR gate) |
 | Agent operator real session (M28) | `npm run test:mcp:agent` — `tests/mcp/agent/operator.spec.ts`; opt-in, one driver run |
 | ADR-0020 `@me` view filter performance | `npm run perf:me-filter -- --docs 10000 --runs 20`; local/dev measurements only |
