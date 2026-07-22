@@ -4,6 +4,7 @@ dist/
 .DS_Store
 npm-debug.log*
 .tmp/
+.lotus-playground/
 deploy/k8s/secret.yaml
 
 # Playwright e2e artifacts
