@@ -8,6 +8,7 @@ type DiagnosticRole =
   | "exit"
   | "final_message"
   | "manifest"
+  | "policy"
   | "prompt"
   | "raw_result"
   | "spawn"

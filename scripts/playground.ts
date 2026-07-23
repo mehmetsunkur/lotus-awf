@@ -4,6 +4,11 @@ import { request, type APIRequestContext, type PlaywrightWorkerArgs } from "@pla
 import { GenericContainer, Wait, type StartedTestContainer } from "testcontainers";
 import { startHarness, type Harness } from "../tests/support/harness";
 import { startAgentMcpHost, mintSessionToken, type AgentMcpHost } from "../tests/mcp/agent/support/mcp-host";
+import {
+  startContainerizedHarness,
+  type ContainerizedAgentMcpHost,
+  type ContainerizedHarness
+} from "../tests/support/containerized-harness";
 import type { LotusHttpMcpClient } from "../tests/mcp/http/support/http-client";
 import {
   FIELD_JOB_DESCRIPTIONS,
@@ -21,15 +26,20 @@ import {
 } from "../tests/mcp/agent/support/field-services-scheduler";
 import { assembleShiftPrompt } from "../src/operator/prompt";
 import { ClaudeCodeDriver, CodexDriver, type AgentDriver } from "../src/operator/agent-driver";
+import { ContainerClaudeCodeDriver, ContainerCodexDriver } from "../src/operator/container-agent-driver";
 import { createAgentDiagnostics } from "../src/operator/diagnostics";
 import type { BusinessDocument } from "../src/shared/types";
 
 type SidecarName = "mailpit" | "nginx" | "gitea";
+type RunnerMode = "container" | "host";
+type PlaygroundHarness = Harness | ContainerizedHarness;
+type PlaygroundMcpHost = AgentMcpHost | ContainerizedAgentMcpHost;
 
 type PlaygroundOptions = {
   company: "field-services";
   driver?: string;
   model?: string;
+  runner: RunnerMode;
   runPersona?: FieldPersonaName;
   runDay: boolean;
   watchWork: boolean;
@@ -47,7 +57,6 @@ type StartedSidecar = {
   urls: string[];
 };
 
-const DRIVERS: AgentDriver[] = [new ClaudeCodeDriver(), new CodexDriver()];
 const FIELD_APP_ID = "agent-field-services";
 
 async function main(): Promise<void> {
@@ -55,9 +64,12 @@ async function main(): Promise<void> {
   const runDir = join(process.cwd(), ".lotus-playground", "runs", timestamp());
   mkdirSync(runDir, { recursive: true });
 
-  console.log("Starting isolated Lotus stack (Testcontainers CouchDB pair + Express)...");
-  const harness = await startHarness();
-  const host = await startAgentMcpHost(harness.baseURL);
+  console.log(
+    options.runner === "container"
+      ? "Starting isolated Lotus stack (Testcontainers CouchDB pair + API container + MCP container)..."
+      : "Starting isolated Lotus stack (Testcontainers CouchDB pair + local Express/MCP)..."
+  );
+  const { harness, host } = await startPlaygroundRuntime(options.runner);
   const sidecars: StartedSidecar[] = [];
   const contexts: APIRequestContext[] = [];
   const mcpClients: LotusHttpMcpClient[] = [];
@@ -67,7 +79,6 @@ async function main(): Promise<void> {
     await Promise.allSettled(mcpClients.splice(0).map((client) => client.close()));
     await Promise.allSettled(contexts.splice(0).map((context) => context.dispose()));
     await Promise.allSettled(sidecars.map((sidecar) => sidecar.container.stop()));
-    await host.stop();
     await harness.stop();
     process.exit(exitCode);
   };
@@ -84,7 +95,7 @@ async function main(): Promise<void> {
     const seeded = await seedFieldServices(playwrightShim, harness.baseURL, host, contexts, mcpClients);
     const { kbAppId } = await seedFieldServicesHandbook(seeded.admin, seeded.as, seeded.scenario.appId);
 
-    printSummary({ harness, host, appId: seeded.scenario.appId, kbAppId, sidecars, runDir });
+    printSummary({ harness, host, appId: seeded.scenario.appId, kbAppId, sidecars, runDir, runner: options.runner });
 
     if (options.runDay) {
       await seedFieldServicesMorningState(seeded.admin, await seeded.as("dana"), seeded.scenario.appId);
@@ -93,7 +104,7 @@ async function main(): Promise<void> {
     if (options.runPersona || options.runDay || options.watchWork) {
       applyModelOverride(options);
       if (options.runPersona) {
-        const driver = selectDriver(options.driver);
+        const driver = selectDriver(options.driver, options.runner, harness);
         const docs = await loadFieldServiceDocs(await seeded.as("dana"), seeded.scenario.appId);
         const decision = decideFieldServiceSpawn(options.runPersona, docs);
         const queue = await workQueue(await seeded.as(options.runPersona));
@@ -108,11 +119,12 @@ async function main(): Promise<void> {
           kbAppId,
           persona: options.runPersona,
           driver,
+          runner: options.runner,
           runDir,
           shiftKey: `manual-${options.runPersona}`
         });
       } else {
-        const driver = options.maxRuns > 0 ? selectDriver(options.driver) : undefined;
+        const driver = options.maxRuns > 0 ? selectDriver(options.driver, options.runner, harness) : undefined;
         await runFieldServicesScheduler({
           apiUrl: harness.baseURL,
           host,
@@ -120,6 +132,7 @@ async function main(): Promise<void> {
           kbAppId,
           as: seeded.as,
           driver,
+          runner: options.runner,
           runDir,
           pollMs: options.pollMs,
           maxRuns: options.maxRuns,
@@ -158,13 +171,33 @@ async function seedFieldServicesMorningState(admin: APIRequestContext, dana: API
   console.log(`Seeded morning work: ${triaged._id} -> ${triaged.state} (${triaged.assignee ?? "unassigned"})`);
 }
 
+async function startPlaygroundRuntime(runner: RunnerMode): Promise<{ harness: PlaygroundHarness; host: PlaygroundMcpHost }> {
+  if (runner === "container") {
+    const harness = await startContainerizedHarness();
+    return { harness, host: harness.host };
+  }
+  const harness = await startHarness();
+  const host = await startAgentMcpHost(harness.baseURL);
+  return {
+    harness: {
+      ...harness,
+      async stop() {
+        await host.stop();
+        await harness.stop();
+      }
+    },
+    host
+  };
+}
+
 async function runFieldServicesScheduler(options: {
   apiUrl: string;
-  host: AgentMcpHost;
+  host: PlaygroundMcpHost;
   appId: string;
   kbAppId: string;
   as: (username: FieldPersonaName) => Promise<APIRequestContext>;
   driver?: AgentDriver;
+  runner: RunnerMode;
   runDir: string;
   pollMs: number;
   maxRuns: number;
@@ -208,6 +241,7 @@ async function runFieldServicesScheduler(options: {
       kbAppId: options.kbAppId,
       persona: next.persona,
       driver: options.driver,
+      runner: options.runner,
       runDir: options.runDir,
       shiftKey: `${String(runs).padStart(2, "0")}-${next.persona}`
     });
@@ -310,7 +344,7 @@ async function resetLotus(baseURL: string): Promise<void> {
   }
 }
 
-async function startSidecar(harness: Harness, name: SidecarName): Promise<StartedSidecar> {
+async function startSidecar(harness: PlaygroundHarness, name: SidecarName): Promise<StartedSidecar> {
   if (name === "mailpit") {
     const container = await new GenericContainer("axllent/mailpit:latest")
       .withNetwork(harness.network)
@@ -348,11 +382,12 @@ async function startSidecar(harness: Harness, name: SidecarName): Promise<Starte
 
 async function runPersonaShift(options: {
   apiUrl: string;
-  host: AgentMcpHost;
+  host: PlaygroundMcpHost;
   appId: string;
   kbAppId: string;
   persona: FieldPersonaName;
   driver: AgentDriver;
+  runner: RunnerMode;
   runDir: string;
   shiftKey: string;
 }): Promise<void> {
@@ -365,7 +400,9 @@ async function runPersonaShift(options: {
     jobTitle: persona.title,
     companyName: "Northstar Field Services",
     kbAppId: options.kbAppId,
-    jobDescription: FIELD_JOB_DESCRIPTIONS[options.persona]
+    jobDescription:
+      FIELD_JOB_DESCRIPTIONS[options.persona] +
+      " Use only your Lotus workspace access and company handbook data. Do not use shell commands, local files, source code, test fixtures, CouchDB, or direct HTTP APIs."
   });
   assertPromptHygiene(prompt, options.kbAppId, options.appId);
 
@@ -380,10 +417,14 @@ async function runPersonaShift(options: {
   diagnostics.event({ event: "session_token_minted", persona: options.persona, surfaces: ["workspace"] });
 
   console.log(`\nRunning ${options.driver.name} as ${persona.displayName} (${options.shiftKey})...`);
+  const workspaceUrl =
+    options.runner === "container" && "internalSurfaceUrl" in options.host
+      ? options.host.internalSurfaceUrl("workspace")
+      : options.host.surfaceUrl("workspace");
   const run = await options.driver.run({
     prompt,
     mcpServers: {
-      "lotus-workspace": { url: options.host.surfaceUrl("workspace"), authorization }
+      "lotus-workspace": { url: workspaceUrl, authorization }
     },
     diagnostics
   });
@@ -398,9 +439,17 @@ function assertPromptHygiene(prompt: string, kbAppId: string, fieldAppId: string
   }
 }
 
-function selectDriver(name?: string): AgentDriver {
-  const selected = name ? DRIVERS.find((driver) => driver.name === name) : DRIVERS.find((driver) => driver.isAvailable()) ?? DRIVERS[0];
-  if (!selected) throw new Error(`Unknown driver "${name}". Valid drivers: ${DRIVERS.map((driver) => driver.name).join(", ")}`);
+function driversFor(runner: RunnerMode, harness: PlaygroundHarness): AgentDriver[] {
+  if (runner === "container") {
+    return [new ContainerClaudeCodeDriver({ network: harness.network }), new ContainerCodexDriver({ network: harness.network })];
+  }
+  return [new ClaudeCodeDriver(), new CodexDriver()];
+}
+
+function selectDriver(name: string | undefined, runner: RunnerMode, harness: PlaygroundHarness): AgentDriver {
+  const drivers = driversFor(runner, harness);
+  const selected = name ? drivers.find((driver) => driver.name === name) : drivers.find((driver) => driver.isAvailable()) ?? drivers[0];
+  if (!selected) throw new Error(`Unknown driver "${name}". Valid drivers: ${drivers.map((driver) => driver.name).join(", ")}`);
   return selected;
 }
 
@@ -417,16 +466,17 @@ function applyModelOverride(options: PlaygroundOptions): void {
     process.env.LOTUS_AGENT_CODEX_MODEL = options.model;
     return;
   }
-  throw new Error(`Unknown driver "${options.driver}". Valid drivers: ${DRIVERS.map((driver) => driver.name).join(", ")}`);
+  throw new Error(`Unknown driver "${options.driver}". Valid drivers: claude-code, codex`);
 }
 
 function printSummary(options: {
-  harness: Harness;
-  host: AgentMcpHost;
+  harness: PlaygroundHarness;
+  host: PlaygroundMcpHost;
   appId: string;
   kbAppId: string;
   sidecars: StartedSidecar[];
   runDir: string;
+  runner: RunnerMode;
 }): void {
   console.log(`
 Lotus playground is ready.
@@ -440,6 +490,10 @@ MCP:
   admin:       ${options.host.surfaceUrl("admin")}
   designer:    ${options.host.surfaceUrl("designer")}
   workspace:   ${options.host.surfaceUrl("workspace")}
+  runner URL:  ${"internalSurfaceUrl" in options.host ? options.host.internalSurfaceUrl("workspace") : "(host runner uses workspace URL above)"}
+
+Runner:
+  ${options.runner}
 
 Local playground logins:
   alice    password123            Admin / Designer
@@ -467,6 +521,7 @@ Run examples:
 function parseArgs(args: string[]): PlaygroundOptions {
   const options: PlaygroundOptions = {
     company: "field-services",
+    runner: "container",
     runDay: false,
     watchWork: false,
     emptyOk: false,
@@ -487,6 +542,8 @@ function parseArgs(args: string[]): PlaygroundOptions {
       options.runPersona = parsePersona(rest.shift());
     } else if (arg === "--run-day") {
       options.runDay = true;
+    } else if (arg === "--runner") {
+      options.runner = parseRunner(rest.shift());
     } else if (arg === "--watch-work") {
       options.watchWork = true;
     } else if (arg === "--empty-ok") {
@@ -533,6 +590,12 @@ function parseSidecar(value: string | undefined): SidecarName {
   throw new Error(`Unknown sidecar "${sidecar}". Valid sidecars: mailpit, nginx, gitea`);
 }
 
+function parseRunner(value: string | undefined): RunnerMode {
+  const runner = requiredValue("--runner", value);
+  if (runner === "container" || runner === "host") return runner;
+  throw new Error(`Unknown runner "${runner}". Valid runners: container, host`);
+}
+
 function requiredValue(flag: string, value: string | undefined): string {
   if (!value || value.startsWith("-")) throw new Error(`${flag} requires a value`);
   return value;
@@ -564,6 +627,7 @@ function printHelp(): void {
 
 Options:
   --run <persona>       Run one persona shift: dana, taylor, iris, blake
+  --runner <mode>       Agent/runtime isolation: container or host (default: container)
   --run-day             Seed morning work and run the queue scheduler until idle
   --watch-work          Run the queue scheduler without seeding morning work
   --empty-ok            Allow --run <persona> even when the persona has no detected work
