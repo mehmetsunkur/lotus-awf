@@ -264,7 +264,12 @@ server-side LiteLLM receipt.
   exit/timeout, redacted through the normal diagnostics writer, and checked for isolation-policy
   violations before a run may pass. Container Claude runs additionally deny non-MCP built-ins
   (shell, file, search, web, sub-agent, worktree, and orchestration tools) so persona work stays on
-  `lotus-workspace`.
+  `lotus-workspace`. Container Codex runs use `codex exec --json`; container Claude keeps
+  `stream-json`. Both streams are normalized into `agent-events.jsonl`, `tool-transcript.jsonl`,
+  `turn-summary.json`, and `timeout-diagnostics.json`, so a timeout states whether it stalled before
+  structured events, during provider retry/reconnect, before MCP connection, after MCP connection
+  but before a turn, during a turn without tools, during/after tool calls, or after turn completion
+  but before finalization.
 
 Env contract — every suite-specific var is namespaced `LOTUS_AGENT_<DRIVER>_*`; each driver
 self-skips (with a printed reason) without its own:

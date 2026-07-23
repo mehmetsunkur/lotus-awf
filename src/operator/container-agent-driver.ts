@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { finished } from "node:stream/promises";
 import { GenericContainer, Wait, type StartedNetwork, type StartedTestContainer } from "testcontainers";
+import { summarizeAgentStream, type AgentStreamDriver } from "./agent-stream";
 import type { AgentDiagnostics } from "./diagnostics";
 import type { AgentDriver, AgentMcpServer, AgentRun, AgentTask } from "./agent-driver";
 
@@ -237,10 +238,22 @@ function finalizeSuccess(options: {
   const { diagnostics, artifacts } = options;
   const policy = checkAgentIsolationPolicy([artifacts.stdout, artifacts.stderr, artifacts.finalText].join("\n"));
   const ok = options.ok && policy.ok;
+  const streamDiagnostics = summarizeAgentStream({
+    driver: options.driver as AgentStreamDriver,
+    stdout: artifacts.stdout,
+    stderr: artifacts.stderr,
+    exitCode: artifacts.exitCode
+  });
   diagnostics?.writeText("stdout.log", "stdout", artifacts.stdout, { attach: "failure" });
   diagnostics?.writeText("stderr.log", "stderr", artifacts.stderr, { attach: "failure" });
+  diagnostics?.writeText("agent-events.jsonl", "agent_events", streamDiagnostics.eventsJsonl, { attach: "always" });
+  diagnostics?.writeText("tool-transcript.jsonl", "tool_transcript", streamDiagnostics.toolTranscriptJsonl, { attach: "always" });
+  diagnostics?.writeJson("turn-summary.json", "turn_summary", streamDiagnostics.turnSummary, { attach: "always" });
+  diagnostics?.writeJson("timeout-diagnostics.json", "timeout_diagnostics", streamDiagnostics.timeoutDiagnostics, {
+    attach: "always"
+  });
   diagnostics?.writeText("final_message.txt", "final_message", artifacts.finalText, { attach: "always" });
-  diagnostics?.writeJson("raw_result.json", "raw_result", artifacts.rawResult ?? {});
+  diagnostics?.writeJson("raw_result.json", "raw_result", streamDiagnostics.rawResult ?? artifacts.rawResult ?? {});
   diagnostics?.writeJson("isolation-policy.json", "policy", policy, { attach: "always" });
   diagnostics?.event({ event: "agent_exited", driver: options.driver, runner: "container", code: artifacts.exitCode, durationMs: Date.now() - options.startedAt });
   diagnostics?.finalizeExit({
@@ -341,12 +354,11 @@ set +e
 mkdir -p /diag /home/node/.codex /work
 cp /runner/codex-config.toml /home/node/.codex/config.toml
 echo LOTUS_RUNNER_STARTED
-codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --ephemeral -C /work -o /diag/final_message.txt "$(cat /runner/prompt.txt)" </dev/null >/diag/stdout.log 2>/diag/stderr.log
+codex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --ephemeral -C /work -o /diag/final_message.txt "$(cat /runner/prompt.txt)" </dev/null >/diag/stdout.log 2>/diag/stderr.log
 code=$?
 printf '%s' "$code" >/diag/exit-code.txt
 tail -c 2000 /diag/stdout.log 2>/dev/null | sed 's/^/[stdout] /' >/diag/raw-tail.txt
 tail -c 2000 /diag/stderr.log 2>/dev/null | sed 's/^/[stderr] /' >>/diag/raw-tail.txt
-printf '{"code":%s,"stdoutTail":%s,"stderrTail":%s}\\n' "$code" "$(node -e 'process.stdout.write(JSON.stringify(require("fs").readFileSync("/diag/stdout.log","utf8").slice(-2000)))')" "$(node -e 'process.stdout.write(JSON.stringify(require("fs").readFileSync("/diag/stderr.log","utf8").slice(-2000)))')" >/diag/raw_result.json
 echo LOTUS_RUNNER_DONE
 sleep 30
 exit "$code"
@@ -459,7 +471,7 @@ echo LOTUS_RUNNER_STARTED
 claude -p "$(cat /runner/prompt.txt)" --disable-slash-commands --mcp-config /runner/mcp-config.json --strict-mcp-config --output-format stream-json --verbose --dangerously-skip-permissions --allowedTools "${allowedTools}" --disallowedTools "${disallowedTools}" --model "${model}" --max-budget-usd "${budget}" >/diag/stdout.log 2>/diag/stderr.log
 code=$?
 printf '%s' "$code" >/diag/exit-code.txt
-node - <<'NODE' >/diag/raw_result.json
+node - <<'NODE'
 const fs = require("fs");
 const lines = fs.readFileSync("/diag/stdout.log", "utf8").split("\\n").filter((line) => line.trim().startsWith("{"));
 const parsed = [];
@@ -468,7 +480,6 @@ for (const line of lines) {
 }
 const raw = [...parsed].reverse().find((entry) => entry.type === "result") ?? { is_error: true, subtype: "parse_error", result: "Claude stream output contained no result line" };
 fs.writeFileSync("/diag/final_message.txt", typeof raw.result === "string" ? raw.result : "");
-process.stdout.write(JSON.stringify(raw, null, 2));
 NODE
 echo LOTUS_RUNNER_DONE
 sleep 30

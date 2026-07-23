@@ -4,6 +4,7 @@ import { basename, dirname, join } from "node:path";
 import type { TestInfo } from "@playwright/test";
 
 type DiagnosticRole =
+  | "agent_events"
   | "events"
   | "exit"
   | "final_message"
@@ -15,6 +16,8 @@ type DiagnosticRole =
   | "stderr"
   | "stdout"
   | "tool_transcript"
+  | "timeout_diagnostics"
+  | "turn_summary"
   | "config"
   | "template_before"
   | "template_after"

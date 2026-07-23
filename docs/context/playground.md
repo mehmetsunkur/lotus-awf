@@ -50,6 +50,9 @@ playground process remains the controller for seeding, queue probes, snapshots, 
   redirect stdout/stderr/final output under `/diag`, copy `/diag` back, and apply isolation policy
   checks before reporting success. Claude container runs also explicitly disallow non-MCP built-ins
   such as shell, file, search, web, sub-agent, worktree, and orchestration tools.
+- `src/operator/agent-stream.ts` — shared parser for Codex `--json` and Claude `stream-json`
+  output. It writes normalized agent events, tool transcripts, turn summaries, and timeout
+  classification artifacts for container runs.
 - `tests/support/containerized-harness.ts` — containerized playground harness: CouchDB pair, Lotus
   API container, and MCP HTTP container on one private network with aliases `lotus-api` and
   `lotus-mcp`.
@@ -126,6 +129,10 @@ process, so an unchanged failed/no-op item is not respawned repeatedly in the sa
 - Containerized runner diagnostics include `isolation-policy.json`; runs fail if stdout/stderr/final
   text references the repo checkout, MCP fixture paths, direct CouchDB URLs, or direct Lotus API
   routes.
+- Containerized runner diagnostics also include `agent-events.jsonl`, `tool-transcript.jsonl`,
+  `turn-summary.json`, and `timeout-diagnostics.json`. Timeout classifications distinguish no
+  structured events, provider retry/reconnect, MCP not connected, MCP connected with no turn, agent
+  turn without tools, slow/tool-loop behavior, and completed turn without finalization.
 - `--model` is a per-run CLI override for the selected driver's existing model environment
   (`LOTUS_AGENT_CODEX_MODEL` or `LOTUS_AGENT_CLAUDE_MODEL`) and requires `--driver`.
 - Prompt assembly follows the working-day acceptance pattern: handbook app id plus job description,

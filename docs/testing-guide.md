@@ -62,7 +62,7 @@ make k8s-dry-run     # Kubernetes manifest render check; requires kubectl
 | Digital-twin working day (M27, agents) | `npm run test:mcp:agent` — `tests/mcp/agent/twin.spec.ts`; opt-in, self-skips without driver credentials |
 | Field Services working day (agents) | `npm run test:mcp:agent` — `tests/mcp/agent/field-services.spec.ts`; opt-in, includes representative persona scenarios plus a handbook-driven multi-shift day |
 | Playground bootstrap | `npm run playground -- field-services --once`; add `--sidecar nginx --once` when sidecar lifecycle changes |
-| Playground container runner | `npx vitest run tests/unit/container-agent-driver.spec.ts`; `npm run playground -- field-services --watch-work --max-runs 0 --once`; use `--runner host` to compare the legacy path |
+| Playground container runner | `npx vitest run tests/unit/container-agent-driver.spec.ts`; `npm run playground -- field-services --watch-work --max-runs 0 --once`; use `--runner host` to compare the legacy path; live failures should include `agent-events.jsonl`, `tool-transcript.jsonl`, `turn-summary.json`, and `timeout-diagnostics.json` |
 | Playground Field Services scheduler | `npx vitest run tests/unit/field-services-scheduler.spec.ts`; `npm run playground -- field-services --run-day --max-runs 0 --once`; `npm run playground -- field-services --watch-work --max-runs 0 --once` |
 | Agent operator lifecycle (M28) | `npm run test:e2e` — `agent-operator.spec.ts` (FakeDriver, deterministic, PR gate) |
 | Agent operator real session (M28) | `npm run test:mcp:agent` — `tests/mcp/agent/operator.spec.ts`; opt-in, one driver run |
