@@ -480,6 +480,7 @@ for (const line of lines) {
 }
 const raw = [...parsed].reverse().find((entry) => entry.type === "result") ?? { is_error: true, subtype: "parse_error", result: "Claude stream output contained no result line" };
 fs.writeFileSync("/diag/final_message.txt", typeof raw.result === "string" ? raw.result : "");
+fs.writeFileSync("/diag/raw_result.json", JSON.stringify(raw));
 NODE
 echo LOTUS_RUNNER_DONE
 sleep 30
