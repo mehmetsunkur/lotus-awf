@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkAgentIsolationPolicy } from "../../src/operator/container-agent-driver";
+import { CLAUDE_CONTAINER_DISALLOWED_TOOLS, checkAgentIsolationPolicy } from "../../src/operator/container-agent-driver";
 
 describe("container agent isolation policy", () => {
   it("allows ordinary MCP transcript text", () => {
@@ -25,6 +25,26 @@ describe("container agent isolation policy", () => {
         "direct CouchDB URL",
         "direct Lotus app API route",
         "direct work-queue API route"
+      ])
+    );
+  });
+
+  it("blocks Claude built-ins that would bypass the workspace MCP boundary", () => {
+    expect(CLAUDE_CONTAINER_DISALLOWED_TOOLS).toEqual(
+      expect.arrayContaining([
+        "Bash",
+        "Read",
+        "Write",
+        "Edit",
+        "Glob",
+        "Grep",
+        "WebFetch",
+        "WebSearch",
+        "Task",
+        "EnterWorktree",
+        "Workflow",
+        "TaskCreate",
+        "SendMessage"
       ])
     );
   });

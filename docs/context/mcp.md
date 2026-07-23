@@ -205,7 +205,8 @@ seeded day. See `docs/M27/`.
 
 The **agent operator** (M28, ADR-0021) promoted the driver seam out of the test bed:
 `AgentDriver` (claude-code/codex CLI spawning, budgets, redaction) and the diagnostics
-writer now live in `src/operator/` (`agent-driver.ts`, `diagnostics.ts`) and the agent
+writer now live in `src/operator/` (`agent-driver.ts`, `container-agent-driver.ts`,
+`diagnostics.ts`) and the agent
 suites import them from there — runtime code never imports from `tests/`. The operator
 daemon itself (`src/operator/operator.ts`, `npm run agent-operator`) is an authenticated
 API client in this host's mold (ADR-0011 rules verbatim: session identities, no CouchDB,
@@ -256,6 +257,14 @@ server-side LiteLLM receipt.
   `mcp_servers` entry per surface using `bearer_token_env_var` (Codex HTTP MCP is Bearer-only). stdin
   is closed so `codex exec` doesn't hang. Usable credential: `LOTUS_AGENT_CODEX_TOKEN` +
   `LOTUS_AGENT_CODEX_BASE_URL`.
+- **Container drivers** — `ContainerClaudeCodeDriver` and `ContainerCodexDriver` implement the same
+  driver names but execute inside `Dockerfile.agent-runner` on the playground Testcontainers
+  network. The runner sees an empty `/work`, an internal `lotus-mcp` URL, a persona Bearer token,
+  and the selected provider env vars only. Artifacts are written inside `/diag`, copied back after
+  exit/timeout, redacted through the normal diagnostics writer, and checked for isolation-policy
+  violations before a run may pass. Container Claude runs additionally deny non-MCP built-ins
+  (shell, file, search, web, sub-agent, worktree, and orchestration tools) so persona work stays on
+  `lotus-workspace`.
 
 Env contract — every suite-specific var is namespaced `LOTUS_AGENT_<DRIVER>_*`; each driver
 self-skips (with a printed reason) without its own:

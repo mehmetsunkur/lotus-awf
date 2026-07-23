@@ -10,6 +10,40 @@ import type { AgentDriver, AgentMcpServer, AgentRun, AgentTask } from "./agent-d
 const RUNNER_IMAGE = "lotus-agent-runner:local";
 const CODEX_BEARER_ENV = "LOTUS_MCP_BEARER";
 const DEFAULT_CLAUDE_BUDGET_USD = "2.00";
+const DEFAULT_RUNNER_TIMEOUT_MS = 15 * 60 * 1000;
+export const CLAUDE_CONTAINER_DISALLOWED_TOOLS = [
+  "Bash",
+  "Read",
+  "Edit",
+  "Write",
+  "MultiEdit",
+  "NotebookEdit",
+  "Glob",
+  "Grep",
+  "LS",
+  "WebFetch",
+  "WebSearch",
+  "Task",
+  "TodoRead",
+  "TodoWrite",
+  "ExitPlanMode",
+  "CronCreate",
+  "CronDelete",
+  "CronList",
+  "DesignSync",
+  "EnterWorktree",
+  "ExitWorktree",
+  "ReportFindings",
+  "ScheduleWakeup",
+  "SendMessage",
+  "TaskCreate",
+  "TaskGet",
+  "TaskList",
+  "TaskOutput",
+  "TaskStop",
+  "TaskUpdate",
+  "Workflow"
+];
 
 let runnerImageBuild: Promise<void> | undefined;
 
@@ -144,6 +178,7 @@ async function runOneShotContainer(options: {
 }): Promise<RunnerArtifacts> {
   await ensureRunnerImage();
   const tmpRoot = mkdtempSync(join(tmpdir(), "lotus-container-agent-"));
+  const timeoutMs = options.timeoutMs ?? Number(process.env.LOTUS_AGENT_RUNNER_TIMEOUT_MS ?? DEFAULT_RUNNER_TIMEOUT_MS);
   let container: StartedTestContainer | undefined;
   try {
     container = await new GenericContainer(RUNNER_IMAGE)
@@ -153,12 +188,26 @@ async function runOneShotContainer(options: {
         ...options.files,
         { content: options.command, target: "/runner/run.sh", mode: 0o755 }
       ])
+      .withCommand(["sh", "/runner/run.sh"])
       .withWorkingDir("/work")
       .withUser("node")
-      .withTmpFs({ "/tmp": "rw,noexec,nosuid,size=128m" })
-      .withWaitStrategy(Wait.forLogMessage("LOTUS_RUNNER_DONE"))
-      .withStartupTimeout(options.timeoutMs ?? 15 * 60 * 1000)
+      .withWaitStrategy(Wait.forLogMessage("LOTUS_RUNNER_STARTED"))
+      .withStartupTimeout(timeoutMs)
       .start();
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const result = await container.exec(["sh", "-lc", "test -f /diag/exit-code.txt"]);
+      if (result.exitCode === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    const completed = await container.exec(["sh", "-lc", "test -f /diag/exit-code.txt"]);
+    if (completed.exitCode !== 0) {
+      await container.exec([
+        "sh",
+        "-lc",
+        "printf 124 >/diag/exit-code.txt; printf 'container agent did not finish before timeout\\n' >>/diag/stderr.log"
+      ]);
+    }
     const diagDir = await copyDiagnostics(container, tmpRoot);
     const exitCodeText = readOptional(join(diagDir, "exit-code.txt")).trim();
     return {
@@ -268,7 +317,7 @@ export class ContainerCodexDriver implements AgentDriver {
       baseUrl,
       mcpServers: mcpServerNames(task),
       workDir: "/work",
-      codexHome: "/runner/codex-home"
+      codexHome: "/home/node/.codex"
     });
 
     try {
@@ -276,25 +325,30 @@ export class ContainerCodexDriver implements AgentDriver {
         network: this.options.network,
         env: {
           HOME: "/home/node",
-          CODEX_HOME: "/runner/codex-home",
+          CODEX_HOME: "/home/node/.codex",
+          CODEX_CI: "1",
+          CI: "1",
+          NO_COLOR: "1",
           LOTUS_AGENT_CODEX_TOKEN: process.env.LOTUS_AGENT_CODEX_TOKEN ?? "",
           [CODEX_BEARER_ENV]: bearerFrom(task)
         },
         files: [
           { content: task.prompt, target: "/runner/prompt.txt" },
-          { content: config, target: "/runner/codex-home/config.toml" }
+          { content: config, target: "/runner/codex-config.toml" }
         ],
         command: `#!/bin/sh
 set +e
-mkdir -p /diag /runner/codex-home /work
-codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --ephemeral -C /work -o /diag/final_message.txt "$(cat /runner/prompt.txt)" >/diag/stdout.log 2>/diag/stderr.log
+mkdir -p /diag /home/node/.codex /work
+cp /runner/codex-config.toml /home/node/.codex/config.toml
+echo LOTUS_RUNNER_STARTED
+codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --ephemeral -C /work -o /diag/final_message.txt "$(cat /runner/prompt.txt)" </dev/null >/diag/stdout.log 2>/diag/stderr.log
 code=$?
 printf '%s' "$code" >/diag/exit-code.txt
 tail -c 2000 /diag/stdout.log 2>/dev/null | sed 's/^/[stdout] /' >/diag/raw-tail.txt
 tail -c 2000 /diag/stderr.log 2>/dev/null | sed 's/^/[stderr] /' >>/diag/raw-tail.txt
 printf '{"code":%s,"stdoutTail":%s,"stderrTail":%s}\\n' "$code" "$(node -e 'process.stdout.write(JSON.stringify(require("fs").readFileSync("/diag/stdout.log","utf8").slice(-2000)))')" "$(node -e 'process.stdout.write(JSON.stringify(require("fs").readFileSync("/diag/stderr.log","utf8").slice(-2000)))')" >/diag/raw_result.json
 echo LOTUS_RUNNER_DONE
-sleep 1
+sleep 30
 exit "$code"
 `
       });
@@ -363,6 +417,7 @@ export class ContainerClaudeCodeDriver implements AgentDriver {
     const startedAt = Date.now();
     const mcpConfig = claudeMcpConfig(task.mcpServers);
     const allowedTools = mcpServerNames(task).map((serverName) => `mcp__${serverName}__*`).join(",");
+    const disallowedTools = CLAUDE_CONTAINER_DISALLOWED_TOOLS.join(",");
     const budget = process.env.LOTUS_AGENT_CLAUDE_BUDGET_USD?.trim() || DEFAULT_CLAUDE_BUDGET_USD;
     diagnostics?.writeText("prompt.txt", "prompt", task.prompt, { attach: "always" });
     diagnostics?.writeJson("mcp-config.json", "config", mcpConfig, { attach: "failure" });
@@ -377,7 +432,7 @@ export class ContainerClaudeCodeDriver implements AgentDriver {
       baseUrl,
       mcpServers: mcpServerNames(task),
       allowedTools,
-      disallowedTools: "Bash,Read,Edit,Write",
+      disallowedTools,
       budgetUsd: budget,
       workDir: "/work"
     });
@@ -400,7 +455,8 @@ export class ContainerClaudeCodeDriver implements AgentDriver {
         command: `#!/bin/sh
 set +e
 mkdir -p /diag /work
-claude -p "$(cat /runner/prompt.txt)" --bare --disable-slash-commands --mcp-config /runner/mcp-config.json --strict-mcp-config --output-format stream-json --verbose --dangerously-skip-permissions --allowedTools "${allowedTools}" --disallowedTools Bash,Read,Edit,Write --model "${model}" --max-budget-usd "${budget}" >/diag/stdout.log 2>/diag/stderr.log
+echo LOTUS_RUNNER_STARTED
+claude -p "$(cat /runner/prompt.txt)" --disable-slash-commands --mcp-config /runner/mcp-config.json --strict-mcp-config --output-format stream-json --verbose --dangerously-skip-permissions --allowedTools "${allowedTools}" --disallowedTools "${disallowedTools}" --model "${model}" --max-budget-usd "${budget}" >/diag/stdout.log 2>/diag/stderr.log
 code=$?
 printf '%s' "$code" >/diag/exit-code.txt
 node - <<'NODE' >/diag/raw_result.json
@@ -415,7 +471,7 @@ fs.writeFileSync("/diag/final_message.txt", typeof raw.result === "string" ? raw
 process.stdout.write(JSON.stringify(raw, null, 2));
 NODE
 echo LOTUS_RUNNER_DONE
-sleep 1
+sleep 30
 exit "$code"
 `
       });
