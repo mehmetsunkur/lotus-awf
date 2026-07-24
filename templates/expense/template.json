@@ -50,6 +50,7 @@
       "kind": "app",
       "appId": "expense",
       "title": "Expense Replica",
+      "description": "Employee expense reports and their vendors: a report is drafted, submitted for approval, then approved or rejected.",
       "database": "expense_app"
     },
     {

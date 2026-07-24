@@ -123,6 +123,37 @@ export class LotusClient {
     return this.request<Record<string, unknown>>("GET", `/api/apps/${encodeURIComponent(appId)}/definitions`);
   }
 
+  /**
+   * ADR-0023 Phase 2: lean, self-describing index of an app's definitions —
+   * ids + kinds + titles + descriptions, no field/column/state bodies. The
+   * operator reads this first to learn the app's shape, then pulls one full
+   * definition with `getForm`/`getView`/`getWorkflow` as needed.
+   */
+  async appDefinitionsSummary(appId: string): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>("GET", `/api/apps/${encodeURIComponent(appId)}/definitions/summary`);
+  }
+
+  async getForm(appId: string, docType: string): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(
+      "GET",
+      `/api/apps/${encodeURIComponent(appId)}/definitions/forms/${encodeURIComponent(docType)}`
+    );
+  }
+
+  async getWorkflow(appId: string, docType: string): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(
+      "GET",
+      `/api/apps/${encodeURIComponent(appId)}/definitions/workflows/${encodeURIComponent(docType)}`
+    );
+  }
+
+  async getView(appId: string, viewId: string): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(
+      "GET",
+      `/api/apps/${encodeURIComponent(appId)}/definitions/views/${encodeURIComponent(viewId)}`
+    );
+  }
+
   async workflow(appId: string, docType: string): Promise<WorkflowDefinition> {
     const definitions = await this.appDefinitions(appId);
     const workflows = Array.isArray(definitions.workflows) ? definitions.workflows : [];
@@ -197,10 +228,23 @@ export class LotusClient {
     return this.request<WorkQueueResult>("GET", `/api/work-queue${suffix}`);
   }
 
-  async getDocument(appId: string, id: string): Promise<Record<string, unknown>> {
+  /**
+   * Fetch one readable document. Bare envelope by default (the shape internal
+   * callers like the operator daemon rely on). ADR-0023 Phase 2: pass
+   * `{ transitions: true }` to opt into the runtime affordances — the server then
+   * wraps the response as `{ document, availableTransitions }`, the raw envelope
+   * preserved untouched inside it. Only the workspace `get_document` tool sets it,
+   * so an operator agent sees "what can I do now, and what does it mean" on open.
+   */
+  async getDocument(
+    appId: string,
+    id: string,
+    opts: { transitions?: boolean } = {}
+  ): Promise<Record<string, unknown>> {
+    const suffix = opts.transitions ? "?include=transitions" : "";
     return this.request<Record<string, unknown>>(
       "GET",
-      `/api/apps/${encodeURIComponent(appId)}/documents/${encodeURIComponent(id)}`
+      `/api/apps/${encodeURIComponent(appId)}/documents/${encodeURIComponent(id)}${suffix}`
     );
   }
 

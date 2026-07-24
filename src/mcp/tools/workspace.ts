@@ -18,10 +18,53 @@ export function registerWorkspaceTools(server: McpServer, client: LotusClient): 
     "lotus_workspace_get_app_definitions",
     {
       title: "Get Workspace Definitions",
-      description: "Return app definitions so a workspace agent can discover forms, views, and workflows.",
+      description:
+        "Return a LEAN, self-describing index of the app's forms, views, and workflows — each with " +
+        "its id, kind, docType, title, and description, but NOT its field/column/state bodies. Read " +
+        "this first to learn the app's shape, then pull one full definition with get_form / get_view / " +
+        "get_workflow when you need its details.",
       inputSchema: appIdSchema
     },
-    ({ appId }) => asToolResult(() => client.appDefinitions(appId))
+    ({ appId }) => asToolResult(() => client.appDefinitionsSummary(appId))
+  );
+
+  server.registerTool(
+    "lotus_workspace_get_form",
+    {
+      title: "Get Form Definition",
+      description: "Fetch one full form definition (fields, help text, validation) by document type.",
+      inputSchema: {
+        ...appIdSchema,
+        docType: z.string().min(1).describe("Document type whose form to fetch")
+      }
+    },
+    ({ appId, docType }) => asToolResult(() => client.getForm(appId, docType))
+  );
+
+  server.registerTool(
+    "lotus_workspace_get_workflow",
+    {
+      title: "Get Workflow Definition",
+      description: "Fetch one full workflow definition (states, transitions, guards, descriptions) by document type.",
+      inputSchema: {
+        ...appIdSchema,
+        docType: z.string().min(1).describe("Document type whose workflow to fetch")
+      }
+    },
+    ({ appId, docType }) => asToolResult(() => client.getWorkflow(appId, docType))
+  );
+
+  server.registerTool(
+    "lotus_workspace_get_view",
+    {
+      title: "Get View Definition",
+      description: "Fetch one full view definition (columns, filters, sort) by view id. Views are many-per-type, so key by id.",
+      inputSchema: {
+        ...appIdSchema,
+        viewId: z.string().min(1).describe("View design document id, such as view:my-expenses")
+      }
+    },
+    ({ appId, viewId }) => asToolResult(() => client.getView(appId, viewId))
   );
 
   server.registerTool(
@@ -55,13 +98,16 @@ export function registerWorkspaceTools(server: McpServer, client: LotusClient): 
     "lotus_workspace_get_document",
     {
       title: "Get Document",
-      description: "Fetch one readable business document by id.",
+      description:
+        "Fetch one readable business document by id. Returns { document, availableTransitions }: " +
+        "the raw document plus the workflow transitions you may perform right now, each with its " +
+        "label, target state, authored description, and the help text of any fields its guard reads.",
       inputSchema: {
         ...appIdSchema,
         id: z.string().min(1).describe("Business document id")
       }
     },
-    ({ appId, id }) => asToolResult(() => client.getDocument(appId, id))
+    ({ appId, id }) => asToolResult(() => client.getDocument(appId, id, { transitions: true }))
   );
 
   server.registerTool(

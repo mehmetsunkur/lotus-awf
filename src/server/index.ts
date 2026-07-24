@@ -63,6 +63,7 @@ import {
   availableTransitions,
   currentState,
   normalizeResolvedPrincipals,
+  transitionAffordances,
   type ResolvedTransitionContext
 } from "../shared/workflow";
 import { agentIsDue, agentIsEnabled, agentMatchesChange, agentRunKey } from "../shared/agents";
@@ -702,7 +703,8 @@ function appInstallRecord(
   database: string,
   installedAt = timestamp(),
   installedBy = "person:alice",
-  templateId = "blank:app"
+  templateId = "blank:app",
+  description?: string
 ): AppInstall {
   return {
     _id: `appinstall:${appId}`,
@@ -712,7 +714,11 @@ function appInstallRecord(
     database,
     templateId,
     installedAt,
-    installedBy
+    installedBy,
+    // ADR-0023: cheap purpose blurb mirrored from app:config at install time so
+    // lotus_admin_list_apps can show what each app is for without reading every
+    // app database. Authoritative copy stays on app:config; only set when present.
+    ...(description ? { description } : {})
   };
 }
 
@@ -1788,6 +1794,11 @@ app.post(
     const built = template
       ? instantiateTemplate(template.templateId, appId, title)
       : { definitions: scaffoldBlankApp(appId, title, docType, docTypeTitle, scopeUser(scope), database), documents: [] as BusinessDocument[] };
+    // ADR-0023: mirror the app:config purpose blurb onto the install record so
+    // lotus_admin_list_apps stays a single platform-db read. app:config remains
+    // authoritative; a later designer edit to it is not re-mirrored here.
+    const builtAppConfig = built.definitions.find((doc) => doc._id === "app:config") as AppConfig | undefined;
+    if (builtAppConfig?.description) install.description = builtAppConfig.description;
     const definitionErrors = validateTemplateDefinitions({
       kind: "template",
       templateId: template ? template.templateId : `blank:${appId}`,
@@ -1850,6 +1861,110 @@ app.get(
       roles: principalsFor(scope),
       accessLevel: scope.accessLevel
     });
+  })
+);
+
+// ADR-0023 Phase 2: progressive disclosure. The full `/definitions` endpoint
+// above stays authoritative for the client editor and the designer surface; the
+// routes below let an operator agent read the app's shape cheaply — a lean
+// self-describing index first, then one definition at a time — instead of
+// pulling every field/column/state body up front. All are app-ACL-scoped
+// through `requireAppSession` (design reads, no per-document `readers`), and
+// carry the ADR-0023 `description` prose so the lean listing explains itself.
+
+/** Trim a definition down to its self-describing header (ADR-0023). */
+function definitionSummary(
+  def: { _id: string; kind: string; docType: string; title: string; description?: string }
+) {
+  return {
+    _id: def._id,
+    kind: def.kind,
+    docType: def.docType,
+    title: def.title,
+    ...(def.description ? { description: def.description } : {})
+  };
+}
+
+app.get(
+  "/api/apps/:appId/definitions/summary",
+  asyncRoute(async (request, response) => {
+    const appContext = await appContextFromRequest(request);
+    const scope = await requireAppSession(request, appContext.database);
+    const [appConfig, forms, views, workflows] = await Promise.all([
+      getDoc<AppConfig>("local", "app:config", "", appContext.database),
+      findDocs<FormDefinition>("local", { selector: { kind: "form" }, limit: 100 }, appContext.database),
+      findDocs<ViewDefinition>("local", { selector: { kind: "view" }, limit: 100 }, appContext.database),
+      findDocs<WorkflowDefinition>("local", { selector: { kind: "workflow" }, limit: 100 }, appContext.database)
+    ]);
+    const byTitle = <T extends { title: string }>(list: T[]) =>
+      [...list].sort((left, right) => left.title.localeCompare(right.title));
+    response.json({
+      appConfig: {
+        title: appConfig.title,
+        ...(appConfig.description ? { description: appConfig.description } : {})
+      },
+      forms: byTitle(forms.docs).map(definitionSummary),
+      views: byTitle(views.docs).map(definitionSummary),
+      workflows: byTitle(workflows.docs).map(definitionSummary),
+      accessLevel: scope.accessLevel
+    });
+  })
+);
+
+app.get(
+  "/api/apps/:appId/definitions/forms/:docType",
+  asyncRoute(async (request, response) => {
+    const appContext = await appContextFromRequest(request);
+    await requireAppSession(request, appContext.database);
+    const docType = routeParam(request.params.docType);
+    try {
+      response.json(await formForDocType(docType, appContext.database));
+    } catch (error) {
+      if (error instanceof CouchError && error.status === 404) {
+        response.status(404).json({ error: "not_found", reason: `No form for ${docType}` });
+        return;
+      }
+      throw error;
+    }
+  })
+);
+
+app.get(
+  "/api/apps/:appId/definitions/workflows/:docType",
+  asyncRoute(async (request, response) => {
+    const appContext = await appContextFromRequest(request);
+    await requireAppSession(request, appContext.database);
+    const docType = routeParam(request.params.docType);
+    const def = await workflowForDocType(docType, appContext.database);
+    if (!def) {
+      response.status(404).json({ error: "not_found", reason: `No workflow for ${docType}` });
+      return;
+    }
+    response.json(def);
+  })
+);
+
+app.get(
+  // Views are N-per-docType, so this one is keyed by the full view id (matching
+  // `query_view`/`/views/:id/documents`), not by docType like forms/workflows.
+  "/api/apps/:appId/definitions/views/:id",
+  asyncRoute(async (request, response) => {
+    const appContext = await appContextFromRequest(request);
+    await requireAppSession(request, appContext.database);
+    const id = routeParam(request.params.id);
+    if (!id.startsWith("view:")) {
+      response.status(400).json({ error: "bad_request", reason: "View id must start with view:" });
+      return;
+    }
+    try {
+      response.json(await getDoc<ViewDefinition>("local", id, "", appContext.database));
+    } catch (error) {
+      if (error instanceof CouchError && error.status === 404) {
+        response.status(404).json({ error: "not_found", reason: `No view ${id}` });
+        return;
+      }
+      throw error;
+    }
   })
 );
 
@@ -2008,7 +2123,36 @@ app.get(
   "/api/apps/:appId/documents/:id",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
-    response.json(await getReadableDocument(routeParam(request.params.id), await requireAppSession(request, appContext.database), appContext.database));
+    const scope = await requireAppSession(request, appContext.database);
+    const doc = await getReadableDocument(routeParam(request.params.id), scope, appContext.database);
+    // ADR-0023 Phase 2: opt-in runtime affordances. Absent the flag the response
+    // is the bare document (back-compat with every existing reader); with it the
+    // envelope is wrapped and the actor's currently-available transitions are
+    // annotated. The block is server-computed through the SAME shared engine that
+    // authorizes the write (`availableTransitions`, sync parity lane), so a
+    // surfaced action is never one the transition endpoint would then reject.
+    const include = new Set(String(request.query.include ?? "").split(",").map((part) => part.trim()));
+    if (!include.has("transitions")) {
+      response.json(doc);
+      return;
+    }
+    const def = await workflowForDocType(doc.docType, appContext.database);
+    // No workflow for the type ⇒ no affordances (not an error): a plain document.
+    let form: FormDefinition | null = null;
+    if (def) {
+      try {
+        form = await formForDocType(doc.docType, appContext.database);
+      } catch (error) {
+        // Guard-field helpText is advisory; a missing form just drops the hints.
+        if (!(error instanceof CouchError && error.status === 404)) throw error;
+      }
+    }
+    response.json({
+      document: doc,
+      availableTransitions: def
+        ? transitionAffordances(doc, def, scopeUser(scope), principalsFor(scope), form, timestamp())
+        : []
+    });
   })
 );
 

@@ -92,10 +92,18 @@ the server's own behavior.
 - Create app (M21): `POST /api/platform/apps` requires manager access, validates/reserves the app id,
   rejects duplicate install/database collisions, creates local+server app databases, writes starter
   `app:config` / `acl:rules` / `audit:policy` / form / view definitions, creates the standard Mango
-  indexes, and records `appinstall:<appId>` in `platform_app`.
+  indexes, and records `appinstall:<appId>` in `platform_app`. ADR-0023: `appInstallRecord` mirrors
+  the built `app:config.description` onto `AppInstall.description` at install time so
+  `lotus_admin_list_apps` can show each app's purpose from `platform_app` alone; `app:config` stays
+  authoritative and a later designer edit is not re-mirrored.
 - Direct read: `GET /api/apps/:appId/documents/:id` → `getReadableDocument` against the app's
   **local** Couch database with current principal scope; direct document routes do not depend on a
-  view result set.
+  view result set. ADR-0023 Phase 2: `?include=transitions` wraps the response as
+  `{ document, availableTransitions }` (bare document unchanged without the flag). The affordance
+  block is computed via the shared `transitionAffordances`/`availableTransitions` (sync parity lane)
+  under the actor's scope — each entry carries `id`/`label`/`to`, the transition `description`, and
+  best-effort guard-field `helpText` — so a surfaced action is exactly one the transition endpoint
+  would authorize (offering == enforcement).
 - Save: `POST/PUT /api/apps/:appId/documents` → shared `validatePayload` (user-editable fields) →
   **`stampComputedFields`** (ADR-0019: computed/computed-once resolution under the writer's scope
   with preserve-on-empty and tamper-discard; also runs on the conflict-resolve route's elected
@@ -167,6 +175,13 @@ the server's own behavior.
   and `GET /api/agents/runs` list definitions and run history. Server-authoritative; ticks are
   serialized in-process so overlapping calls cannot double-run or 409 the checkpoint; optional
   `AGENTS_INTERVAL_MS` loop is off by default.
+- Definition read (M7, ADR-0023 Phase 2): `GET /api/apps/:appId/definitions` returns every
+  definition in full (consumed by the client editor and `lotus_designer_get_app_definitions`) — left
+  untouched. Phase 2 adds progressive-disclosure reads for operator agents, all app-ACL-scoped via
+  `requireAppSession`: `GET /definitions/summary` (lean self-describing index — ids + kinds + titles
+  + descriptions, no bodies), `GET /definitions/forms/:docType` and `/definitions/workflows/:docType`
+  (one full definition, keyed by docType), and `GET /definitions/views/:id` (one full view, keyed by
+  the full `view:*` id since views are N-per-docType; non-`view:` id → 400). Missing → 404.
 - Definition save (M4/M8): `PUT /api/definitions/:id` accepts `form:*`, `view:*`, `workflow:*`, and
   `agent:*` (M8), runs shared `validateDesignDefinition`, then writes **local** Couch; invalid
   definitions return `422 definition_validation_failed`.
@@ -232,6 +247,7 @@ this subsystem.
 - `docs/decisions/0010-directory-and-session-auth.md`
 - `docs/decisions/0012-names-directory-split.md`
 - `docs/decisions/0014-formula-language-and-agents.md`
+- `docs/decisions/0023-self-describing-schema-and-scoped-reads.md`
 - `docs/M5/02-access-policy.md`
 - `docs/M5/03-replication-purge.md`
 - `docs/M6/02-template-contract.md`

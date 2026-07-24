@@ -24,6 +24,7 @@
       "kind": "app",
       "appId": "org",
       "title": "Org",
+      "description": "The organization directory: departments and the employees who belong to them.",
       "database": "org_app"
     },
     {

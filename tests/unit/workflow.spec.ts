@@ -3,9 +3,11 @@ import {
   applyTransition,
   availableTransitions,
   currentState,
-  isFinalState
+  guardReferencedFields,
+  isFinalState,
+  transitionAffordances
 } from "../../src/shared/workflow";
-import type { BusinessDocument, WorkflowDefinition } from "../../src/shared/types";
+import type { BusinessDocument, FormDefinition, WorkflowDefinition } from "../../src/shared/types";
 
 const NOW = "2026-06-29T00:00:00.000Z";
 
@@ -105,6 +107,83 @@ describe("availableTransitions", () => {
       transitions: [{ id: "submit", label: "Submit", from: "draft", to: "submitted", guard: "process.exit(1)" }]
     });
     expect(availableTransitions(doc(), malicious, "alice", [], NOW)).toHaveLength(0);
+  });
+});
+
+describe("guardReferencedFields", () => {
+  it("returns [] for an absent or empty guard", () => {
+    expect(guardReferencedFields(undefined)).toEqual([]);
+    expect(guardReferencedFields("")).toEqual([]);
+  });
+
+  it("extracts payload field names, deduped in source order", () => {
+    expect(guardReferencedFields("payload.amount > 50 && payload.approver != '' && payload.amount < 900")).toEqual([
+      "amount",
+      "approver"
+    ]);
+  });
+
+  it("ignores non-payload references (user, now, principals)", () => {
+    expect(guardReferencedFields("principals.includes(payload.approver) && now > '2026'")).toEqual(["approver"]);
+  });
+});
+
+describe("transitionAffordances", () => {
+  const describedFlow = (): WorkflowDefinition =>
+    workflow({
+      transitions: [
+        {
+          id: "submit",
+          label: "Submit",
+          from: "draft",
+          to: "submitted",
+          description: "Send the expense for approval.",
+          guard: "payload.amount > 0"
+        },
+        { id: "withdraw", label: "Withdraw", from: "*", to: "draft" }
+      ]
+    });
+
+  const form = (overrides: Partial<FormDefinition> = {}): FormDefinition => ({
+    _id: "form:expense",
+    kind: "form",
+    appId: "expense",
+    docType: "expense",
+    title: "Expense",
+    fields: [
+      { name: "amount", type: "number", label: "Amount", helpText: "Total spend in USD." },
+      { name: "memo", type: "text", label: "Memo" }
+    ],
+    ...overrides
+  });
+
+  it("annotates each available transition with id, label, to, and its description", () => {
+    const affordances = transitionAffordances(doc(), describedFlow(), "alice", [], undefined, NOW);
+    // draft offers `submit` (guard passes: amount 100 > 0) and `withdraw`.
+    expect(affordances.map((a) => ({ id: a.id, to: a.to, description: a.description }))).toEqual([
+      { id: "submit", to: "submitted", description: "Send the expense for approval." },
+      { id: "withdraw", to: "draft", description: undefined }
+    ]);
+  });
+
+  it("mirrors availableTransitions exactly — a guard-blocked transition is not surfaced", () => {
+    const affordances = transitionAffordances(doc({ payload: { amount: 0 } }), describedFlow(), "alice", [], undefined, NOW);
+    // amount 0 fails `payload.amount > 0`; only the wildcard withdraw remains.
+    expect(affordances.map((a) => a.id)).toEqual(["withdraw"]);
+  });
+
+  it("surfaces the helpText of guard-referenced fields when the form is supplied", () => {
+    const affordances = transitionAffordances(doc(), describedFlow(), "alice", [], form(), NOW);
+    const submit = affordances.find((a) => a.id === "submit");
+    expect(submit?.requiredFields).toEqual([{ name: "amount", label: "Amount", helpText: "Total spend in USD." }]);
+  });
+
+  it("omits requiredFields when the form is absent or the guard reads no known field", () => {
+    const noForm = transitionAffordances(doc(), describedFlow(), "alice", [], undefined, NOW);
+    expect(noForm.find((a) => a.id === "submit")?.requiredFields).toBeUndefined();
+    // `withdraw` has no guard, so no required fields even with a form.
+    const withForm = transitionAffordances(doc(), describedFlow(), "alice", [], form(), NOW);
+    expect(withForm.find((a) => a.id === "withdraw")?.requiredFields).toBeUndefined();
   });
 });
 

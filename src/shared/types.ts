@@ -7,6 +7,13 @@ export type AppConfig = {
   appId: string;
   title: string;
   database: string;
+  /**
+   * ADR-0023: one-line prose describing what the app is for, so an operator agent
+   * (or app listing) can pick the right app without opening every definition.
+   * Optional and back-compatible — absent means no purpose declared. Design data,
+   * authored via templates/designer; mirrors `SystemApp.description`/`AppTemplate.description`.
+   */
+  description?: string;
 };
 
 export type FieldType = "text" | "textarea" | "number" | "date" | "boolean" | "select";
@@ -62,6 +69,12 @@ export type FormField = {
   visibleWhen?: string;
   readOnlyWhen?: string;
   defaultValue?: unknown;
+  /**
+   * Per-field prose. ADR-0023 keeps this as the ONLY field-level description
+   * channel (no parallel agent field) — it already carries operator-facing
+   * guidance in shipped apps, so definition `description` stops at the
+   * form/view/workflow/column/state/transition level and fields reuse `helpText`.
+   */
   helpText?: string;
   options?: SelectOption[];
   source?: FieldSource;
@@ -106,6 +119,8 @@ export type FormDefinition = {
   appId: string;
   docType: string;
   title: string;
+  /** ADR-0023: optional prose describing what this form/document type is for. */
+  description?: string;
   sections?: FormSection[];
   fields: FormField[];
   /**
@@ -120,6 +135,8 @@ export type FormDefinition = {
 export type ViewColumn = {
   field: string;
   label: string;
+  /** ADR-0023: optional prose explaining what this column shows. */
+  description?: string;
 };
 
 export type ViewSort = {
@@ -140,6 +157,8 @@ export type ViewDefinition = {
   appId: string;
   docType: string;
   title: string;
+  /** ADR-0023: optional prose describing what this view lists and when to use it. */
+  description?: string;
   columns: ViewColumn[];
   filters?: ViewFilter[];
   sort?: ViewSort[];
@@ -148,6 +167,12 @@ export type ViewDefinition = {
 export type WorkflowState = {
   name: string;
   label: string;
+  /**
+   * ADR-0023: optional prose describing what this state means and who owes action
+   * while a document sits in it — the highest-value description for an operator
+   * agent deciding what to do next. Descriptive, not a gate.
+   */
+  description?: string;
   final?: boolean;
   /**
    * ADR-0018: who owes action while a document sits in this state. `responsible`
@@ -164,6 +189,12 @@ export type WorkflowState = {
 export type WorkflowTransition = {
   id: string;
   label: string;
+  /**
+   * ADR-0023: optional prose describing when to use this transition and what it
+   * requires (mirrors the guard in words) — the branch points where an operator
+   * agent most needs guidance. Descriptive, not a gate.
+   */
+  description?: string;
   /** Source state name, or "*" to allow from any non-final state. */
   from: string;
   to: string;
@@ -186,6 +217,8 @@ export type WorkflowDefinition = {
   appId: string;
   docType: string;
   title: string;
+  /** ADR-0023: optional prose describing the lifecycle this workflow governs. */
+  description?: string;
   initialState: string;
   states: WorkflowState[];
   transitions: WorkflowTransition[];
@@ -421,6 +454,12 @@ export type AppInstall = {
   appId: string;
   title: string;
   database: string;
+  /**
+   * ADR-0023: optional purpose mirrored from the app's `app:config.description`
+   * at install time, so `lotus_admin_list_apps` can show what each app is for
+   * without opening every app's definitions. Optional/back-compatible.
+   */
+  description?: string;
   templateId?: string;
   installedAt: string;
   installedBy: string;

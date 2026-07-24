@@ -32,6 +32,7 @@
       "kind": "app",
       "appId": "turnaround",
       "title": "Turnaround",
+      "description": "Aircraft turnaround readiness: a flight progresses through planning, scheduling, crew assignment, ramp check, and fueling to dispatch — or is grounded.",
       "database": "turnaround_app"
     },
     {

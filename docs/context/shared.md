@@ -40,7 +40,9 @@ No DOM, no Node/server-only APIs.
   (`isPayloadField` in `validation.ts`).
 - `src/shared/validation.ts` — `validatePayload`, `applyFormDefaults`, `normalizePayload`, `isFieldRequired/Visible/ReadOnly`.
 - `src/shared/definition-validation.ts` (M4) — shared validators for `form:*`, `view:*`, and
-  `workflow:*` documents before local definition writes.
+  `workflow:*` documents before local definition writes. ADR-0023 adds `validateDescription`
+  (type-checks the optional `description` prose only when present) wired into the form, view
+  (incl. per-column), workflow, state, and transition validators.
 - `src/shared/template.ts` (M6) — template normalization, `_rev` stripping, artifact validation, and
   document-level diff helpers.
 - `src/shared/template-validation.ts` (M24) — pure template-design validation shared by the server
@@ -48,6 +50,11 @@ No DOM, no Node/server-only APIs.
 - `src/shared/expression.ts` — `evaluateExpression`, `evaluateBoolean` (portable evaluator).
 - `src/shared/workflow.ts` (M3) — portable workflow engine: `currentState`, `availableTransitions`,
   `applyTransition`. Pure; reuses `evaluateBoolean` for guards and fails closed on a bad guard.
+  ADR-0023 Phase 2 adds `transitionAffordances` (annotates the `availableTransitions` set for an
+  operator agent with each transition's `description` and, when a form is supplied, the `helpText`
+  of the fields its guard reads) and the `guardReferencedFields` static `payload.<field>` scan it
+  uses. Advisory only — the gate is still `availableTransitions`/`applyTransition`, so the affordance
+  set cannot widen authority.
 - `src/shared/workflow-scaffold.ts` (M23) — pure approval workflow scaffold for a document type:
   generates `workflow:<docType>` plus submitted/my/all worklist views and validates approver
   principals before the server writes ordinary design docs.
@@ -150,6 +157,22 @@ enforcement are exact. `src/shared/workflow.ts` owns the assignment envelope
 `history[]`). Definition validation enforces the mode/field matrix and rejects the
 superseded `approverFormula`.
 
+## ADR-0023 self-describing schema
+
+Every definition node with authored intent carries an optional `description?: string`:
+`AppConfig`, `FormDefinition`, `ViewColumn`, `ViewDefinition`, `WorkflowState`,
+`WorkflowTransition`, `WorkflowDefinition` (`src/shared/types.ts`). Prose only — nothing in
+the runtime branches on it; the high-value targets are workflow **state** and **transition**
+descriptions (what a state means; when a branch applies). Field-level prose stays on
+`FormField.helpText` — no parallel `FormField.description`. Fully back-compat: optional,
+validated only when present (non-string → pathed error), so pre-ADR-0023 documents are
+untouched and no migration is needed.
+
+Phase 2 consumes this prose at runtime: `transitionAffordances` (workflow engine) surfaces
+each available transition's `description` plus the `helpText` of guard-referenced fields, so
+an operator agent sees "what can I do now, and what does it mean" on document-open. Pure and
+advisory — it annotates the parity-lane `availableTransitions` set, never a new gate.
+
 ## Invariants
 
 See `docs/invariants.md`: **Validation parity**, **Expression runtime**, **Definitions-as-data
@@ -159,11 +182,14 @@ contract**, **ACL / readers**, and **Identity & sessions** govern this subsystem
 
 - `docs/decisions/0001-definitions-as-data.md`
 - `docs/decisions/0010-directory-and-session-auth.md`
+- `docs/decisions/0023-self-describing-schema-and-scoped-reads.md`
 
 ## Tests
 
 Vitest unit tests under `tests/unit/**` (M7) cover the handler registry, computed fields, and
 reference validation; the broader runtime is still exercised through `tests/e2e/**`.
+`tests/unit/definition-description.spec.ts` pins the ADR-0023 `description` contract
+(absent = valid; string accepted; non-string rejected with a pathed field).
 
 ## Common Pitfalls
 

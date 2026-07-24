@@ -28,6 +28,17 @@ function error(field: string, message: string): ValidationError {
   return { field, message };
 }
 
+/**
+ * ADR-0023: optional self-documenting prose on a definition
+ * (form/view/workflow/column/state/transition). Type-checked only when present —
+ * never required, so it is fully back-compatible with pre-ADR-0023 documents.
+ */
+function validateDescription(value: unknown, field: string): ValidationError[] {
+  if (value === undefined) return [];
+  if (typeof value !== "string") return [error(field, `${field} must be a string`)];
+  return [];
+}
+
 function validateExpression(expression: unknown, field: string): ValidationError[] {
   if (expression === undefined || expression === null || expression === "") return [];
   if (typeof expression !== "string") return [error(field, `${field} must be a string expression`)];
@@ -113,6 +124,7 @@ export function validateFormDefinition(definition: FormDefinition): ValidationEr
   if (!nonEmpty(definition.appId)) errors.push(error("appId", "App id is required"));
   if (!nonEmpty(definition.docType)) errors.push(error("docType", "Document type is required"));
   if (!nonEmpty(definition.title)) errors.push(error("title", "Title is required"));
+  errors.push(...validateDescription(definition.description, "description"));
   if (!Array.isArray(definition.fields) || definition.fields.length === 0) {
     errors.push(error("fields", "A form needs at least one field"));
     return errors;
@@ -173,12 +185,14 @@ export function validateViewDefinition(definition: ViewDefinition): ValidationEr
   if (!nonEmpty(definition.appId)) errors.push(error("appId", "App id is required"));
   if (!nonEmpty(definition.docType)) errors.push(error("docType", "Document type is required"));
   if (!nonEmpty(definition.title)) errors.push(error("title", "Title is required"));
+  errors.push(...validateDescription(definition.description, "description"));
   if (!Array.isArray(definition.columns) || definition.columns.length === 0) {
     errors.push(error("columns", "A view needs at least one column"));
   }
   for (const [index, column] of (definition.columns ?? []).entries()) {
     if (!nonEmpty(column.field)) errors.push(error(`columns.${index}.field`, "Column field is required"));
     if (!nonEmpty(column.label)) errors.push(error(`columns.${index}.label`, "Column label is required"));
+    errors.push(...validateDescription(column.description, `columns.${index}.description`));
   }
   for (const [index, filter] of (definition.filters ?? []).entries()) {
     errors.push(...validateFilter(filter, index));
@@ -219,6 +233,7 @@ function validateTransition(
   const errors: ValidationError[] = [];
   if (!nonEmpty(transition.id)) errors.push(error(`${prefix}.id`, "Transition id is required"));
   if (!nonEmpty(transition.label)) errors.push(error(`${prefix}.label`, "Transition label is required"));
+  errors.push(...validateDescription(transition.description, `${prefix}.description`));
   if (!nonEmpty(transition.from)) errors.push(error(`${prefix}.from`, "Transition from state is required"));
   if (transition.from !== "*" && !states.has(transition.from)) {
     errors.push(error(`${prefix}.from`, `Transition source does not exist: ${transition.from}`));
@@ -246,6 +261,7 @@ export function validateWorkflowDefinition(definition: WorkflowDefinition): Vali
   if (!nonEmpty(definition.appId)) errors.push(error("appId", "App id is required"));
   if (!nonEmpty(definition.docType)) errors.push(error("docType", "Document type is required"));
   if (!nonEmpty(definition.title)) errors.push(error("title", "Title is required"));
+  errors.push(...validateDescription(definition.description, "description"));
   if (!Array.isArray(definition.states) || definition.states.length === 0) {
     errors.push(error("states", "A workflow needs at least one state"));
     return errors;
@@ -255,6 +271,7 @@ export function validateWorkflowDefinition(definition: WorkflowDefinition): Vali
   for (const [index, state] of definition.states.entries()) {
     if (!nonEmpty(state.name)) errors.push(error(`states.${index}.name`, "State name is required"));
     if (!nonEmpty(state.label)) errors.push(error(`states.${index}.label`, "State label is required"));
+    errors.push(...validateDescription(state.description, `states.${index}.description`));
     if (states.has(state.name)) errors.push(error(`states.${index}.name`, `Duplicate state name: ${state.name}`));
     states.add(state.name);
     // ADR-0018: per-state responsibility declarations.

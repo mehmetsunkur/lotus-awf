@@ -32,7 +32,8 @@ export function registerAdminTools(server: McpServer, client: LotusClient): void
     "lotus_admin_list_apps",
     {
       title: "List Lotus Apps",
-      description: "Return installed business apps from platform state."
+      description:
+        "Return installed business apps from platform state, including each app's id, title, and a short purpose blurb (description) when the app defines one."
     },
     () => asToolResult(async () => {
       const state = await client.platformState();

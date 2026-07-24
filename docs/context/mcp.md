@@ -55,10 +55,24 @@ call the existing Express API and import only pure shared validators/helpers.
   is always resolved server-side, never caller-supplied. Sessions are bound to their surface and
   evicted on close/DELETE/idle-TTL.
 - Admin tools: session/platform state, installed apps, app creation, and app ACL management.
-- Designer tools: app definitions, workflow scaffolds, document-type scaffolds, template
+  ADR-0023: `lotus_admin_list_apps` returns each `AppInstall` including its optional `description`
+  (a purpose blurb mirrored from `app:config` at install time), so an operator agent can pick the
+  right app before reading its definitions.
+- Designer tools: app definitions (full — `lotus_designer_get_app_definitions` reads the untouched
+  `/definitions` endpoint), workflow scaffolds, document-type scaffolds, template
   export/diff/apply/validation, and workflow patch preview/apply.
 - Workspace tools: definitions/view discovery plus business document list/query/get/create/update and
-  workflow transitions.
+  workflow transitions. ADR-0023 Phase 2 makes discovery **progressive**:
+  `lotus_workspace_get_app_definitions` returns a LEAN self-describing index (ids + kinds + titles +
+  descriptions, no bodies — served by `/definitions/summary`), and `lotus_workspace_get_form(docType)`
+  / `lotus_workspace_get_workflow(docType)` / `lotus_workspace_get_view(viewId)` fetch one full
+  definition on demand (views keyed by id, N-per-docType). `lotus_workspace_get_document` returns
+  `{ document, availableTransitions }` (the tool passes `client.getDocument(…, { transitions: true })`,
+  which adds `?include=transitions`) so the operator sees the transitions it may fire right now — each
+  with label, target state, ADR-0023 `description`, and guard-field `helpText` — computed by the same
+  shared engine that authorizes the write. The `LotusClient.getDocument` default stays **bare** (no
+  wrapper) so internal callers like the operator daemon (`src/operator/operator.ts`, which reads
+  `session.payload`) are unaffected — only the workspace tool opts in.
 - Validation tools: designer definitions use `src/shared/definition-validation.ts`; template artifacts
   use `src/shared/template-validation.ts`.
 
@@ -82,6 +96,7 @@ parity**, **ACL / readers**, and **Replication & conflict** govern this subsyste
 - `docs/decisions/0001-definitions-as-data.md`
 - `docs/decisions/0010-directory-and-session-auth.md`
 - `docs/decisions/0011-mcp-over-http.md`
+- `docs/decisions/0023-self-describing-schema-and-scoped-reads.md`
 - `docs/M24/02-tool-contract.md`
 
 ## Tests

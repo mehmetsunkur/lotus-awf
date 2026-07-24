@@ -28,6 +28,7 @@
       "kind": "app",
       "appId": "kb",
       "title": "Knowledge Base",
+      "description": "A reference library of articles and step-by-step procedures for the organization to author and search.",
       "database": "kb_app"
     },
     {

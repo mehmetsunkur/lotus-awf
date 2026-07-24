@@ -1,5 +1,7 @@
 import type {
   BusinessDocument,
+  FormDefinition,
+  FormField,
   TransitionEvent,
   ValidationError,
   WorkflowDefinition,
@@ -113,6 +115,85 @@ export function availableTransitions(
       roleAllows(transition, roles) &&
       guardAllows(transition, doc, user, roles, now)
   );
+}
+
+/**
+ * A field a transition's guard reads, surfaced to an operator with its authored
+ * `helpText` so the actor learns — in words — what the guard needs before the
+ * branch is legal (ADR-0023). Advisory only; never a gate.
+ */
+export type TransitionRequiredField = {
+  name: string;
+  label?: string;
+  helpText?: string;
+};
+
+/**
+ * ADR-0023 runtime affordance: one currently-available transition described for
+ * an operator agent — the label/target it already knew, plus the authored
+ * `description` (when the branch applies) and the `helpText` of any fields its
+ * guard reads (what the branch needs). Derived, not stored.
+ */
+export type TransitionAffordance = {
+  id: string;
+  label: string;
+  to: string;
+  description?: string;
+  requiredFields?: TransitionRequiredField[];
+};
+
+/**
+ * Field names a guard expression references via `payload.<ident>`. Best-effort
+ * static scan (the sync evaluator has no reflection): it powers the advisory
+ * `helpText` surface only, so a missed or spurious token costs a hint, never
+ * correctness. Deduped, source order.
+ */
+export function guardReferencedFields(guard: string | undefined): string[] {
+  if (!guard) return [];
+  const names: string[] = [];
+  const pattern = /payload\.([A-Za-z_$][\w$]*)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(guard)) !== null) {
+    if (!names.includes(match[1])) names.push(match[1]);
+  }
+  return names;
+}
+
+/**
+ * Describe the transitions a user may perform right now (`availableTransitions`)
+ * for an operator agent: each carries its authored `description` and, when the
+ * form is supplied, the `helpText` of the fields its guard reads. Pure and
+ * advisory — the gate is still `availableTransitions`/`applyTransition`; this
+ * only annotates what that lane already offered, so it cannot widen authority.
+ */
+export function transitionAffordances(
+  doc: BusinessDocument,
+  def: WorkflowDefinition,
+  user: string,
+  roles: string[],
+  form?: FormDefinition | null,
+  now = new Date().toISOString()
+): TransitionAffordance[] {
+  return availableTransitions(doc, def, user, roles, now).map((transition) => {
+    const affordance: TransitionAffordance = {
+      id: transition.id,
+      label: transition.label,
+      to: transition.to
+    };
+    if (transition.description) affordance.description = transition.description;
+    if (form) {
+      const required = guardReferencedFields(transition.guard)
+        .map((name) => form.fields.find((field) => field.name === name))
+        .filter((field): field is FormField => Boolean(field))
+        .map((field) => ({
+          name: field.name,
+          ...(field.label ? { label: field.label } : {}),
+          ...(field.helpText ? { helpText: field.helpText } : {})
+        }));
+      if (required.length) affordance.requiredFields = required;
+    }
+    return affordance;
+  });
 }
 
 export type TransitionResult =

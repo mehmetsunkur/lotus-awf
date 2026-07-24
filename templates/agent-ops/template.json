@@ -32,6 +32,7 @@
       "kind": "app",
       "appId": "agent-ops",
       "title": "Agent Operations",
+      "description": "Tracks AI agent sessions and the artifacts they produce: each session moves from draft through requested, running, and on to completed or failed.",
       "database": "agent-ops_app"
     },
     {

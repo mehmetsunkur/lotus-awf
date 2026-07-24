@@ -32,6 +32,7 @@
       "kind": "app",
       "appId": "leave-request",
       "title": "Leave Requests",
+      "description": "Employee time-off requests: drafted, submitted to a manager, then approved or rejected.",
       "database": "leave-request_app"
     },
     {

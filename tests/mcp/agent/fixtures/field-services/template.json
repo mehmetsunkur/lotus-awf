@@ -40,6 +40,7 @@
       "kind": "app",
       "appId": "field-services",
       "title": "Field Services",
+      "description": "Field service operations: dispatch triages incoming service requests, converts them to scheduled work orders, technicians complete the work (requesting parts from inventory when needed), and billing invoices the completed job through to payment.",
       "database": "field_services_app"
     },
     {
@@ -54,6 +55,7 @@
       "appId": "field-services",
       "docType": "service-request",
       "title": "Service Request",
+      "description": "A customer's incoming request for field work — who and where, the reported problem, and its priority. Dispatch triages these and converts the accepted ones into work orders.",
       "defaultReaders": [
         "group:dispatch",
         "group:managers"
@@ -139,6 +141,7 @@
       "appId": "field-services",
       "docType": "work-order",
       "title": "Work Order",
+      "description": "The scheduled job a technician performs on site: the originating request, customer/site, service type, schedule, and the work-performed / billable-hours captured at completion. Feeds parts reservations and, once completed, an invoice.",
       "defaultReaders": [
         "group:dispatch",
         "group:technicians",
@@ -267,6 +270,7 @@
       "appId": "field-services",
       "docType": "parts-reservation",
       "title": "Parts Reservation",
+      "description": "A technician's request for parts against a work order — part, quantity, and when they are needed. Inventory allocates from a warehouse or backorders when short.",
       "defaultReaders": [
         "group:inventory",
         "group:technicians",
@@ -360,6 +364,7 @@
       "appId": "field-services",
       "docType": "invoice",
       "title": "Invoice",
+      "description": "The bill for a completed work order: customer, amount, and due date, tracked through sending, payment, dispute, or void.",
       "defaultReaders": [
         "group:billing",
         "group:dispatch",
@@ -862,26 +867,31 @@
       "appId": "field-services",
       "docType": "service-request",
       "title": "Service Request Intake",
+      "description": "How dispatch handles an incoming request: triage it, then either convert it to a work order or decline it.",
       "initialState": "new",
       "states": [
         {
           "name": "new",
           "label": "New",
+          "description": "Just submitted; awaiting dispatch triage. No one has assessed it yet.",
           "responsible": "group:dispatch"
         },
         {
           "name": "triaged",
           "label": "Triaged",
+          "description": "Dispatch has reviewed it and confirmed the details; ready to convert to a work order or decline.",
           "responsible": "group:dispatch"
         },
         {
           "name": "converted",
           "label": "Converted",
+          "description": "Accepted and turned into a work order. Terminal — the job now lives on the work order.",
           "final": true
         },
         {
           "name": "declined",
           "label": "Declined",
+          "description": "Dispatch decided not to act on the request. Terminal.",
           "final": true
         }
       ],
@@ -889,6 +899,7 @@
         {
           "id": "triage",
           "label": "Triage",
+          "description": "Dispatch confirms a new request's details and moves it to triaged.",
           "from": "new",
           "to": "triaged",
           "requiredRole": "group:dispatch",
@@ -897,6 +908,7 @@
         {
           "id": "convert",
           "label": "Convert to work order",
+          "description": "Accept a triaged request; the follow-up work is created as a separate work-order document.",
           "from": "triaged",
           "to": "converted",
           "requiredRole": "group:dispatch",
@@ -905,6 +917,7 @@
         {
           "id": "decline",
           "label": "Decline",
+          "description": "Reject a triaged request that will not be actioned.",
           "from": "triaged",
           "to": "declined",
           "requiredRole": "group:dispatch",
@@ -918,39 +931,46 @@
       "appId": "field-services",
       "docType": "work-order",
       "title": "Work Order Fulfillment",
+      "description": "The technician's job lifecycle: start scheduled work, optionally divert through inventory for parts, then complete it (which hands off to billing) — or cancel at any point.",
       "initialState": "scheduled",
       "states": [
         {
           "name": "scheduled",
           "label": "Scheduled",
+          "description": "Assigned to a technician with a date, not yet started. Responsibility resolves to the named technician via responsibleFormula.",
           "responsible": "group:technicians",
           "responsibleFormula": "payload.technician"
         },
         {
           "name": "in-progress",
           "label": "In progress",
+          "description": "The technician is actively working the job. From here they can request parts or complete once work and billable hours are recorded.",
           "responsible": "group:technicians",
           "responsibleFormula": "payload.technician"
         },
         {
           "name": "needs-parts",
           "label": "Needs parts",
+          "description": "Work is paused pending inventory: the technician has requested parts and is waiting for them to be marked ready.",
           "responsible": "group:inventory"
         },
         {
           "name": "parts-ready",
           "label": "Parts ready",
+          "description": "Inventory has fulfilled the parts request; the technician can resume work or complete directly.",
           "responsible": "group:technicians",
           "responsibleFormula": "payload.technician"
         },
         {
           "name": "completed",
           "label": "Completed",
+          "description": "Work is done and captured; responsibility passes to billing to raise an invoice.",
           "responsible": "group:billing"
         },
         {
           "name": "cancelled",
           "label": "Cancelled",
+          "description": "Called off before completion (from any non-final state). Terminal.",
           "final": true
         }
       ],
@@ -958,6 +978,7 @@
         {
           "id": "start",
           "label": "Start work",
+          "description": "The assigned technician begins the job. Guard: the actor must be the named technician or a member of group:technicians.",
           "from": "scheduled",
           "to": "in-progress",
           "guard": "principals.includes(payload.technician) || principals.includes('group:technicians')",
@@ -966,6 +987,7 @@
         {
           "id": "request-parts",
           "label": "Request parts",
+          "description": "Technician pauses the job to source parts; typically paired with creating a parts-reservation document for inventory.",
           "from": "in-progress",
           "to": "needs-parts",
           "requiredRole": "group:technicians",
@@ -974,6 +996,7 @@
         {
           "id": "parts-ready",
           "label": "Mark parts ready",
+          "description": "Inventory signals the requested parts are available so the technician can proceed.",
           "from": "needs-parts",
           "to": "parts-ready",
           "requiredRole": "group:inventory",
@@ -982,6 +1005,7 @@
         {
           "id": "resume-after-parts",
           "label": "Resume after parts",
+          "description": "Technician returns a parts-ready job to active work.",
           "from": "parts-ready",
           "to": "in-progress",
           "requiredRole": "group:technicians",
@@ -990,6 +1014,7 @@
         {
           "id": "complete",
           "label": "Complete",
+          "description": "Finish an in-progress job. Guard requires workPerformed to be filled and billableHours to be zero or more.",
           "from": "in-progress",
           "to": "completed",
           "guard": "!!payload.workPerformed && payload.billableHours >= 0",
@@ -999,6 +1024,7 @@
         {
           "id": "complete-after-parts",
           "label": "Complete after parts",
+          "description": "Finish directly from parts-ready without a separate resume step. Same completion guard as complete.",
           "from": "parts-ready",
           "to": "completed",
           "guard": "!!payload.workPerformed && payload.billableHours >= 0",
@@ -1008,6 +1034,7 @@
         {
           "id": "cancel",
           "label": "Cancel",
+          "description": "Dispatch calls off the job from any non-final state.",
           "from": "*",
           "to": "cancelled",
           "requiredRole": "group:dispatch",
@@ -1021,26 +1048,31 @@
       "appId": "field-services",
       "docType": "parts-reservation",
       "title": "Parts Reservation",
+      "description": "How inventory fulfills a technician's parts request: allocate from stock (or backorder then receive), and finally hand the parts to the technician.",
       "initialState": "requested",
       "states": [
         {
           "name": "requested",
           "label": "Requested",
+          "description": "A technician has asked for parts; inventory needs to allocate them or backorder if short.",
           "responsible": "group:inventory"
         },
         {
           "name": "allocated",
           "label": "Allocated",
+          "description": "Stock is reserved for this job and waiting for the technician to collect.",
           "responsible": "group:technicians"
         },
         {
           "name": "picked-up",
           "label": "Picked up",
+          "description": "The technician has taken the parts. Terminal.",
           "final": true
         },
         {
           "name": "backordered",
           "label": "Backordered",
+          "description": "Not in stock; awaiting replenishment before it can be allocated. Requires a shortageReason.",
           "responsible": "group:inventory"
         }
       ],
@@ -1048,6 +1080,7 @@
         {
           "id": "allocate",
           "label": "Allocate",
+          "description": "Inventory reserves in-stock parts for the request.",
           "from": "requested",
           "to": "allocated",
           "requiredRole": "group:inventory",
@@ -1056,6 +1089,7 @@
         {
           "id": "backorder",
           "label": "Backorder",
+          "description": "Inventory flags a shortage; guard requires shortageReason to explain what is missing.",
           "from": "requested",
           "to": "backordered",
           "guard": "!!payload.shortageReason",
@@ -1065,6 +1099,7 @@
         {
           "id": "receive-stock",
           "label": "Receive stock",
+          "description": "Replenishment arrives; a backordered request becomes allocated.",
           "from": "backordered",
           "to": "allocated",
           "requiredRole": "group:inventory",
@@ -1073,6 +1108,7 @@
         {
           "id": "pick-up",
           "label": "Pick up",
+          "description": "The technician collects the allocated parts, closing the reservation.",
           "from": "allocated",
           "to": "picked-up",
           "requiredRole": "group:technicians",
@@ -1086,36 +1122,43 @@
       "appId": "field-services",
       "docType": "invoice",
       "title": "Invoice Collection",
+      "description": "Billing's path from a draft bill to payment: prepare, send, and record payment — with side paths to dispute/resolve or void.",
       "initialState": "draft",
       "states": [
         {
           "name": "draft",
           "label": "Draft",
+          "description": "Initial bill being prepared by billing; can be marked ready or disputed if it does not match the work order.",
           "responsible": "group:billing"
         },
         {
           "name": "ready",
           "label": "Ready",
+          "description": "Reviewed and ready to send to the customer.",
           "responsible": "group:billing"
         },
         {
           "name": "sent",
           "label": "Sent",
+          "description": "Issued to the customer; awaiting payment.",
           "responsible": "group:billing"
         },
         {
           "name": "disputed",
           "label": "Disputed",
+          "description": "A discrepancy was raised (discrepancyNote required); needs resolution back to draft.",
           "responsible": "group:billing"
         },
         {
           "name": "paid",
           "label": "Paid",
+          "description": "Payment recorded against the invoice. Terminal.",
           "final": true
         },
         {
           "name": "void",
           "label": "Void",
+          "description": "Cancelled and no longer collectible (voidReason required). Terminal.",
           "final": true
         }
       ],
@@ -1123,6 +1166,7 @@
         {
           "id": "mark-ready",
           "label": "Mark ready",
+          "description": "Billing finalizes a draft for issue.",
           "from": "draft",
           "to": "ready",
           "requiredRole": "group:billing",
@@ -1131,6 +1175,7 @@
         {
           "id": "send",
           "label": "Send",
+          "description": "Issue the ready invoice to the customer.",
           "from": "ready",
           "to": "sent",
           "requiredRole": "group:billing",
@@ -1139,6 +1184,7 @@
         {
           "id": "record-payment",
           "label": "Record payment",
+          "description": "Mark a sent invoice paid; guard requires a paymentReference.",
           "from": "sent",
           "to": "paid",
           "guard": "!!payload.paymentReference",
@@ -1148,6 +1194,7 @@
         {
           "id": "dispute",
           "label": "Dispute",
+          "description": "Flag a discrepancy on a draft; guard requires discrepancyNote.",
           "from": "draft",
           "to": "disputed",
           "guard": "!!payload.discrepancyNote",
@@ -1157,6 +1204,7 @@
         {
           "id": "resolve-dispute",
           "label": "Resolve dispute",
+          "description": "Return a disputed invoice to draft for correction.",
           "from": "disputed",
           "to": "draft",
           "requiredRole": "group:billing",
@@ -1165,6 +1213,7 @@
         {
           "id": "void",
           "label": "Void",
+          "description": "Cancel the invoice from any non-final state (voidReason required on the document).",
           "from": "*",
           "to": "void",
           "requiredRole": "group:billing",

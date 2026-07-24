@@ -1,6 +1,9 @@
 import { test, expect } from "./support/fixtures";
 import { connectLotusMcp, type LotusMcpTestClient, type LotusMcpServerKind } from "./support/mcp-client";
 import type { AppInstall, BusinessDocument, PlatformState, SessionState, TemplateArtifact, WorkflowDefinition } from "../../src/shared/types";
+import type { TransitionAffordance } from "../../src/shared/workflow";
+
+type DocumentWithAffordances = { document: BusinessDocument; availableTransitions: TransitionAffordance[] };
 
 type DefinitionsResponse = {
   forms: Array<{ _id: string; docType: string }>;
@@ -144,11 +147,46 @@ test.describe("Lotus MCP server", () => {
     const tools = await mcp.listTools();
     expect(tools).toContain("lotus_workspace_create_document");
     expect(tools).toContain("lotus_workspace_transition_document");
+    expect(tools).toContain("lotus_workspace_get_form");
+    expect(tools).toContain("lotus_workspace_get_view");
+    expect(tools).toContain("lotus_workspace_get_workflow");
     expect(tools).not.toContain("lotus_admin_create_app");
     expect(tools).not.toContain("lotus_designer_create_document_type");
 
-    const definitions = await mcp.callJsonTool<DefinitionsResponse>("lotus_workspace_get_app_definitions", { appId: "expense" });
+    // ADR-0023 Phase 2: the workspace listing is LEAN — self-describing headers
+    // only, no field/column/state bodies. Scoped tools fetch one full definition.
+    type Summary = {
+      forms: Array<{ _id: string; docType: string; title: string; fields?: unknown }>;
+      views: Array<{ _id: string; columns?: unknown }>;
+      workflows: Array<{ _id: string; docType: string; transitions?: unknown }>;
+    };
+    const definitions = await mcp.callJsonTool<Summary>("lotus_workspace_get_app_definitions", { appId: "expense" });
     expect(definitions.views.map((view) => view._id)).toContain("view:my-expenses");
+    // Lean: bodies are absent in the index.
+    expect(definitions.forms[0]?.fields).toBeUndefined();
+    expect(definitions.views[0]?.columns).toBeUndefined();
+    expect(definitions.workflows[0]?.transitions).toBeUndefined();
+
+    // Scoped reads return the full definition for one node.
+    const form = await mcp.callJsonTool<{ docType: string; fields: unknown[] }>("lotus_workspace_get_form", {
+      appId: "expense",
+      docType: "expense"
+    });
+    expect(form.docType).toBe("expense");
+    expect(Array.isArray(form.fields)).toBe(true);
+
+    const workflow = await mcp.callJsonTool<WorkflowDefinition>("lotus_workspace_get_workflow", {
+      appId: "expense",
+      docType: "expense"
+    });
+    expect(workflow.transitions.map((transition) => transition.id)).toContain("submit");
+
+    const view = await mcp.callJsonTool<{ _id: string; columns: unknown[] }>("lotus_workspace_get_view", {
+      appId: "expense",
+      viewId: "view:my-expenses"
+    });
+    expect(view._id).toBe("view:my-expenses");
+    expect(Array.isArray(view.columns)).toBe(true);
 
     const created = await mcp.callJsonTool<BusinessDocument>("lotus_workspace_create_document", {
       appId: "expense",
@@ -160,6 +198,21 @@ test.describe("Lotus MCP server", () => {
       }
     });
     expect(created._id).toMatch(/^doc:expense:/);
+
+    // ADR-0023 Phase 2: get_document wraps the raw envelope and annotates the
+    // actor's currently-available transitions. A fresh draft can `submit`; the
+    // affordance carries the guard-referenced field's label (helpText when set).
+    const opened = await mcp.callJsonTool<DocumentWithAffordances>("lotus_workspace_get_document", {
+      appId: "expense",
+      id: created._id
+    });
+    expect(opened.document._id).toBe(created._id);
+    expect(opened.document.payload.description).toBe("Workspace permit");
+    const submit = opened.availableTransitions.find((affordance) => affordance.id === "submit");
+    expect(submit).toBeDefined();
+    expect(submit?.to).toBe("submitted");
+    // guard `payload.amount > 0` ⇒ the `amount` field is surfaced as required.
+    expect(submit?.requiredFields?.map((field) => field.name)).toContain("amount");
 
     const queried = await mcp.callJsonTool<BusinessDocument[]>("lotus_workspace_query_view", {
       appId: "expense",
