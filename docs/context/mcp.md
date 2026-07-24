@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `d6c747b`
-- Last reviewed date: `2026-07-22`
+- Last code review baseline: `38b6dd3`
+- Last reviewed date: `2026-07-24`
 - Code areas:
   - `src/mcp/**`
   - `src/operator/**`
