@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { summarizeAgentStream } from "../../src/operator/agent-stream";
-import { CLAUDE_CONTAINER_DISALLOWED_TOOLS, checkAgentIsolationPolicy } from "../../src/operator/container-agent-driver";
+import { CLAUDE_CONTAINER_DISALLOWED_TOOLS, checkAgentIsolationPolicy, stripMcpToolResults } from "../../src/operator/container-agent-driver";
 
 describe("container agent isolation policy", () => {
   it("allows ordinary MCP transcript text", () => {
@@ -28,6 +28,72 @@ describe("container agent isolation policy", () => {
         "direct work-queue API route"
       ])
     );
+  });
+
+  it("does not flag app routes echoed inside a Codex MCP tool-call result", () => {
+    const stdout = [
+      { type: "item.completed", item: { id: "item_0", type: "agent_message", text: "Converting the request." } },
+      {
+        type: "item.completed",
+        item: {
+          id: "item_1",
+          type: "mcp_tool_call",
+          server: "lotus-workspace",
+          tool: "lotus_workspace_update_document",
+          arguments: { appId: "agent-field-services", id: "doc:service-request:1", payload: { state: "converted" } },
+          result: {
+            content: [
+              {
+                type: "text",
+                text: "PUT /api/apps/agent-field-services/documents/doc%3A1 -> 403: {\"error\":\"forbidden\"}"
+              }
+            ]
+          },
+          error: null,
+          status: "failed"
+        }
+      }
+    ]
+      .map((event) => JSON.stringify(event))
+      .join("\n");
+
+    expect(stdout).toContain("/api/apps/");
+    expect(checkAgentIsolationPolicy(stripMcpToolResults(stdout)).ok).toBe(true);
+  });
+
+  it("does not flag app routes echoed inside a Claude tool_result block", () => {
+    const stdout = [
+      { type: "assistant", message: { content: [{ type: "text", text: "Updating the document." }] } },
+      {
+        type: "user",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              content: [{ type: "text", text: "PUT /api/apps/agent-field-services/documents/doc%3A1 -> 403" }]
+            }
+          ]
+        }
+      }
+    ]
+      .map((event) => JSON.stringify(event))
+      .join("\n");
+
+    expect(checkAgentIsolationPolicy(stripMcpToolResults(stdout)).ok).toBe(true);
+  });
+
+  it("still flags an app route in agent-authored text and tool arguments", () => {
+    const argLeak = JSON.stringify({
+      type: "item.completed",
+      item: { id: "x", type: "mcp_tool_call", tool: "t", arguments: { url: "/api/apps/agent-field-services" }, result: null, status: "completed" }
+    });
+    expect(checkAgentIsolationPolicy(stripMcpToolResults(argLeak)).ok).toBe(false);
+
+    const messageLeak = JSON.stringify({
+      type: "item.completed",
+      item: { id: "y", type: "agent_message", text: "I will call GET /api/apps/agent-field-services directly." }
+    });
+    expect(checkAgentIsolationPolicy(stripMcpToolResults(messageLeak)).ok).toBe(false);
   });
 
   it("blocks Claude built-ins that would bypass the workspace MCP boundary", () => {

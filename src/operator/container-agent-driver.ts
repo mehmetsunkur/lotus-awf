@@ -170,6 +170,49 @@ export function checkAgentIsolationPolicy(text: string): IsolationPolicyResult {
   return { ok: violations.length === 0, violations };
 }
 
+// The isolation scan must only see agent-authored output. MCP tool *results* are
+// authored by the MCP server, not the agent, and the workspace server echoes the
+// upstream REST route it proxied to in its result/error text (e.g.
+// "PUT /api/apps/... -> 403"). That is the MCP boundary working as intended, not
+// the agent bypassing it, so those payloads are stripped before scanning. Tool
+// *arguments*, agent messages, reasoning, and shell command output are left intact
+// so a genuine bypass attempt is still caught.
+export function stripMcpToolResults(stdout: string): string {
+  return stdout
+    .split("\n")
+    .map((rawLine) => {
+      const line = rawLine.trim();
+      if (!line.startsWith("{")) return rawLine;
+      try {
+        return JSON.stringify(redactToolResults(JSON.parse(line)));
+      } catch {
+        return rawLine;
+      }
+    })
+    .join("\n");
+}
+
+function redactToolResults(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactToolResults);
+  if (typeof value !== "object" || value === null) return value;
+  const record = value as Record<string, unknown>;
+  // codex: {"item":{"type":"mcp_tool_call","result":{...},"error":{...}, ...}}
+  if (record.type === "mcp_tool_call") {
+    const { result: _result, error: _error, ...rest } = record;
+    return mapValues(rest);
+  }
+  // claude-code: {"type":"user","message":{"content":[{"type":"tool_result","content":...}]}}
+  if (record.type === "tool_result") {
+    const { content: _content, ...rest } = record;
+    return rest;
+  }
+  return mapValues(record);
+}
+
+function mapValues(record: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(record).map(([key, val]) => [key, redactToolResults(val)]));
+}
+
 async function runOneShotContainer(options: {
   network: StartedNetwork;
   env: Record<string, string>;
@@ -236,7 +279,9 @@ function finalizeSuccess(options: {
   resultSubtype?: string;
 }): AgentRun {
   const { diagnostics, artifacts } = options;
-  const policy = checkAgentIsolationPolicy([artifacts.stdout, artifacts.stderr, artifacts.finalText].join("\n"));
+  const policy = checkAgentIsolationPolicy(
+    [stripMcpToolResults(artifacts.stdout), artifacts.stderr, artifacts.finalText].join("\n")
+  );
   const ok = options.ok && policy.ok;
   const streamDiagnostics = summarizeAgentStream({
     driver: options.driver as AgentStreamDriver,
