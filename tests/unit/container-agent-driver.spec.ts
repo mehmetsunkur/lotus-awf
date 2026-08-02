@@ -82,6 +82,25 @@ describe("container agent isolation policy", () => {
     expect(checkAgentIsolationPolicy(stripMcpToolResults(stdout)).ok).toBe(true);
   });
 
+  it("does not flag an app route echoed in the Claude tool_use_result sibling field", () => {
+    // The claude-code stream flattens the same server-authored tool output onto the
+    // user event as a top-level `tool_use_result` string, alongside the nested
+    // tool_result block. Both must be stripped or the route survives the scan.
+    const route =
+      "GET /api/apps/agent-field-services/documents/doc%3Aservice-request%3A1?include=transitions -> 403: {\"reason\":\"not readable\"}";
+    const stdout = JSON.stringify({
+      type: "user",
+      message: {
+        role: "user",
+        content: [{ type: "tool_result", content: route, is_error: true, tool_use_id: "toolu_1" }]
+      },
+      tool_use_result: `Error: ${route}`
+    });
+
+    expect(stdout).toContain("/api/apps/");
+    expect(checkAgentIsolationPolicy(stripMcpToolResults(stdout)).ok).toBe(true);
+  });
+
   it("still flags an app route in agent-authored text and tool arguments", () => {
     const argLeak = JSON.stringify({
       type: "item.completed",

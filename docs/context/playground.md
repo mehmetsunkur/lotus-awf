@@ -131,8 +131,10 @@ process, so an unchanged failed/no-op item is not respawned repeatedly in the sa
   routes. The scan targets agent-authored output only: MCP tool-*result* payloads are stripped first
   (`stripMcpToolResults`), because the workspace server echoes the upstream REST route it proxied to
   in its result/error text (e.g. a 403 body containing `PUT /api/apps/...`) — that is the MCP
-  boundary working, not the agent bypassing it. Tool arguments, agent messages, and shell command
-  output are still scanned, so a genuine bypass attempt is still caught.
+  boundary working, not the agent bypassing it. For claude-code this means both the nested
+  `tool_result` block and the sibling `tool_use_result` field the stream flattens onto the same user
+  event; for codex the `mcp_tool_call` `result`/`error`. Tool arguments, agent messages, and shell
+  command output are still scanned, so a genuine bypass attempt is still caught.
 - Containerized runner diagnostics also include `agent-events.jsonl`, `tool-transcript.jsonl`,
   `turn-summary.json`, and `timeout-diagnostics.json`. Timeout classifications distinguish no
   structured events, provider retry/reconnect, MCP not connected, MCP connected with no turn, agent

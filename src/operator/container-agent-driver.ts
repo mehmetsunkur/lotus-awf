@@ -206,6 +206,13 @@ function redactToolResults(value: unknown): unknown {
     const { content: _content, ...rest } = record;
     return rest;
   }
+  // claude-code also flattens the same server-authored tool output onto the user
+  // event as a sibling `tool_use_result` field (string or object), alongside the
+  // nested tool_result block above — strip it too, then recurse into the rest.
+  if ("tool_use_result" in record) {
+    const { tool_use_result: _toolUseResult, ...rest } = record;
+    return mapValues(rest);
+  }
   return mapValues(record);
 }
 
