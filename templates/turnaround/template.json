@@ -47,10 +47,6 @@
       "appId": "turnaround",
       "docType": "flight",
       "title": "Flight",
-      "defaultReaders": [
-        "group:flight-ops",
-        "group:ground-ops"
-      ],
       "sections": [
         {
           "title": "Flight",
@@ -112,6 +108,14 @@
           "mode": "computed",
           "formula": "(await DbLookup('org', 'department', 'payload.slug', 'ground-ops', 'payload.head')) || 'group:managers'",
           "helpText": "Server-stamped from the org chart: the head of ground operations (group:managers while that department is headless). Gates fueling sign-off."
+        },
+        {
+          "name": "aclReaders",
+          "type": "text",
+          "label": "Readers",
+          "aclRole": "reader",
+          "mode": "computed-once",
+          "formula": "[\"group:flight-ops\",\"group:ground-ops\"]"
         }
       ]
     },

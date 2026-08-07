@@ -29,9 +29,13 @@ No DOM, no Node/server-only APIs.
 - `src/shared/types.ts` also carries M19 platform shell types: `SystemApp`, `PublicGroup`, and
   `DirectoryState`.
 - `src/shared/access.ts` (M5/M18) — pure helpers for session-derived principal scopes, readable docs,
-  editable docs, derived readers, app ACL levels, and access selectors. (ADR-0015)
-  `readersForNewDocument(scope, defaultReaders)` merges a form's `FormDefinition.defaultReaders`
-  (data) instead of a hardcoded `docType === "expense"` rule.
+  editable docs, app ACL levels, and access selectors. `canEditDocument` is the ADR-0024 two-layer gate
+  (Layer 1 Editor+ ACL bypass via `hasAccessLevel`; Layer 2 group/role-aware `authors` intersection).
+  `rollupAclProjection(base, fields, payload)` materializes the ADR-0024 `$Readers`-style envelope
+  projection — it UNIONS each `aclRole:"reader"|"author"` field's resolved principals onto the creator
+  base already on the doc (additive only; never narrows). New-doc readers are just the creator's
+  principals; extra readers/authors come from `aclRole` fields (ADR-0024 replaced ADR-0015's
+  `defaultReaders`; `readersForNewDocument` is gone).
 - `src/shared/formula.ts` (ADR-0014) — the ASYNC evaluation lane. `evaluateFormulaAsync` permits
   `await DbColumn(appId; docType; column)` / `DbLookup(appId; docType; keyColumn; key; valueColumn)`,
   every read ACL-filtered through `canReadDocument`. Distinct from `expression.ts` (the pure sync lane,
@@ -156,6 +160,14 @@ enforcement are exact. `src/shared/workflow.ts` owns the assignment envelope
 (`assignee`/`assignedAt` stamped on state entry, cleared on final states, hand-offs in
 `history[]`). Definition validation enforces the mode/field matrix and rejects the
 superseded `approverFormula`.
+
+ADR-0024 adds a third orthogonal `FormField` axis, `aclRole:"reader"|"author"` — the
+Notes-style Readers/Authors flag. It is COMPUTED-ONLY (`definition-validation.ts` rejects an
+`aclRole` field that is not `computed`/`computed-once` with a formula), so its value is
+server-resolved and tamper-safe. The field resolves to a principal LIST (normalized via
+`normalizeResolvedPrincipals`, never primitive-coerced); `rollupAclProjection` then unions
+those onto the envelope `readers`/`authors`. This replaces `FormDefinition.defaultReaders`
+(deleted).
 
 ## ADR-0023 self-describing schema
 

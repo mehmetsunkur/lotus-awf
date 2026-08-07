@@ -184,9 +184,21 @@ export async function seedDigitalTwin(
     );
     const articleForm = kbDefinitions.forms.find((definition) => definition._id === "form:article");
     if (!articleForm) throw new Error("kb app is missing form:article");
+    // ADR-0024: article visibility is carried by the template's shipped
+    // `aclRole:"reader"` computed-once field (was `defaultReaders`). The kb template
+    // ships it returning `["group:employees"]`, which is inert in the airline fixture
+    // (that group intentionally does not exist); re-point that field's formula to the
+    // airline staff groups rather than appending a second one (duplicate field name).
+    const articleFields = articleForm.fields as Array<Json & { aclRole?: string }>;
+    const repointedArticleFields = articleFields.map((field) =>
+      field.aclRole === "reader" ? { ...field, formula: JSON.stringify(AIRLINE_STAFF_GROUPS) } : field
+    );
+    if (!repointedArticleFields.some((field) => field.aclRole === "reader")) {
+      throw new Error("kb form:article is missing its aclRole:\"reader\" field");
+    }
     await requestJson(admin, "put", `/api/apps/${kbAppId}/definitions/${encodeURIComponent("form:article")}`, {
       ...articleForm,
-      defaultReaders: AIRLINE_STAFF_GROUPS
+      fields: repointedArticleFields
     });
     const turnaroundDefinitions = await requestJson<{ forms: Array<Json & { _id: string }> }>(
       admin,

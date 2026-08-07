@@ -221,9 +221,21 @@ export async function seedFieldServicesHandbook(
   );
   const articleForm = kbDefinitions.forms.find((definition) => definition._id === "form:article");
   if (!articleForm) throw new Error("field services handbook is missing form:article");
+  // ADR-0024: extra readers come from an aclRole:"reader" computed-once field
+  // returning the staff groups (was `defaultReaders`) — company-wide article visibility.
   await requestJson(admin, "put", `/api/apps/${kbAppId}/definitions/${encodeURIComponent("form:article")}`, {
     ...articleForm,
-    defaultReaders: FIELD_STAFF_GROUPS
+    fields: [
+      ...(articleForm.fields as unknown[]),
+      {
+        name: "aclReaders",
+        type: "text",
+        label: "Readers",
+        aclRole: "reader",
+        mode: "computed-once",
+        formula: JSON.stringify(FIELD_STAFF_GROUPS)
+      }
+    ]
   });
 
   await requestJson(

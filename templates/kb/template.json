@@ -11,7 +11,7 @@
       "_id": "acl:rules",
       "kind": "acl",
       "appId": "kb",
-      "policy": "kb.nsf: the company knowledge base. Handbook articles are for everyone (form defaultReaders); procedures are scoped to the team that wrote them via the ADR-0015 creator-principal mechanism — there is deliberately no per-document readers editor.",
+      "policy": "kb.nsf: the company knowledge base. Handbook articles are for everyone (an aclRole reader field on the article form); procedures are scoped to the team that wrote them via the creator-principal mechanism (ADR-0024) — there is deliberately no per-document readers editor.",
       "entries": [
         {
           "principal": "group:admins",
@@ -43,9 +43,6 @@
       "appId": "kb",
       "docType": "article",
       "title": "Handbook article",
-      "defaultReaders": [
-        "group:employees"
-      ],
       "sections": [
         {
           "title": "Article",
@@ -69,6 +66,14 @@
           "label": "Body",
           "required": true,
           "searchable": true
+        },
+        {
+          "name": "aclReaders",
+          "type": "text",
+          "label": "Readers",
+          "aclRole": "reader",
+          "mode": "computed-once",
+          "formula": "[\"group:employees\"]"
         }
       ]
     },

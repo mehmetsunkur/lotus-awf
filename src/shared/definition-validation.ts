@@ -111,6 +111,25 @@ function validateField(field: FormField, index: number): ValidationError[] {
   } else if (field.formula !== undefined) {
     errors.push(error(`${prefix}.formula`, "Only computed-mode fields may set a formula"));
   }
+  // ADR-0024 §1: the Readers/Authors flag. Orthogonal to `type`/`mode`, but
+  // COMPUTED-ONLY — an ACL-flagged field must be `computed`/`computed-once` with a
+  // formula so its value is server-resolved and tamper-safe by construction. A
+  // static reader list is a `computed-once` field returning a constant array;
+  // editable/static and `computed-for-display` shapes are rejected. The
+  // formula-presence + sandbox + syntax checks are already enforced by the mode
+  // block above.
+  if (field.aclRole !== undefined) {
+    if (field.aclRole !== "reader" && field.aclRole !== "author") {
+      errors.push(error(`${prefix}.aclRole`, `Field aclRole is invalid: ${String(field.aclRole)}`));
+    } else if (field.mode !== "computed" && field.mode !== "computed-once") {
+      errors.push(
+        error(
+          `${prefix}.aclRole`,
+          `An aclRole field must be computed or computed-once with a formula, not ${field.mode ?? "editable"}`
+        )
+      );
+    }
+  }
   if (field.searchable !== undefined && typeof field.searchable !== "boolean") {
     errors.push(error(`${prefix}.searchable`, "Field searchable must be a boolean"));
   }
@@ -135,11 +154,6 @@ export function validateFormDefinition(definition: FormDefinition): ValidationEr
     errors.push(...validateField(field, index));
     if (fieldNames.has(field.name)) errors.push(error(`fields.${index}.name`, `Duplicate field name: ${field.name}`));
     fieldNames.add(field.name);
-  }
-  if (definition.defaultReaders !== undefined) {
-    if (!Array.isArray(definition.defaultReaders) || !definition.defaultReaders.every((p) => nonEmpty(p))) {
-      errors.push(error("defaultReaders", "defaultReaders must be an array of principal ids"));
-    }
   }
   for (const [sectionIndex, section] of (definition.sections ?? []).entries()) {
     if (!nonEmpty(section.title)) errors.push(error(`sections.${sectionIndex}.title`, "Section title is required"));

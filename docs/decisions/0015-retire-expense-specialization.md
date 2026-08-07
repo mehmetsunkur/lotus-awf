@@ -4,7 +4,9 @@ Date: 2026-07-01
 
 ## Status
 
-Proposed. Runtime/logic de-specialization, the client catalog genericization, the
+Superseded by [ADR-0024](0024-acl-flagged-fields.md) for the `defaultReaders` form policy —
+that field is removed outright and replaced by an `aclRole:"reader"` computed field. The rest
+of this ADR stands: runtime/logic de-specialization, the client catalog genericization, the
 deploy-test migration, and the inert unscoped-route-string removal are all implemented
 (verified via tsc + unit + API-driven e2e; the UI-tab e2e and Docker deploy run only in a
 reliable environment). Remaining follow-ups: the `config.appDb` dev/scripts default and the

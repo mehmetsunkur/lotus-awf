@@ -50,7 +50,9 @@ the server's own behavior.
   `templates/agent-ops/*` (ADR-0021 agent sessions: draft → submit → requested → claim →
   running → completed/failed, operator `@me` queue, artifact child docs; the session form
   deliberately has NO prompt field and no operator-stamped payload — outcome facts live in an
-  operator-authored `outcome.json` artifact because `canEditDocument` is authors-only); pure
+  operator-authored `outcome.json` artifact because `canEditDocument` (ADR-0024 two-layer:
+  Editor+ ACL bypass OR an Authors-field intersection) does not grant the operator edit on the
+  session doc); pure
   design validation lives in `src/shared/template-validation.ts`.
 - `src/server/handlers/effects.ts` (M7) — server-only effect registry + `runEffect` (best-effort,
   in-memory log).
@@ -76,7 +78,9 @@ the server's own behavior.
   and app-scoped APIs under `/api/apps/:appId/*`. (ADR-0015) The runtime is **app-scoped only**:
   `appContextFromRequest` requires an `:appId`, `resolveBusinessApp` resolves every app (incl.
   expense) via its `appinstall` record. Expense is no longer special-cased; `createDocument` takes
-  an explicit `appId`; a form's `defaultReaders` supplies extra new-doc readers. (ADR-0016) Apps are
+  an explicit `appId`; new-doc readers are the creator's principals, with extra readers/authors
+supplied by the form's `aclRole` fields projected via `rollupAclProjection` in
+`stampComputedFields` (ADR-0024; replaced ADR-0015's `defaultReaders`). (ADR-0016) Apps are
   created via `POST /api/platform/apps` — blank (`docType`/`docTypeTitle`) or from a bundled template
   (`fromTemplate`); `instantiateTemplate` re-stamps the template's docs to the chosen appId (templates
   are appId-agnostic). `platformState.availableTemplates` lists bundled templates; there is no

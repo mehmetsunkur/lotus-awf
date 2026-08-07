@@ -24,15 +24,47 @@ test.describe("ACL scoped runtime", () => {
     expect(vendorLabels).toEqual([]);
   });
 
-  test("payload edits require authorship", async ({ bobApi, page }) => {
-    const bobExpenses = (await bobApi.get("/api/apps/expense/documents?docType=expense").then((r) => r.json())) as Doc[];
-    const financeVisibleBobDoc = bobExpenses.find((doc) => doc.payload.description === "Client dinner");
-    expect(financeVisibleBobDoc).toBeTruthy();
+  test("payload edits enforce the two-layer authorship gate", async ({ bobApi, page, localCouchUrl }) => {
+    // Layer 1 — app-level Editor+ ACL bypass (ADR-0024). Alice is a Manager on the
+    // expense app (via group:finance), so she may edit a document she did NOT author
+    // (Client dinner is authored by person:bob). Pre-0024 this was a 403.
+    const aliceExpenses = (await page.request.get("/api/apps/expense/documents?docType=expense").then((r) => r.json())) as Doc[];
+    const clientDinner = aliceExpenses.find((doc) => doc.payload.description === "Client dinner");
+    expect(clientDinner).toBeTruthy();
+    expect(clientDinner!.authors).not.toContain("person:alice");
 
-    const refused = await page.request.put(`/api/apps/expense/documents/${encodeURIComponent(financeVisibleBobDoc!._id)}`, {
-      data: { payload: { ...financeVisibleBobDoc!.payload, description: "Finance edit" } }
+    const managerEdit = await page.request.put(`/api/apps/expense/documents/${encodeURIComponent(clientDinner!._id)}`, {
+      data: { payload: { ...clientDinner!.payload, description: "Manager edit" } }
     });
+    expect(managerEdit.status()).toBe(200);
 
+    // Layer 2 — group/role-aware Authors intersection (ADR-0024). Bob is app-level
+    // `author` (below Editor), so with no ACL bypass he may edit only documents whose
+    // Authors field intersects his principals. Seed a doc bob can READ (readers include
+    // person:bob) but does NOT author (authors=[person:alice]); his edit must be refused.
+    // No standing sample doc fits — every bob-readable seed doc is also bob-authored.
+    const foreignId = "doc:expense:acl-layer2-fixture";
+    const seed = await page.request.put(`${localCouchUrl}/expense_app/${encodeURIComponent(foreignId)}`, {
+      headers: couchAuth,
+      data: {
+        _id: foreignId,
+        kind: "document",
+        appId: "expense",
+        docType: "expense",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        createdBy: "person:alice",
+        updatedBy: "person:alice",
+        readers: ["person:alice", "person:bob", "group:finance"],
+        authors: ["person:alice"],
+        payload: { ...clientDinner!.payload, description: "Finance shared" }
+      }
+    });
+    expect(seed.ok()).toBeTruthy();
+
+    const refused = await bobApi.put(`/api/apps/expense/documents/${encodeURIComponent(foreignId)}`, {
+      data: { payload: { description: "Bob edit" } }
+    });
     expect(refused.status()).toBe(403);
     expect(JSON.stringify(await refused.json())).toContain("not editable");
   });

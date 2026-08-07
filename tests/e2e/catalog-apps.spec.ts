@@ -231,7 +231,8 @@ test.describe("catalog-created apps", () => {
     await expect(page.getByTestId("workflow-state")).toHaveText("Submitted");
 
     // Bob (app "author", group:sales) cannot even read Alice's report: document
-    // readers are the creator's principals only (readersForNewDocument), and app
+    // readers are the creator's principals only (this form declares no aclRole reader
+    // field, so the ADR-0024 projection adds nothing beyond the creator base), and app
     // access level grants no document-read override — exactly the model the
     // "without widening existing document visibility" test asserts. So the
     // transition is rejected at the read gate (403 forbidden) before any role

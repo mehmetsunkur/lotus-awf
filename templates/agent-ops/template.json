@@ -47,10 +47,6 @@
       "appId": "agent-ops",
       "docType": "agent-session",
       "title": "Agent session",
-      "defaultReaders": [
-        "group:agent-operators",
-        "group:admins"
-      ],
       "sections": [
         {
           "title": "Request",
@@ -91,6 +87,14 @@
               "value": "codex"
             }
           ]
+        },
+        {
+          "name": "aclReaders",
+          "type": "text",
+          "label": "Readers",
+          "aclRole": "reader",
+          "mode": "computed-once",
+          "formula": "[\"group:agent-operators\",\"group:admins\"]"
         }
       ]
     },
@@ -100,9 +104,6 @@
       "appId": "agent-ops",
       "docType": "artifact",
       "title": "Session artifact",
-      "defaultReaders": [
-        "group:admins"
-      ],
       "sections": [
         {
           "title": "Artifact",
@@ -136,6 +137,14 @@
           "label": "Content",
           "searchable": true,
           "helpText": "Redacted and capped (64 KB) by the operator before writing; the full verbose file stays on the operator host."
+        },
+        {
+          "name": "aclReaders",
+          "type": "text",
+          "label": "Readers",
+          "aclRole": "reader",
+          "mode": "computed-once",
+          "formula": "[\"group:admins\"]"
         }
       ]
     },

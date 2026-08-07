@@ -273,9 +273,11 @@ export class AgentOperator {
 
   /**
    * Outcome facts live in an operator-AUTHORED artifact, never on the session payload:
-   * `canEditDocument` is authors-only (the requester authored the session), and the
-   * operator's only write authority over other people's documents is transitions.
-   * State/assignee/history/audit on the session itself are stamped by the engine.
+   * `canEditDocument` (ADR-0024 two-layer — Editor+ ACL bypass OR an Authors-field
+   * intersection) does not grant the operator edit on the session (the requester is its
+   * author, and the operator holds no Editor+ ACL over it), so its only write authority
+   * over other people's documents is transitions. State/assignee/history/audit on the
+   * session itself are stamped by the engine.
    */
   private async writeOutcomeArtifact(
     session: SessionDocument,

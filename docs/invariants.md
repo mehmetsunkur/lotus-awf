@@ -92,6 +92,10 @@ hook stays silent for it. Globs use `**` (any depth) and `*` (within a path segm
 
 - `readers`/`authors` must be set correctly on documents this code creates, no row/field/select-option may leak across people or groups, and new query paths must still honour `readers` filtering — including cross-app aggregates (ADR-0022 `GET /api/work-queue`), which resolve the caller from the session (never a `?principal=`), apply `accessSelector` + `canReadDocument` in EVERY app db, and skip apps below `reader` without leaking their contents.
   - Paths: `src/shared/access.ts`, `src/server/seed-data.ts`, `src/server/index.ts`, `scripts/acl-spike.ts`, `templates/**`
+- ADR-0024: extra readers/authors are authored ONLY via `aclRole:"reader"|"author"` FormFields, which are computed-only (`computed`/`computed-once` + formula; validated in `definition-validation.ts`) and server-stamped — a client-supplied `aclRole` field value is discarded like any computed field. The envelope `readers`/`authors` are a server-materialized projection: `rollupAclProjection` UNIONS each field's resolved principals onto the creator base already on the doc — additive only, so a write by a different editor can never narrow or displace the base, and the projection lands on the same top-level `readers` field the m2-readers index binds. There is NO `FormDefinition.defaultReaders` and no `readersForNewDocument` — do not reintroduce either.
+  - Paths: `src/shared/access.ts`, `src/shared/definition-validation.ts`, `src/shared/types.ts`, `src/server/index.ts`, `templates/**`
+- ADR-0024: `canEditDocument` is a two-layer Notes-faithful gate — Layer 1 grants any app-level Editor+ (via `hasAccessLevel(scope, "editor")`, `scope.accessLevel` set by the session), Layer 2 grants when any of the writer's principals (person, groups, roles) intersects `authors` (a `group:*`/`role:*` in `authors` is honoured, not inert). Routing (`assignee`, ADR-0018) still never confers edit.
+  - Paths: `src/shared/access.ts`, `src/server/index.ts`
 
 ## Identity & sessions
 

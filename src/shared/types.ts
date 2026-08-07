@@ -99,6 +99,20 @@ export type FormField = {
    */
   formula?: string;
   /**
+   * ADR-0024: the Notes Readers/Authors *flag* — a third axis orthogonal to
+   * `type` (datatype) and `mode` (computation). When set, this field's resolved
+   * value (a principal list) contributes to the document's `readers`/`authors`
+   * projection (§2). Absent = an ordinary field with no ACL effect.
+   *
+   * ACL-flagged fields are COMPUTED-ONLY: `aclRole` requires `mode` of
+   * `computed`/`computed-once` plus a `formula`, and forbids editable/static
+   * shapes (`defaultValue`, `computed-for-display`). The value is therefore
+   * always server-resolved (never client-set), which makes it tamper-safe by
+   * construction. A "static" reader list is a `computed-once` field whose
+   * formula returns a constant array (e.g. `["group:finance"]`).
+   */
+  aclRole?: "reader" | "author";
+  /**
    * M9: opt this field into full-text search. Optional and back-compatible —
    * when absent, text-ish fields (`text`/`textarea`/`select`) are searchable by
    * default and other types are not. Set `true` to index a non-text field or
@@ -123,13 +137,9 @@ export type FormDefinition = {
   description?: string;
   sections?: FormSection[];
   fields: FormField[];
-  /**
-   * ADR-0015: principals ALWAYS added to a new document's `readers` beyond the
-   * creator's own (e.g. `["group:finance"]` so finance can approve). Optional and
-   * back-compatible — absent means creator-scoped. Keeps app-specific readers
-   * policy in the template as data, not in base code.
-   */
-  defaultReaders?: string[];
+  // ADR-0024: `defaultReaders` (ADR-0015) is retired. A form declares extra
+  // readers/authors with an `aclRole`-flagged computed field (see `FormField.aclRole`);
+  // the engine materializes `readers`/`authors` from those fields (§2).
 };
 
 export type ViewColumn = {

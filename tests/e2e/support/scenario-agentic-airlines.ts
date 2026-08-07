@@ -8,12 +8,13 @@ import type { APIRequestContext, PlaywrightWorkerArgs } from "@playwright/test";
  * validation, sessions) is enforced while seeding. Opt-in per spec — this is
  * deliberately NOT part of the `resetState` auto fixture.
  *
- * ACL design note: `readersForNewDocument` stamps a new document with the
- * creator's FULL principal set (person + all their groups). Personas therefore
- * belong to their department group only (plus `managers` for approvers) — a
- * shared `group:employees` membership would make every leave request readable
- * by every employee and defeat the scenario's isolation assertions. App access
- * for the departments is granted through the M22 access editor instead.
+ * ACL design note: a new document is stamped with the creator's FULL principal
+ * set (person + all their groups) as its reader base (ADR-0024), plus whatever
+ * the form's `aclRole:"reader"` fields resolve to. Personas therefore belong to
+ * their department group only (plus `managers` for approvers) — a shared
+ * `group:employees` membership would make every leave request readable by every
+ * employee and defeat the scenario's isolation assertions. App access for the
+ * departments is granted through the M22 access editor instead.
  */
 
 export const AIRLINE_PASSWORD = "password123";
@@ -218,9 +219,10 @@ export async function seedAgenticAirlines(
   );
 
   // 4. Widen the org app for airline staff: app-level read access via the M22
-  // access editor, and `defaultReaders` on both forms so the org chart the
-  // fixture writes next is readable by every staff group (ADR-0015 mechanism;
-  // the template's admin-only sample data is deliberately left untouched).
+  // access editor, and an aclRole:"reader" computed-once field on both forms so
+  // the org chart the fixture writes next is readable by every staff group
+  // (ADR-0024 mechanism; the template's admin-only sample data is deliberately
+  // left untouched).
   await requestJson(admin, "put", `/api/apps/${orgAppId}/access`, {
     entries: [
       { principal: "group:admins", level: "manager" },
@@ -237,7 +239,17 @@ export async function seedAgenticAirlines(
     if (!form) throw new Error(`org app is missing ${formId}`);
     await requestJson(admin, "put", `/api/apps/${orgAppId}/definitions/${encodeURIComponent(formId)}`, {
       ...form,
-      defaultReaders: AIRLINE_STAFF_GROUPS
+      fields: [
+        ...(form.fields as unknown[]),
+        {
+          name: "aclReaders",
+          type: "text",
+          label: "Readers",
+          aclRole: "reader",
+          mode: "computed-once",
+          formula: JSON.stringify(AIRLINE_STAFF_GROUPS)
+        }
+      ]
     });
   }
 

@@ -56,10 +56,6 @@
       "docType": "service-request",
       "title": "Service Request",
       "description": "A customer's incoming request for field work — who and where, the reported problem, and its priority. Dispatch triages these and converts the accepted ones into work orders.",
-      "defaultReaders": [
-        "group:dispatch",
-        "group:managers"
-      ],
       "sections": [
         {
           "title": "Customer",
@@ -132,6 +128,14 @@
           "type": "date",
           "label": "Requested date",
           "required": true
+        },
+        {
+          "name": "aclReaders",
+          "type": "text",
+          "label": "Readers",
+          "aclRole": "reader",
+          "mode": "computed-once",
+          "formula": "[\"group:dispatch\",\"group:managers\"]"
         }
       ]
     },
@@ -142,13 +146,6 @@
       "docType": "work-order",
       "title": "Work Order",
       "description": "The scheduled job a technician performs on site: the originating request, customer/site, service type, schedule, and the work-performed / billable-hours captured at completion. Feeds parts reservations and, once completed, an invoice.",
-      "defaultReaders": [
-        "group:dispatch",
-        "group:technicians",
-        "group:inventory",
-        "group:billing",
-        "group:managers"
-      ],
       "sections": [
         {
           "title": "Job",
@@ -261,6 +258,14 @@
               "message": "Billable hours cannot be negative"
             }
           ]
+        },
+        {
+          "name": "aclReaders",
+          "type": "text",
+          "label": "Readers",
+          "aclRole": "reader",
+          "mode": "computed-once",
+          "formula": "[\"group:dispatch\",\"group:technicians\",\"group:inventory\",\"group:billing\",\"group:managers\"]"
         }
       ]
     },
@@ -271,12 +276,6 @@
       "docType": "parts-reservation",
       "title": "Parts Reservation",
       "description": "A technician's request for parts against a work order — part, quantity, and when they are needed. Inventory allocates from a warehouse or backorders when short.",
-      "defaultReaders": [
-        "group:inventory",
-        "group:technicians",
-        "group:dispatch",
-        "group:managers"
-      ],
       "sections": [
         {
           "title": "Reservation",
@@ -355,6 +354,14 @@
           "type": "textarea",
           "label": "Shortage reason",
           "requiredWhen": "doc.state == 'backordered'"
+        },
+        {
+          "name": "aclReaders",
+          "type": "text",
+          "label": "Readers",
+          "aclRole": "reader",
+          "mode": "computed-once",
+          "formula": "[\"group:inventory\",\"group:technicians\",\"group:dispatch\",\"group:managers\"]"
         }
       ]
     },
@@ -365,11 +372,6 @@
       "docType": "invoice",
       "title": "Invoice",
       "description": "The bill for a completed work order: customer, amount, and due date, tracked through sending, payment, dispute, or void.",
-      "defaultReaders": [
-        "group:billing",
-        "group:dispatch",
-        "group:managers"
-      ],
       "sections": [
         {
           "title": "Invoice",
@@ -442,6 +444,14 @@
           "type": "textarea",
           "label": "Void reason",
           "requiredWhen": "doc.state == 'void'"
+        },
+        {
+          "name": "aclReaders",
+          "type": "text",
+          "label": "Readers",
+          "aclRole": "reader",
+          "mode": "computed-once",
+          "formula": "[\"group:billing\",\"group:dispatch\",\"group:managers\"]"
         }
       ]
     },

@@ -81,7 +81,7 @@ test.describe("Digital twin seeded world", () => {
       // ADR-0019 stamps, resolved from the per-seed org app at create time.
       expect(flight.payload.opsHead, `${expected.key} opsHead`).toBe("person:carol");
       expect(flight.payload.groundHead, `${expected.key} groundHead`).toBe("person:hank");
-      // Readers: dave's creator set plus the form defaultReaders — no group:managers.
+      // Readers: dave's creator set plus the form's aclRole reader field — no group:managers.
       expect(flight.readers).toEqual(
         expect.arrayContaining(["person:dave", "group:flight-ops", "group:ground-ops"])
       );

@@ -46,7 +46,7 @@ import {
   accessRank,
   hasAccessLevel,
   principalsFor,
-  readersForNewDocument,
+  rollupAclProjection,
   type PrincipalScope
 } from "../shared/access";
 import { validateDesignDefinition } from "../shared/definition-validation";
@@ -1292,6 +1292,18 @@ async function stampComputedFields(
       scope,
       read
     });
+    if (field.aclRole === "reader" || field.aclRole === "author") {
+      // ADR-0024 §1/§3: an ACL-flagged field resolves to a principal LIST, not a
+      // scalar — normalized principal-shaped (same posture as `responsibleFormula`)
+      // so a malformed formula can never stamp a non-principal into the projection.
+      // Stored as the field's value; it feeds the readers/authors rollup below.
+      // Never primitive-coerced (that path drops arrays). PRESERVE-ON-EMPTY: a
+      // degraded resolution keeps the prior stamp rather than dropping ACL (fails
+      // closed — narrows, never widens).
+      const resolved = normalizeResolvedPrincipals(raw);
+      payload[field.name] = resolved.length ? resolved : hasPrevious ? previous : resolved;
+      continue;
+    }
     const primitive =
       typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean" ? raw : undefined;
     if (primitive === undefined || primitive === "") {
@@ -1301,7 +1313,17 @@ async function stampComputedFields(
     }
     payload[field.name] = coerceFieldValue(field, primitive);
   }
-  return { ...doc, payload };
+
+  // ADR-0024 §2: materialize the envelope readers/authors as the $Readers-style
+  // projection — the creator BASE already on `doc` (its principals, captured at
+  // create; on later writes `doc.readers/authors` already carry it) UNIONED with
+  // every aclRole field's resolved principals. Additive by design: the creator
+  // base survives a write by a different editor, and a re-rolled `computed`
+  // author field appends (ADR-0024 Consequences: additive-only in practice). The
+  // projection lands on the same top-level `readers` field, so the m2-readers
+  // index (invariant 120) and the coarse-gate model (invariant 93) are untouched.
+  const { readers, authors } = rollupAclProjection({ readers: doc.readers, authors: doc.authors }, form.fields, payload);
+  return { ...doc, payload, readers, authors };
 }
 
 app.get(
@@ -2204,10 +2226,12 @@ app.post(
       response.status(422).json({ error: "validation_failed", errors });
       return;
     }
-    const readers = readersForNewDocument(scope, form.defaultReaders);
+    // ADR-0024: the creator's own principals are the readers/authors BASE; any
+    // extra readers/authors come from `aclRole`-flagged computed fields, unioned
+    // in by `stampComputedFields` (§2). No app-specific readers rule in base.
+    const readers = principalsFor(scope);
     // M12: stamp the document generically so any scaffolded docType is correct
-    // (was hardcoded to expense/vendor); readers come from the form's data policy
-    // (ADR-0015: `defaultReaders`), not an app-specific rule in base.
+    // (was hardcoded to expense/vendor).
     const doc = await stampComputedFields(
       form,
       createDocument(docType, payload, scopeUser(scope), readers, appContext.appId),
@@ -2566,6 +2590,7 @@ app.post(
     // user-input validatePayload (electing a historic revision must not be
     // blockable by later-tightened rules).
     let electedPayload = request.body.payload;
+    let electedEnvelope: { readers: string[]; authors: string[] } | undefined;
     if (chosen.kind === "document") {
       const chosenDoc = chosen as BusinessDocument;
       electedPayload = electedPayload ?? chosenDoc.payload;
@@ -2578,6 +2603,12 @@ app.post(
         scope
       );
       electedPayload = stamped.payload;
+      // ADR-0024 §2: envelope readers/authors are a server-materialized projection
+      // of the aclRole fields in the elected payload. Persist the WHOLE stamped
+      // envelope, not just its payload — else a re-resolved aclRole principal lands
+      // in the payload field while readers/authors omit it (payload-vs-projection
+      // divergence). Matches the POST/PUT stamped-envelope writes.
+      electedEnvelope = { readers: stamped.readers, authors: stamped.authors };
     }
     const resolved =
       chosen.kind === "document"
@@ -2587,7 +2618,8 @@ app.post(
             _conflicts: undefined,
             updatedAt: timestamp(),
             updatedBy: scopeUser(scope),
-            payload: electedPayload
+            payload: electedPayload,
+            ...(electedEnvelope ?? {})
           }
         : {
             ...chosen,

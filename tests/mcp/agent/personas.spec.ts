@@ -252,8 +252,8 @@ test.describe("MCP real-agent personas", () => {
         expect(request.assignee).toBe("person:carol");
         expect(request.assignedAt).toBeTruthy();
 
-        // Readers are dave's full principal set (readersForNewDocument) plus the form's
-        // group:managers default reader — nothing wider.
+        // Readers are dave's full principal set (the creator base) plus the form's
+        // aclRole:"reader" field, which resolves to group:managers — nothing wider.
         expect([...request.readers].sort()).toEqual(["group:flight-ops", "group:managers", "person:dave"]);
 
         // Audit records the submit: materialize events (designer-level, so the admin

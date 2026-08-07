@@ -47,9 +47,6 @@
       "appId": "leave-request",
       "docType": "leave-request",
       "title": "Leave Request",
-      "defaultReaders": [
-        "group:managers"
-      ],
       "sections": [
         {
           "title": "Leave",
@@ -129,7 +126,15 @@
           "label": "Department",
           "mode": "computed-once",
           "formula": "await DbLookup('org', 'employee', 'payload.person', doc.createdBy, 'payload.department')",
-          "helpText": "Stamped once at filing time \u2014 the request keeps the department it was filed under, even after a transfer."
+          "helpText": "Stamped once at filing time — the request keeps the department it was filed under, even after a transfer."
+        },
+        {
+          "name": "aclReaders",
+          "type": "text",
+          "label": "Readers",
+          "aclRole": "reader",
+          "mode": "computed-once",
+          "formula": "[\"group:managers\"]"
         }
       ]
     },

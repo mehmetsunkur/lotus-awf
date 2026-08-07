@@ -36,7 +36,7 @@ export type LeaveRequestProjection = {
 /**
  * Compute the projection over every `leave-request` document in `appId`, read through
  * `reader`. The context must be able to SEE all of them for the comparison to mean
- * anything: use carol — `group:managers` is a `defaultReaders` entry on the
+ * anything: use carol — `group:managers` comes from the `aclRole` reader field on the
  * leave-request form, so every request (seeded samples included) is readable to her.
  * The probing persona's own context would silently project only its own slice.
  */

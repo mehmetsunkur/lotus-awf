@@ -3,6 +3,15 @@ import { listSampleTemplates, loadSampleTemplate, sampleTemplateDocuments, valid
 import { seedDocuments } from "../../src/server/seed-data";
 import type { BusinessDocument, TemplateArtifact } from "../../src/shared/types";
 
+// ADR-0024: extra readers are declared by an `aclRole:"reader"` computed-once
+// field whose formula returns a constant principal list (was `defaultReaders`).
+// Returns that list for a form definition, or undefined if the form has none.
+function aclReaderList(form: unknown): string[] | undefined {
+  const fields = (form as { fields?: Array<{ aclRole?: string; formula?: string }> } | undefined)?.fields ?? [];
+  const field = fields.find((candidate) => candidate.aclRole === "reader");
+  return field?.formula ? (JSON.parse(field.formula) as string[]) : undefined;
+}
+
 describe("sample template registry", () => {
   it("loads the Expense template as design docs plus separate sample data", () => {
     const sample = loadSampleTemplate("sample:expense");
@@ -114,10 +123,10 @@ describe("sample template registry", () => {
       "view:procedures"
     ]);
     expect(sample.sampleData.map((doc) => doc._id)).toEqual(["doc:article:welcome-sample"]);
-    // The procedure form deliberately has NO defaultReaders: procedure visibility comes
-    // from the creator's principal set alone (ADR-0015 authorship scoping — M27).
+    // The procedure form deliberately has NO aclRole reader field: procedure visibility
+    // comes from the creator's principal set alone (ADR-0024 authorship scoping — M27).
     const procedureForm = sample.template.definitions.find((definition) => definition._id === "form:procedure");
-    expect(procedureForm && "defaultReaders" in procedureForm ? procedureForm.defaultReaders : undefined).toBeUndefined();
+    expect(aclReaderList(procedureForm)).toBeUndefined();
   });
 
   it("lists and loads the Turnaround template as design docs plus separate sample data", () => {
@@ -148,10 +157,7 @@ describe("sample template registry", () => {
     // Flights are readable by the two working departments and deliberately NOT by
     // group:managers, so finance (a managers member) has a real boundary (M27).
     const flightForm = sample.template.definitions.find((definition) => definition._id === "form:flight");
-    expect(flightForm && "defaultReaders" in flightForm ? flightForm.defaultReaders : undefined).toEqual([
-      "group:flight-ops",
-      "group:ground-ops"
-    ]);
+    expect(aclReaderList(flightForm)).toEqual(["group:flight-ops", "group:ground-ops"]);
   });
 
   it("lists and loads the Agent operations template as design docs plus separate sample data", () => {
@@ -184,9 +190,14 @@ describe("sample template registry", () => {
     // ADR-0021: sessions carry NO prompt field — prompts are derived from governed
     // company data by the operator, never supplied by a requester. Statically checkable.
     const sessionForm = sample.template.definitions.find((definition) => definition._id === "form:agent-session") as {
-      fields?: Array<{ name: string }>;
+      fields?: Array<{ name: string; aclRole?: string }>;
     };
-    expect(sessionForm.fields?.map((field) => field.name)).toEqual(["persona", "driver"]);
+    // The user-supplied inputs are exactly persona + driver (no `prompt`); the trailing
+    // aclRole field is a server-computed reader projection, not a requester input.
+    expect(sessionForm.fields?.filter((field) => !field.aclRole).map((field) => field.name)).toEqual([
+      "persona",
+      "driver"
+    ]);
   });
 
   it("keeps seedDocuments compatible with the JSON sample artifacts", () => {
