@@ -23,7 +23,7 @@
   operator (which does not author the requester's session) can never PUT its payload —
   the operator's only write authority over a session is TRANSITIONS. Outcome facts
   (`outcome`, `startedAt`, `finishedAt`, persona, driver) live in an operator-authored
-  `outcome.json` artifact instead; state/assignee/history/audit on the session are
+  `outcome.json` artifact instead; state/responsible/history/audit on the session are
   engine-stamped. `defaultReaders: [group:agent-operators, group:admins]` (the
   requester reads their own session via creator principals).
 - `form:artifact` — `sessionId`, `name` (e.g. `prompt.txt`, `final_message.txt`,
@@ -35,13 +35,13 @@
   `group:agent-operators` → the operator's `@me` queue) → `claim` → `running`
   (responsible `group:agent-operators`) → `complete` → `completed` (final) or
   `fail` → `failed` (final). `draft` exists for the same substrate reason as M27's
-  `planned` state: `assignee` is stamped only by `applyTransition`, so a session born
+  `planned` state: `responsible` is stamped only by `applyTransition`, so a session born
   directly into `requested` would never appear in the operator's `@me` queue —
   requesters create a draft and `submit` it (guard: persona + driver present).
   `claim`/`complete`/`fail` guard on `principals.includes('group:agent-operators')`;
   all transitions carry `audit-transition`. The `claim` guard's `from: requested` is
   the dedupe: a racing second claim gets 422.
-- Views: `view:my-sessions` (`assignee in @me`, non-final — the operator queue),
+- Views: `view:my-sessions` (`responsible in @me`, non-final — the operator queue),
   `view:sessions` (all, by state), `view:artifacts` (all artifacts; column
   `payload.sessionId` — per-session filtering is a query, not a bespoke view).
 
@@ -98,7 +98,7 @@ loop. SIGTERM: finish or fail the in-flight session, then exit.
 - **FakeDriver integration** (`tests/e2e/agent-operator.spec.ts`, PR-gate eligible —
   deterministic, no credentials): seeds the twin fixture + agent-ops app + operator
   identity, runs operator ticks in-process with an injected fake driver, and proves:
-  claim (assignee/history stamped), artifact documents created with capped/redacted
+  claim (responsible/history stamped), artifact documents created with capped/redacted
   content and correct readers, `completed` and `failed` paths, double-claim 422
   (scripted second claim), orphan sweep (a pre-staged `running` session fails with
   `orphaned` on startup), and the derived prompt exactly equals

@@ -13,7 +13,7 @@ green (driver-code move only; no MCP surface change).
   credentials appear only in daemon env, never in any document (artifact content is
   redacted before write).
 - **Queue mechanics**: a `requested` session appears in the operator's
-  `view:my-sessions` via ADR-0020 `@me`; claiming stamps assignee/history (ADR-0018);
+  `view:my-sessions` via ADR-0020 `@me`; claiming re-stamps responsible/history (ADR-0018/0025);
   all transitions carry `audit-transition` records.
 - **Derived prompt**: byte-identical to `assembleShiftPrompt(...)` output for the
   persona (the same function `twin.spec.ts` uses), and the derivation runs under the

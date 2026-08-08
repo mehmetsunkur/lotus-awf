@@ -32,9 +32,13 @@ M3 adds a third replicated definition kind alongside `form:*` and `view:*`:
 Fields:
 
 - `initialState` — the state a document is treated as when it has no `state` yet.
-- `states[]` — `{ name, label, final?, responsible?, responsibleFormula? }`. `final` states offer
-  no outbound transitions. (ADR-0018) `responsible`/`responsibleFormula` declare who owes action in
-  the state; entering it via a transition stamps the document's `assignee`.
+- `states[]` — `{ name, label, final?, responsible?, responsibleFormula?, assignee?, assigneeFormula?,
+  requireAssignee? }`. `final` states offer no outbound transitions. (ADR-0018/0025) `responsible`/
+  `responsibleFormula` declare the standing **pool** that owes action in the state; `assignee`/
+  `assigneeFormula` declare the single **individual** who owns it. Entering the state via a transition
+  stamps BOTH the document's `responsible` set and its scalar `assignee` (each cleared when the state
+  declares neither source). A state may set `requireAssignee: true` to reject entry when no individual
+  resolves — the one opt-in exception to fail-open routing.
 - `transitions[]` — `{ id, label, from, to, guard?, requiredRole?, action? }`.
   - `guard` is an M2 expression evaluated over `{ payload, doc, user, now, principals }`; it must
     return truthy for the transition to be allowed. (ADR-0019) `principals` is the actor's
@@ -49,8 +53,9 @@ Fields:
 ## Envelope state
 
 The M2 `BusinessDocument` envelope gains four **optional** fields (ADR-0018 later extends the
-family with `assignee`/`assignedAt`, stamped on state entry and cleared on final states, and
-`history[]` entries gain an optional `assignee` recording each hand-off):
+family with routing fields stamped on state entry and cleared on final states, which ADR-0025
+splits into two pairs — the standing-pool set `responsible: string[]`/`responsibleAt` and the
+individual scalar `assignee`/`assignedAt` — with `history[]` entries recording each hand-off):
 
 ```json
 {

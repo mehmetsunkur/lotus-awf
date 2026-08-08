@@ -189,7 +189,9 @@ export async function changesSince(target: CouchTarget, since: string, db = conf
 }
 
 export async function findDocs<T>(target: CouchTarget, body: Record<string, unknown>, db = config.appDb) {
-  return couchRequest<{ docs: T[] }>(target, `/${db}/_find`, {
+  // CouchDB `_find` returns a `bookmark` alongside `docs`; surfacing it lets callers
+  // that must see EVERY match (not a page) drive the same selector to exhaustion.
+  return couchRequest<{ docs: T[]; bookmark?: string }>(target, `/${db}/_find`, {
     method: "POST",
     body: JSON.stringify(body)
   });

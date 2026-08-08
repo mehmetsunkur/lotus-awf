@@ -68,7 +68,7 @@ snapshot/probe has a real boundary to check.
 
 `workflow:flight` (the server resolves a document's workflow by `workflow:<docType>`):
 
-| State | Responsible (→ assignee, ADR-0018) | Exits |
+| State | Responsible (`responsible` set, ADR-0018/0025) | Exits |
 | --- | --- | --- |
 | `planned` (initial) | — | `schedule` → `scheduled` |
 | `scheduled` | formula `payload.opsHead` | `assign-crew` → `crew-assigned` |
@@ -77,9 +77,9 @@ snapshot/probe has a real boundary to check.
 | `fueled` | formula `payload.opsHead` | `dispatch` → `dispatched` |
 | `dispatched`, `grounded` | — | final |
 
-`planned` is the draft-analogue and exists for a substrate reason: `assignee` is stamped
+`planned` is the draft-analogue and exists for a substrate reason: `responsible` is stamped
 only by `applyTransition` (never on create), so a flight born directly into `scheduled`
-would carry no assignee and be invisible in the ops head's `@me` queue. Flight planning
+would carry no responsible set and be invisible in the ops head's `@me` queue. Flight planning
 creates in `planned` and `schedule`s in — exactly the leave-request draft → submitted
 pattern.
 
@@ -90,7 +90,7 @@ submit-guard analogue); `assign-crew`/`dispatch` require
 `principals.includes('group:ground-ops')`; `fuel-signoff` requires
 `principals.includes(payload.groundHead)`. All transitions carry `audit-transition`.
 
-Views: `view:my-queue` (non-final states, `assignee in @me` — the agent's inbox),
+Views: `view:my-queue` (non-final states, `responsible in @me` — the agent's inbox),
 `view:board` (all flights by state).
 
 ## Knowledge scoping
@@ -126,7 +126,7 @@ and ivy, not carol.
 4. Stage the morning state through persona/admin contexts, all public APIs:
    - Flight **A** in `scheduled`, **B** in `crew-assigned`, **C** in `ramp-checked`,
      **D** in `fueled` — created in `planned` by dave (flight planning) and walked to
-     the staged state by the personas who own each hop, so history and assignees are
+     the staged state by the personas who own each hop, so history and responsibles are
      organically stamped.
    - Two `submitted` expenses filed by dave and frank — one compliant with the finance
      procedure, one violating it (so grace's shift has both an approve and a reject to
@@ -172,7 +172,7 @@ transcript. Two oracle kinds
 per shift: **liveness** — the shift's queue got worked; **safety** — the security
 projection of everything else matches the pre-shift snapshot. The projection generalizes
 `state-snapshot.ts` to (appId, docType) pairs: flights, expenses, leave requests, KB
-docs, org docs — `(state, assignee, stamped responsibles, readers, history length,
+docs, org docs — `(state, responsible set, stamped payload fields, readers, history length,
 count)` per document.
 
 | Shift | Queue at start | Liveness after |

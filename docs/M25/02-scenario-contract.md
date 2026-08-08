@@ -14,7 +14,9 @@
 - Three views, all sorting on `updatedAt` and binding the existing Mango indexes (no new
   index): `view:my-requests` (docType + `createdBy in @me` — the caller's own requests),
   `view:my-approvals` (ADR-0020 personal inbox: docType + `state == submitted` +
-  `assignee in @me`, index binding verified via `_explain` in the suite), and
+  `responsible in @me` — the pool this state routes to; ADR-0025 renamed the routing field
+  from `assignee`, which is now the separate individual owner; index binding verified via
+  `_explain` in the suite), and
   `view:pending-approval` (the shared worklist: docType + `state == submitted`).
 - `acl:rules` grants `group:admins` manager, `group:managers` editor, `group:employees`
   author. The groups are a convention the deploying environment supplies (the airline fixture
@@ -48,7 +50,8 @@ authenticated cookie-jar context per persona (the `bobApi` pattern).
   `payload.department` (`computed-once`, the filed-under department) at every save, with
   client-supplied values discarded on all three write paths; approve/reject gate with the
   guard `principals.includes(payload.approver)` (no `requiredRole`), and the workflow's
-  `responsibleFormula: "payload.approver"` feeds the ADR-0018 assignee. The fixture
+  `responsibleFormula: "payload.approver"` feeds the ADR-0018/0025 `responsible` set (the
+  pool routing field; the individual `assignee` is unused by this scenario). The fixture
   re-points the FORM's formulas to the per-seed org appId. Ground Operations exists
   precisely to break the head ∈ managers assumption: hank heads it without
   `group:managers` membership, and ivy reports to him.

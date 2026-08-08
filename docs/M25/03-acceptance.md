@@ -19,9 +19,10 @@ Verified by `npm run test:unit` (template registry) and `npm run test:e2e`
 - The requester's department head can reject a submitted request (same routing as approve).
 - Isolation: a peer in another department can neither list nor directly read a request
   (403/404); the requester cannot self-approve (422).
-- ADR-0018: submitting stamps the resolved head (or `group:managers` when headless) as the
-  document's `assignee` with `assignedAt`; entering a final state clears both; `history[]`
-  records each hand-off.
+- ADR-0018/0025: submitting stamps the resolved head (or `group:managers` when headless) as the
+  document's `responsible` set with `responsibleAt` (the `submitted` state declares a pool via
+  `responsibleFormula`, not an individual); entering a final state clears the routing fields;
+  `history[]` records each hand-off.
 - The same personas work the expense app: crew files an expense (computed `gross` runs),
   a non-finance persona cannot approve (422), finance approves, and the document stays
   invisible to unrelated personas.

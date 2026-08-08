@@ -13,7 +13,7 @@ with a printed reason; the PR gate is unaffected.
 - **Fixture**: `seedDigitalTwin()` seeds repeatedly within a worker through public HTTP
   APIs only — directory, apps, access grants, job descriptions, KB content, morning
   state — and a scripted e2e spec (no agent) asserts the seeded world: flight states
-  and assignees, expense queue, KB readability matrix (who can read which
+  and responsibles, expense queue, KB readability matrix (who can read which
   articles/procedures), org job descriptions.
 - **Knowledge scoping**: the readability matrix proves department procedures are
   scoped by authorship (ADR-0015 creator principals): dave and ivy each read their own
@@ -33,7 +33,7 @@ with a printed reason; the PR gate is unaffected.
   `dispatched`, both expenses terminal with the non-compliant one `rejected`,
   leave-request/org/kb projections identical to morning.
 - **Audit**: every agent-performed transition carries an `audit-transition` record and
-  the ADR-0018 assignee hand-off history (organic — staged the same way by the fixture,
+  the ADR-0018/0025 responsible hand-off history (organic — staged the same way by the fixture,
   so the oracle cannot distinguish staging from agent work by mechanism, only by when).
 - **Adversarial (scripted)**: grace 403/404-or-empty on flights; cross-department
   procedure reads refused; out-of-authority transitions (e.g. ivy dispatching a fueled

@@ -1452,19 +1452,45 @@ app.get(
         // both routing facts (`responsible ∪ assignee`); a Mango selector cannot
         // express that OR across two fields against a single index, so the selector
         // binds `m2-readers`+`kind` only and the union runs in memory.
-        const result = await findDocs<BusinessDocument>(
-          "local",
-          {
-            selector: { kind: "document", ...accessSelector(appScope) },
-            use_index: "m2-readers",
-            limit: 200
-          },
-          app.database
-        );
+        // Page the ACL-scoped scan to EXHAUSTION. The routing union is an in-memory
+        // predicate applied AFTER the scan (ADR-0025 §5 forbids either routing field in
+        // the selector — that would filter one arm of the OR server-side and silently
+        // drop the other). A fixed `limit` would therefore cap the coarse `readers` scan,
+        // not the routed subset: `applyTransition` clears the routing pairs on final
+        // states but NOT `readers`, so completed docs stay in the m2-readers scan and
+        // would consume a fixed budget while matching nothing — truncating live routed
+        // work behind them. Driving the same selector to exhaustion via `bookmark` keeps
+        // the single-scan / one-`_id`-per-visit posture (no second query, no new index)
+        // while guaranteeing the in-memory OR sees every readable candidate.
+        const PAGE = 200;
+        const MAX_PAGES = 200; // 40k readable docs/app — a runaway backstop, warned, never silent.
+        const scanned: BusinessDocument[] = [];
+        let bookmark: string | undefined;
+        for (let page = 0; page < MAX_PAGES; page += 1) {
+          const result = await findDocs<BusinessDocument>(
+            "local",
+            {
+              selector: { kind: "document", ...accessSelector(appScope) },
+              use_index: "m2-readers",
+              limit: PAGE,
+              ...(bookmark ? { bookmark } : {})
+            },
+            app.database
+          );
+          scanned.push(...result.docs);
+          bookmark = result.bookmark;
+          if (result.docs.length < PAGE) break;
+          if (page === MAX_PAGES - 1) {
+            console.warn("work-queue scan hit MAX_PAGES; routed items may be truncated", {
+              database: app.database,
+              scanned: scanned.length
+            });
+          }
+        }
         // ACL post-filter mirrors every list route: the Mango `readers` predicate
         // is a coarse gate; `canReadDocument` is the authority. Then narrow to the
         // routing union — the pool set OR the individual is on this actor.
-        let readable = result.docs
+        let readable = scanned
           .filter((doc) => canReadDocument(doc, appScope))
           .filter(
             (doc) =>

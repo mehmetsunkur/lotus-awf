@@ -250,6 +250,50 @@ test.describe("ADR-0022 cross-app work queue", () => {
     expect(hankQueue?.items ?? []).not.toContainEqual(expect.objectContaining({ _id: request._id }));
   });
 
+  test("surfaces routed work behind more than a page of readable-but-unrouted docs", async ({ airline }) => {
+    // ADR-0025 §5 routing is an in-memory OR applied AFTER the m2-readers scan, so the
+    // scan must reach EVERY readable candidate — a fixed page cap would truncate routed
+    // work sitting behind unrouted docs that share the caller's readers. Dave's drafts
+    // are readable by carol (the form projects group:managers as readers) but route to
+    // no one; pile up more than one page of them, then submit ONE routed to carol LAST
+    // (its ULID sorts to the tail of the m2-readers scan). A page-capped scan would drop
+    // it; the paged-to-exhaustion scan must still surface it.
+    test.setTimeout(120_000);
+    const app = airline.scenario.leaveRequestAppId;
+    const dave = await airline.as("dave");
+
+    // 210 unrouted drafts — comfortably past the 200-row page — created before the
+    // routed one so they occupy the head of the scan. Batched to stay within budget.
+    const FILLERS = 210;
+    for (let start = 0; start < FILLERS; start += 30) {
+      await Promise.all(
+        Array.from({ length: Math.min(30, FILLERS - start) }, (_, i) =>
+          createDoc(dave, app, "leave-request", {
+            type: "annual",
+            from: "2026-09-01",
+            to: "2026-09-02",
+            reason: `filler ${start + i}`
+          })
+        )
+      );
+    }
+
+    // The routed document, created and submitted LAST → highest ULID → tail of the scan.
+    const routed = await createDoc(dave, app, "leave-request", {
+      type: "annual",
+      from: "2026-10-05",
+      to: "2026-10-09",
+      reason: "routed behind a full page of drafts"
+    });
+    await transition(dave, app, routed._id, "submit");
+
+    // Carol reads all 211 (manager) but is responsible for exactly the submitted one —
+    // it must appear despite sitting past the first page of the readers scan.
+    const carol = await airline.as("carol");
+    const carolLeave = entryFor(await workQueue(carol, "?items=true"), app);
+    expect(carolLeave?.items?.map((item) => item._id), "routed work not truncated by paging").toContain(routed._id);
+  });
+
   test("the cross-app selector binds the existing ACL index m2-readers (no new index)", async ({
     airline,
     page,

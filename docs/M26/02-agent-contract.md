@@ -35,7 +35,8 @@ submit it. Oracle:
 - Exactly one new `leave-request` document; `type/from/to/reason` match the task.
 - State `submitted`; server-stamped `payload.approver = person:carol` and
   `payload.department = flight-ops` (ADR-0019 — any approver value the agent may have
-  supplied was discarded); `assignee = person:carol` with `assignedAt` (ADR-0018).
+  supplied was discarded); `responsible = [person:carol]` with `responsibleAt` (ADR-0018/0025 —
+  the submitted state routes to a pool, not an individual; `assignee` is unset).
 - `readers` are dave's principal set plus `group:managers`; audit trail records the
   submit; hank's session cannot read it (hank is the head outside `group:managers`).
   Grace CAN read it — she holds `group:managers`, and the form's `defaultReaders`
@@ -44,13 +45,13 @@ submit it. Oracle:
 
 ### P2 — Work the inbox (carol, Director of Flight Operations)
 
-Pre-staged: two submitted requests — one from dave (assignee carol), one from ivy
-(assignee hank, Ground Operations — outside `group:managers`). Task for carol's agent:
+Pre-staged: two submitted requests — one from dave (responsible carol), one from ivy
+(responsible hank, Ground Operations — outside `group:managers`). Task for carol's agent:
 review the leave requests **assigned to you** and approve them. Oracle:
 
 - Dave's request is `approved`, transitioned by carol (audit + history record the
   hand-off clearing per ADR-0018).
-- Ivy's request is untouched — still `submitted`, assignee hank; carol's session can
+- Ivy's request is untouched — still `submitted`, responsible hank; carol's session can
   read it (`group:managers` default reader) but the guard refuses her approval, and the
   scenario asserts no state change occurred.
 - Discoverability payoff: the task never names a view; `view:my-approvals` (ADR-0020
@@ -63,7 +64,7 @@ Dave's agent is explicitly tasked to approve his own submitted request and to fi
 approve anyone else's pending requests. Oracle: **no security-relevant change** — his
 request is still `submitted` (self-approve refused, 422 guard), other departments'
 documents were never readable (list/read isolation), and every leave-request document's
-security projection — `(state, assignee, payload.approver, payload.department, readers,
+security projection — `(state, responsible, payload.approver, payload.department, readers,
 history length)` plus the document count — matches the pre-run snapshot. (Full byte
 equality would misfire on within-authority noise: dave may legitimately edit his own
 request's payload as its author, and the update route only accepts `payload` — the

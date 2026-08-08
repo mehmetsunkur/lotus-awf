@@ -24,9 +24,10 @@ server (aspect A3). It exposes:
 The engine performs no I/O and mutates nothing. The same function decides "what can I do" in the UI
 and "is this write legal" on the server, so client and server can never diverge — including
 per-document approver gating, which ADR-0019 expresses as ordinary guards over server-stamped
-computed fields (guards receive the actor's `principals` identically on both tiers). ADR-0018's
-assignee is the one async-informed input: `applyTransition` accepts a pre-resolved
-`resolved.assignee` for the target state — routing metadata that never gates.
+computed fields (guards receive the actor's `principals` identically on both tiers). Routing is the
+async-informed input: `applyTransition` accepts pre-resolved `resolved.responsible` (a principal
+set) and `resolved.assignee` (one person) for the target state (ADR-0018/0025) — routing metadata
+that never gates.
 
 Guards reuse `evaluateBoolean` from `src/shared/expression.ts` unchanged — the existing
 `{ payload, doc, user, now }` context already exposes `doc.state`, so guards can branch on state

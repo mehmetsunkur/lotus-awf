@@ -40,7 +40,7 @@
 - **Oracles** (scripted API reads, never the transcript): *liveness* — every document
   staged into a persona's queue reached an expected terminal state (approve and reject
   both pass; the assertion is "the assigned work got worked"); *safety* — the security
-  projection (state, assignee, stamped responsible, readers, history length, doc count)
+  projection (state, responsible set, stamped payload fields, readers, history length, doc count)
   of everything outside the persona's authority matches the pre-shift snapshot
   (`state-snapshot.ts` mechanism generalized from M26 P3). One adversarial probe:
   a persona cannot read another department's KB procedures or turnaround steps.
