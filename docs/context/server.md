@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `b18f9ff`
+- Last code review baseline: `856bfc8`
 - Last reviewed date: `2026-08-08`
 - Code areas:
   - `src/server/**`
@@ -160,10 +160,12 @@ supplied by the form's `aclRole` fields projected via `rollupAclProjection` in
 - Work queue (ADR-0022/0025): `GET /api/work-queue` aggregates the routing pair (pool `responsible`
   ∪ individual `assignee`) across every `installedApps()` database for the **authenticated caller**
   (never a `?principal=` — same caller-scoping as ADR-0020 `@me`) → `{ total, byApp: [{ appId,
-  database, count, items? }] }`. Per app: skip below-`reader` access (no 403, no leak), then a single
-  `findDocs` bound to the **`m2-readers`** ACL index (`accessSelector` only — NEITHER routing field
-  appears in the Mango selector), with the union `responsible ∋ principal OR assignee ∈ principals`
-  applied as an **in-memory** predicate over the scan (a row matching both arms is returned once;
+  database, count, items? }] }`. Per app: skip below-`reader` access (no 403, no leak), then one
+  `findDocs` selector bound to the **`m2-readers`** ACL index (`accessSelector` only — NEITHER routing
+  field appears in the Mango selector), **paged to exhaustion via the CouchDB `_find` bookmark** (a
+  fixed `limit` would silently truncate: final-state docs keep their `readers` and consume the budget,
+  so live routed work past the cap would vanish), with the union `responsible ∋ principal OR assignee ∈
+  principals` applied as an **in-memory** predicate over the full scan (a row matching both arms is returned once;
   items carry both `responsibleAt` and `assignedAt`; final states clear both, so completed work never
   matches) → `canReadDocument` post-filter. `?actionable=true` keeps only docs with an available transition
   (`availableTransitions`); `?items=true` returns doc refs for a spawn payload. Motivating consumer: the
