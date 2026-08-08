@@ -168,7 +168,7 @@ async function seedFieldServicesMorningState(admin: APIRequestContext, dana: API
     requestedDate: "2026-08-09"
   });
   const triaged = await transitionDocument(dana, appId, request._id, "triage");
-  console.log(`Seeded morning work: ${triaged._id} -> ${triaged.state} (${triaged.assignee ?? "unassigned"})`);
+  console.log(`Seeded morning work: ${triaged._id} -> ${triaged.state} (${triaged.responsible?.join(", ") ?? "unassigned"})`);
 }
 
 async function startPlaygroundRuntime(runner: RunnerMode): Promise<{ harness: PlaygroundHarness; host: PlaygroundMcpHost }> {
@@ -283,7 +283,7 @@ function writeSnapshot(runDir: string, fileName: string, docs: FieldServiceDocSe
       values.map((doc) => ({
         id: doc._id,
         state: doc.state ?? null,
-        assignee: doc.assignee ?? null,
+        responsible: doc.responsible ?? null,
         payload: doc.payload
       }))
     ])

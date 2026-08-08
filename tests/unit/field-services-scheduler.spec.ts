@@ -41,7 +41,7 @@ describe("Field Services scheduler policy", () => {
     expect(decision.itemIds).toEqual(["doc:service-request:02"]);
   });
 
-  it("spawns the technician for scheduled work orders even without an assignee stamp", () => {
+  it("spawns the technician for scheduled work orders even without a responsible stamp", () => {
     const docs = emptyDocs();
     docs.workOrders.push(doc("work-order", "01", undefined), doc("work-order", "02", "parts-ready"));
 

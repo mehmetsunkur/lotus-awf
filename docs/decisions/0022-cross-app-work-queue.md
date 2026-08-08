@@ -6,6 +6,12 @@ Date: 2026-07-22
 
 Accepted — implemented 2026-07-22.
 
+**Amended by ADR-0025** (2026-08-08): the work-queue's `assignee`/`assignedAt` routing
+field was renamed and widened to `responsible: string[]`/`responsibleAt`; the selector
+still binds `m2-readers` and the item is projected as `responsibleAt`. ADR-0025 Stage 2
+moves the routing predicate in-memory as a `responsible ∪ assignee` union (selector binds
+`m2-readers`+`kind` only). Read `responsible` wherever the text below says `assignee`.
+
 ## Context
 
 Agents (the ADR-0021 operator, and future spawned workers) need to know *whether

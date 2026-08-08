@@ -242,7 +242,7 @@ test.describe("MCP real-agent field services personas", () => {
         });
         const triaged = await transitionDocument(dana, app, request._id, "triage");
         expect(triaged.state).toBe("triaged");
-        expect(triaged.assignee).toBe("group:dispatch");
+        expect(triaged.responsible).toEqual(["group:dispatch"]);
 
         const capture = async () => ({
           serviceRequests: await captureDocTypeProjection(dana, app, "service-request"),
@@ -288,7 +288,7 @@ test.describe("MCP real-agent field services personas", () => {
         await runShift("s2-technician-am", "taylor");
         const afterTechAm = await getDocument(taylor, app, workOrderId);
         expect(afterTechAm.state).toBe("needs-parts");
-        expect(afterTechAm.assignee).toBe("group:inventory");
+        expect(afterTechAm.responsible).toEqual(["group:inventory"]);
         expect(afterTechAm.stateUpdatedBy).toBe("person:taylor");
         expect(afterTechAm.history?.map((event) => event.transition)).toContain("request-parts");
         const reservationsAfterTech = await listDocuments(taylor, app, "parts-reservation");
@@ -301,20 +301,20 @@ test.describe("MCP real-agent field services personas", () => {
         await runShift("s3-inventory", "iris");
         const afterInventoryReservation = await getDocument(iris, app, reservationId);
         expect(afterInventoryReservation.state).toBe("allocated");
-        expect(afterInventoryReservation.assignee).toBe("group:technicians");
+        expect(afterInventoryReservation.responsible).toEqual(["group:technicians"]);
         expect(afterInventoryReservation.stateUpdatedBy).toBe("person:iris");
         const afterInventoryOrder = await getDocument(iris, app, workOrderId);
         expect(afterInventoryOrder.state).toBe("parts-ready");
-        expect(afterInventoryOrder.assignee).toBe("person:taylor");
+        expect(afterInventoryOrder.responsible).toEqual(["person:taylor"]);
         expect(afterInventoryOrder.stateUpdatedBy).toBe("person:iris");
 
         await runShift("s4-technician-pm", "taylor");
         const afterTechPmReservation = await getDocument(taylor, app, reservationId);
         expect(afterTechPmReservation.state).toBe("picked-up");
-        expect(afterTechPmReservation.assignee).toBeUndefined();
+        expect(afterTechPmReservation.responsible).toBeUndefined();
         const afterTechPmOrder = await getDocument(taylor, app, workOrderId);
         expect(afterTechPmOrder.state).toBe("completed");
-        expect(afterTechPmOrder.assignee).toBe("group:billing");
+        expect(afterTechPmOrder.responsible).toEqual(["group:billing"]);
         expect(afterTechPmOrder.stateUpdatedBy).toBe("person:taylor");
         expect(afterTechPmOrder.history?.map((event) => event.transition)).toContain("complete-after-parts");
 
@@ -328,7 +328,7 @@ test.describe("MCP real-agent field services personas", () => {
           amount: 720
         });
         expect(invoice.state).toBe("sent");
-        expect(invoice.assignee).toBe("group:billing");
+        expect(invoice.responsible).toEqual(["group:billing"]);
         expect(invoice.stateUpdatedBy).toBe("person:blake");
         expect(invoice.history?.map((event) => event.transition)).toEqual(["mark-ready", "send"]);
 
@@ -420,7 +420,7 @@ test.describe("MCP real-agent field services personas", () => {
 
         const after = await getDocument(taylor, app, order._id);
         expect(after.state).toBe("needs-parts");
-        expect(after.assignee).toBe("group:inventory");
+        expect(after.responsible).toEqual(["group:inventory"]);
         expect(after.stateUpdatedBy).toBe("person:taylor");
         expect(after.history?.map((event) => event.transition)).toEqual(["start", "request-parts"]);
 
@@ -445,7 +445,7 @@ test.describe("MCP real-agent field services personas", () => {
         });
         await transitionDocument(taylor, app, order._id, "start");
         const needsParts = await transitionDocument(taylor, app, order._id, "request-parts");
-        expect(needsParts.assignee).toBe("group:inventory");
+        expect(needsParts.responsible).toEqual(["group:inventory"]);
         const reservation = await createDocument(iris, app, "parts-reservation", {
           workOrderRef: order._id,
           partNumber: "KIT-4421",
@@ -468,12 +468,12 @@ test.describe("MCP real-agent field services personas", () => {
 
         const reservationAfter = await getDocument(iris, app, reservation._id);
         expect(reservationAfter.state).toBe("allocated");
-        expect(reservationAfter.assignee).toBe("group:technicians");
+        expect(reservationAfter.responsible).toEqual(["group:technicians"]);
         expect(reservationAfter.stateUpdatedBy).toBe("person:iris");
 
         const orderAfter = await getDocument(iris, app, order._id);
         expect(orderAfter.state).toBe("parts-ready");
-        expect(orderAfter.assignee).toBe("person:taylor");
+        expect(orderAfter.responsible).toEqual(["person:taylor"]);
         expect(orderAfter.stateUpdatedBy).toBe("person:iris");
         expect(orderAfter.history?.map((event) => event.transition)).toEqual(["start", "request-parts", "parts-ready"]);
 
@@ -500,7 +500,7 @@ test.describe("MCP real-agent field services personas", () => {
         await transitionDocument(taylor, app, order._id, "start");
         const completed = await transitionDocument(taylor, app, order._id, "complete");
         expect(completed.state).toBe("completed");
-        expect(completed.assignee).toBe("group:billing");
+        expect(completed.responsible).toEqual(["group:billing"]);
 
         await runFieldAgent(
           driver,
@@ -526,7 +526,7 @@ test.describe("MCP real-agent field services personas", () => {
           dueDate: "2026-09-06"
         });
         expect(invoice.state).toBe("sent");
-        expect(invoice.assignee).toBe("group:billing");
+        expect(invoice.responsible).toEqual(["group:billing"]);
         expect(invoice.history?.map((event) => event.transition)).toEqual(["mark-ready", "send"]);
         expect(invoice.stateUpdatedBy).toBe("person:blake");
 
@@ -634,7 +634,7 @@ test.describe("MCP real-agent field services personas", () => {
 
         const disputed = await getDocument(blake, app, mismatchedInvoice._id);
         expect(disputed.state, "the mismatched invoice should be disputed").toBe("disputed");
-        expect(disputed.assignee).toBe("group:billing");
+        expect(disputed.responsible).toEqual(["group:billing"]);
         expect(disputed.stateUpdatedBy).toBe("person:blake");
         expect(String(disputed.payload.discrepancyNote ?? ""), "dispute must carry a discrepancy note").not.toBe("");
         expect(disputed.payload.amount, "dispute must not rewrite the amount").toBe(1500);
@@ -695,15 +695,15 @@ test.describe("MCP real-agent field services personas", () => {
 
         const inRes = await getDocument(iris, app, inStockRes._id);
         expect(inRes.state, "in-stock reservation should be allocated").toBe("allocated");
-        expect(inRes.assignee).toBe("group:technicians");
+        expect(inRes.responsible).toEqual(["group:technicians"]);
         expect(inRes.stateUpdatedBy).toBe("person:iris");
         const inOrder = await getDocument(iris, app, inStockOrder._id);
         expect(inOrder.state, "allocated part should return the work order to the technician").toBe("parts-ready");
-        expect(inOrder.assignee).toBe("person:taylor");
+        expect(inOrder.responsible).toEqual(["person:taylor"]);
 
         const outRes = await getDocument(iris, app, outStockRes._id);
         expect(outRes.state, "out-of-stock reservation should be backordered").toBe("backordered");
-        expect(outRes.assignee).toBe("group:inventory");
+        expect(outRes.responsible).toEqual(["group:inventory"]);
         expect(String(outRes.payload.shortageReason ?? ""), "backorder must carry a shortage reason").not.toBe("");
         const outOrder = await getDocument(iris, app, outStockOrder._id);
         expect(outOrder.state, "backordered part must not advance the work order").toBe("needs-parts");

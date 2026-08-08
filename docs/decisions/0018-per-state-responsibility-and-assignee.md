@@ -12,6 +12,13 @@ ADR-0019 stamped field. Companion to ADR-0017: same resolver, two different
 moments — 0017 enforces *who may* act at gate time, 0018 tracks *who should* act while a
 document sits in a state.
 
+**Amended by ADR-0025** (2026-08-08): the engine-stamped `assignee`/`assignedAt` pair
+described throughout this ADR was renamed and widened to `responsible: string[]`/
+`responsibleAt` (fed by `WorkflowState.responsible`/`responsibleFormula`); the empty set is
+stored field-absent, never `[]`, and `@me`/work-queue matching is now array element
+membership. The freed `assignee` name is repurposed by ADR-0025 Stage 2 for a distinct
+*single-individual* field. Read `responsible[]` wherever the text below says `assignee`.
+
 ## Context
 
 The workflow engine (`src/shared/workflow.ts`) already owns a family of allocated envelope

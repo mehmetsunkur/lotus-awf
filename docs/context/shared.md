@@ -156,9 +156,11 @@ absent = editable) orthogonal to the datatype; `src/shared/validation.ts` splits
 and server-owned values skip defaults, coercion, and user-input validation. Guards
 receive the actor's `principals` (5th sync-expression arg), so per-document gating —
 `principals.includes(payload.approver)` — lives in the parity lane; offering and
-enforcement are exact. `src/shared/workflow.ts` owns the assignment envelope
-(`assignee`/`assignedAt` stamped on state entry, cleared on final states, hand-offs in
-`history[]`). Definition validation enforces the mode/field matrix and rejects the
+enforcement are exact. `src/shared/workflow.ts` owns the responsibility envelope
+(`responsible: string[]`/`responsibleAt` stamped on state entry, cleared on final states —
+the empty set stored field-absent, never `[]` — hand-offs in `history[]`; ADR-0025
+renamed+widened these from the former scalar `assignee`/`assignedAt`, matched by array
+element membership, with the individual-`assignee` pair returning in Stage 2). Definition validation enforces the mode/field matrix and rejects the
 superseded `approverFormula`.
 
 ADR-0024 adds a third orthogonal `FormField` axis, `aclRole:"reader"|"author"` — the

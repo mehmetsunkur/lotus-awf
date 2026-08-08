@@ -16,7 +16,7 @@ import {
  * multi-hop workflow hands work across departments, and a staged "morning state" of
  * flights and expenses for the working-day agent shifts. Everything is seeded through
  * public HTTP APIs as the persona it would organically come from, so every stamp
- * (readers, assignee, computed heads, history) is produced by the substrate, never
+ * (readers, responsible, computed heads, history) is produced by the substrate, never
  * hand-written. See docs/M27/02-twin-contract.md.
  */
 
@@ -324,7 +324,7 @@ export async function seedDigitalTwin(
     }
 
     // 7. Morning state: flights, created and scheduled by dave (flight planning) and
-    // walked to their staged state by the personas who own each hop, so assignees,
+    // walked to their staged state by the personas who own each hop, so responsibles,
     // computed heads, readers, audit, and history are all organically stamped.
     const dave = await as("dave");
     const carol = await as("carol");

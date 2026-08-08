@@ -16,8 +16,9 @@ export const ME_SENTINEL = "@me";
  *
  * `principals` is REQUIRED (review M5): every caller must decide whose identity
  * `@me` resolves to. An empty set substitutes `$in: []`, which matches nothing —
- * fail-closed — and `$in` never matches an absent field, so e.g. an
- * assignee-less document appears in nobody's personal inbox.
+ * fail-closed — and `$in` never matches an absent field, so e.g. a document with
+ * no `responsible`/`assignee` appears in nobody's personal inbox. Against an ARRAY
+ * field (`responsible`, ADR-0025) `$in` matches on element membership.
  */
 export function mangoSelector(
   filters: ViewFilter[] = [],

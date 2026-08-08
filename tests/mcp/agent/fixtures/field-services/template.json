@@ -518,7 +518,7 @@
           "label": "State"
         },
         {
-          "field": "assignee",
+          "field": "responsible",
           "label": "Assigned to"
         },
         {
@@ -581,7 +581,7 @@
           "value": "service-request"
         },
         {
-          "field": "assignee",
+          "field": "responsible",
           "op": "in",
           "value": "@me"
         }
@@ -629,7 +629,7 @@
           "value": "work-order"
         },
         {
-          "field": "assignee",
+          "field": "responsible",
           "op": "in",
           "value": "@me"
         }
@@ -709,7 +709,7 @@
           "label": "State"
         },
         {
-          "field": "assignee",
+          "field": "responsible",
           "label": "Assigned to"
         }
       ],
@@ -768,7 +768,7 @@
           "value": "parts-reservation"
         },
         {
-          "field": "assignee",
+          "field": "responsible",
           "op": "in",
           "value": "@me"
         }
@@ -843,7 +843,7 @@
           "label": "State"
         },
         {
-          "field": "assignee",
+          "field": "responsible",
           "label": "Assigned to"
         }
       ],
@@ -859,7 +859,7 @@
           "value": "invoice"
         },
         {
-          "field": "assignee",
+          "field": "responsible",
           "op": "in",
           "value": "@me"
         }

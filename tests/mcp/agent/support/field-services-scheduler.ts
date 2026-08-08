@@ -18,7 +18,7 @@ export type FieldSpawnDecision = {
 export const FIELD_SCHEDULER_ORDER: FieldPersonaName[] = ["dana", "taylor", "iris", "blake"];
 
 const byUpdated = (left: BusinessDocument, right: BusinessDocument) =>
-  (left.assignedAt ?? left.updatedAt ?? left.createdAt).localeCompare(right.assignedAt ?? right.updatedAt ?? right.createdAt) ||
+  (left.responsibleAt ?? left.updatedAt ?? left.createdAt).localeCompare(right.responsibleAt ?? right.updatedAt ?? right.createdAt) ||
   left._id.localeCompare(right._id);
 
 function hasSentInvoice(invoices: BusinessDocument[], workOrderId: string): boolean {

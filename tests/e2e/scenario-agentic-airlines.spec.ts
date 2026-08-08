@@ -202,7 +202,7 @@ test.describe("Agentic Airlines PLC scenario", () => {
     expect(approved.status()).toBe(200);
   });
 
-  test("ADR-0019/0018: approval routes to the stamped department head and the assignee tracks the hand-off", async ({
+  test("ADR-0019/0018: approval routes to the stamped department head and the responsible tracks the hand-off", async ({
     airline
   }) => {
     const app = airline.scenario.leaveRequestAppId;
@@ -215,12 +215,12 @@ test.describe("Agentic Airlines PLC scenario", () => {
     });
     await transition(dave, app, request._id, "submit");
 
-    // ADR-0018: submit stamped the resolved department head as the assignee.
+    // ADR-0018: submit stamped the resolved department head as the responsible.
     const submitted = (await dave
       .get(`/api/apps/${app}/documents/${encodeURIComponent(request._id)}`)
-      .then((response) => response.json())) as Doc & { assignee?: string; assignedAt?: string };
-    expect(submitted.assignee).toBe("person:carol");
-    expect(submitted.assignedAt).toBeTruthy();
+      .then((response) => response.json())) as Doc & { responsible?: string[]; responsibleAt?: string };
+    expect(submitted.responsible).toEqual(["person:carol"]);
+    expect(submitted.responsibleAt).toBeTruthy();
 
     // ADR-0017: erin holds group:managers but heads another department — 422.
     const erin = await airline.as("erin");
@@ -232,9 +232,9 @@ test.describe("Agentic Airlines PLC scenario", () => {
     const carol = await airline.as("carol");
     const approved = await transition(carol, app, request._id, "approve");
     expect(approved.status()).toBe(200);
-    const final = (await approved.json()) as Doc & { assignee?: string };
+    const final = (await approved.json()) as Doc & { responsible?: string[] };
     expect(final.state).toBe("approved");
-    expect(final.assignee).toBeUndefined(); // final states clear the assignment
+    expect(final.responsible).toBeUndefined(); // final states clear the assignment
   });
 
   test("ADR-0019: a department head outside group:managers can approve their department's requests", async ({
@@ -254,8 +254,8 @@ test.describe("Agentic Airlines PLC scenario", () => {
     const hank = await airline.as("hank");
     const assigned = (await hank
       .get(`/api/apps/${app}/documents/${encodeURIComponent(request._id)}`)
-      .then((response) => response.json())) as Doc & { assignee?: string };
-    expect(assigned.assignee).toBe("person:hank");
+      .then((response) => response.json())) as Doc & { responsible?: string[] };
+    expect(assigned.responsible).toEqual(["person:hank"]);
 
     // …a manager outside the resolved set is refused…
     const grace = await airline.as("grace");
@@ -292,8 +292,8 @@ test.describe("Agentic Airlines PLC scenario", () => {
     // fallback gates — hank (no managers role) is refused, erin passes.
     const submitted = (await ivy
       .get(`/api/apps/${app}/documents/${encodeURIComponent(request._id)}`)
-      .then((response) => response.json())) as Doc & { assignee?: string };
-    expect(submitted.assignee).toBe("group:managers");
+      .then((response) => response.json())) as Doc & { responsible?: string[] };
+    expect(submitted.responsible).toEqual(["group:managers"]);
 
     const hank = await airline.as("hank");
     expect((await transition(hank, app, request._id, "approve")).status()).toBe(422);
@@ -452,7 +452,7 @@ test.describe("Agentic Airlines PLC scenario", () => {
     expect(edited.payload.approver).toBe("person:carol");
   });
 
-  test("ADR-0020 @me: personal inboxes route by assignee, My views mean mine, ACL still wins", async ({
+  test("ADR-0020 @me: personal inboxes route by responsible, My views mean mine, ACL still wins", async ({
     airline,
     page,
     localCouchUrl
@@ -460,7 +460,7 @@ test.describe("Agentic Airlines PLC scenario", () => {
     const app = airline.scenario.leaveRequestAppId;
     const couchAuth = { authorization: `Basic ${Buffer.from("admin:password").toString("base64")}` };
 
-    // Dave files and submits: assignee = carol.
+    // Dave files and submits: responsible = carol.
     const dave = await airline.as("dave");
     const daveRequest = await createDoc(dave, app, "leave-request", {
       type: "annual",
@@ -470,7 +470,7 @@ test.describe("Agentic Airlines PLC scenario", () => {
     });
     await transition(dave, app, daveRequest._id, "submit");
 
-    // Ivy files and submits: assignee = hank.
+    // Ivy files and submits: responsible = hank.
     const ivy = await airline.as("ivy");
     const ivyRequest = await createDoc(ivy, app, "leave-request", {
       type: "sick",
@@ -496,11 +496,11 @@ test.describe("Agentic Airlines PLC scenario", () => {
     const frankRequests = (await viewDocs(frank, app, "view:my-requests")).map((doc) => doc._id);
     expect(frankRequests).not.toContain(daveRequest._id);
 
-    // Approval clears the assignee and the request LEAVES the inbox.
+    // Approval clears the responsible and the request LEAVES the inbox.
     await transition(carol, app, daveRequest._id, "approve");
     expect((await viewDocs(carol, app, "view:my-approvals")).map((doc) => doc._id)).not.toContain(daveRequest._id);
 
-    // ACL precedence pinned (review M4): hank stays ivy's assignee but loses
+    // ACL precedence pinned (review M4): hank stays ivy's responsible but loses
     // DOCUMENT readership (removed from group:ground-ops) — the inbox must NOT
     // show it. He keeps app-level access via a person entry so the view route
     // itself still answers (we are testing doc ACL, not the app gate).
@@ -531,7 +531,7 @@ test.describe("Agentic Airlines PLC scenario", () => {
           kind: "document",
           docType: { $eq: "leave-request" },
           state: { $eq: "submitted" },
-          assignee: { $in: ["person:carol", "group:managers"] },
+          responsible: { $in: ["person:carol", "group:managers"] },
           readers: { $in: ["person:carol", "group:managers"] }
         },
         sort: [{ updatedAt: "desc" }],
@@ -549,7 +549,7 @@ test.describe("Agentic Airlines PLC scenario", () => {
     page
   }) => {
     const app = airline.scenario.leaveRequestAppId;
-    // Blank ground-ops' head, then ivy files: assignee stamps group:managers.
+    // Blank ground-ops' head, then ivy files: responsible stamps group:managers.
     const deptId = airline.scenario.departmentDocIds["ground-ops"];
     await page.request.put(`/api/apps/${airline.scenario.orgAppId}/documents/${encodeURIComponent(deptId)}`, {
       data: { payload: { name: "Ground Operations", slug: "ground-ops", parent: "", head: "" } }

@@ -163,7 +163,7 @@
           "value": "flight"
         },
         {
-          "field": "assignee",
+          "field": "responsible",
           "op": "in",
           "value": "@me"
         }
@@ -195,7 +195,7 @@
           "label": "State"
         },
         {
-          "field": "assignee",
+          "field": "responsible",
           "label": "Assigned to"
         },
         {

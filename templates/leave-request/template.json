@@ -214,7 +214,7 @@
           "label": "Department"
         },
         {
-          "field": "assignee",
+          "field": "responsible",
           "label": "Assigned to"
         },
         {
@@ -239,7 +239,7 @@
           "value": "submitted"
         },
         {
-          "field": "assignee",
+          "field": "responsible",
           "op": "in",
           "value": "@me"
         }
@@ -279,7 +279,7 @@
           "label": "Department"
         },
         {
-          "field": "assignee",
+          "field": "responsible",
           "label": "Assigned to"
         },
         {

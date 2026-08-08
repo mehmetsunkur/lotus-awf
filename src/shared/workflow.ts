@@ -21,10 +21,13 @@ import { evaluateBoolean } from "./expression";
  * A document with no `state` is treated as the workflow's `initialState`, which
  * keeps every already-replicated M1/M2 document valid (aspect A1).
  *
- * ADR-0018: the engine also owns the assignment envelope (`assignee`,
- * `assignedAt`, `TransitionEvent.assignee`) — routing metadata stamped on state
- * entry from the target state's resolved/static responsibility, cleared on
- * final states, and never consulted as a gate.
+ * ADR-0025: the engine also owns the standing-responsibility envelope
+ * (`responsible: string[]`, `responsibleAt`, `TransitionEvent.responsible`) —
+ * the renamed+widened successor to ADR-0018's scalar `assignee`. Routing metadata
+ * stamped on state entry from the target state's resolved/static
+ * `responsible`/`responsibleFormula` (a principal SET, group fan-out applied per
+ * element by the query lane), cleared on final states, and never consulted as a
+ * gate.
  */
 
 /** A principal id the workflow envelope may carry. */
@@ -33,20 +36,21 @@ export function isPrincipalId(value: unknown): value is string {
 }
 
 /**
- * Normalize an async-formula result to principal ids: a principal string becomes
- * a singleton, an array keeps only its principal-shaped strings, anything else
- * is empty. Used by the ADR-0018 assignee stamp so a malformed formula result
- * can never reach the envelope.
+ * Normalize an async-formula (or static) result to a deduped principal SET: a
+ * principal string becomes a singleton, an array keeps only its principal-shaped
+ * strings, anything else is empty. Used by the ADR-0025 `responsible` stamp so a
+ * malformed formula result can never reach the envelope, and source order is
+ * preserved with duplicates removed (a set).
  */
 export function normalizeResolvedPrincipals(value: unknown): string[] {
-  if (Array.isArray(value)) return value.filter(isPrincipalId);
-  return isPrincipalId(value) ? [value] : [];
+  const raw = Array.isArray(value) ? value.filter(isPrincipalId) : isPrincipalId(value) ? [value] : [];
+  return Array.from(new Set(raw));
 }
 
 /** Pre-resolved async-lane inputs (server-side); absent in advisory contexts. */
 export type ResolvedTransitionContext = {
-  /** ADR-0018: normalized responsibleFormula result for the TARGET state. */
-  assignee?: string;
+  /** ADR-0025: normalized responsibleFormula result (a principal set) for the TARGET state. */
+  responsible?: string[];
 };
 
 export function currentState(doc: BusinessDocument, def: WorkflowDefinition): string {
@@ -202,9 +206,10 @@ export type TransitionResult =
 
 /**
  * Apply a transition, returning the next document envelope (new state, stamps,
- * appended history, ADR-0018 assignment) or the reasons it is not currently
- * legal. Pure — the input document is not mutated; async assignee resolution
- * happens in the caller and arrives pre-resolved via `resolved`.
+ * appended history, ADR-0025 standing responsibility) or the reasons it is not
+ * currently legal. Pure — the input document is not mutated; async
+ * `responsibleFormula` resolution happens in the caller and arrives pre-resolved
+ * via `resolved`.
  */
 export function applyTransition(
   doc: BusinessDocument,
@@ -240,14 +245,18 @@ export function applyTransition(
     };
   }
 
-  // ADR-0018: assignment for the entered state — resolved formula value, else
-  // the target state's static responsible, else none; final states always clear.
+  // ADR-0025: standing responsibility for the entered state — the resolved
+  // `responsibleFormula` set wins, else the target state's static `responsible`
+  // (scalar or set, normalized), else none; final states always clear. Stored as a
+  // deduped principal SET; the empty set is field-absent (never `[]`).
   const targetState = def.states.find((candidate) => candidate.name === transition.to);
-  const staticResponsible =
-    targetState && isPrincipalId(targetState.responsible) ? targetState.responsible : undefined;
-  const assignee = targetState?.final
-    ? undefined
-    : (normalizeResolvedPrincipals(resolved.assignee)[0] ?? staticResponsible);
+  const resolvedResponsible = normalizeResolvedPrincipals(resolved.responsible);
+  const responsible = targetState?.final
+    ? []
+    : resolvedResponsible.length > 0
+      ? resolvedResponsible
+      : normalizeResolvedPrincipals(targetState?.responsible);
+  const hasResponsible = responsible.length > 0;
 
   const event: TransitionEvent = {
     transition: transition.id,
@@ -255,10 +264,13 @@ export function applyTransition(
     to: transition.to,
     at: now,
     by: user,
-    ...(assignee ? { assignee } : {})
+    ...(hasResponsible ? { responsible } : {})
   };
 
-  const { assignee: _clearedAssignee, assignedAt: _clearedAssignedAt, ...envelope } = doc;
+  // Clear-then-stamp on EVERY entry (ADR-0025 §3): drop the prior standing
+  // responsibility, then re-stamp only what the target state declares. Full
+  // replace, never merge — a state with no responsibility genuinely has none.
+  const { responsible: _clearedResponsible, responsibleAt: _clearedResponsibleAt, ...envelope } = doc;
   return {
     ok: true,
     document: {
@@ -266,7 +278,7 @@ export function applyTransition(
       state: transition.to,
       stateUpdatedAt: now,
       stateUpdatedBy: user,
-      ...(assignee ? { assignee, assignedAt: now } : {}),
+      ...(hasResponsible ? { responsible, responsibleAt: now } : {}),
       history: [...(doc.history ?? []), event]
     }
   };

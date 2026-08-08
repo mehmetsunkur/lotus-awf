@@ -14,17 +14,17 @@ const PRINCIPALS = ["person:carol", "group:managers", "group:flight-ops"];
 describe("mangoSelector @me substitution", () => {
   it("substitutes the caller's full principal set for @me", () => {
     const selector = mangoSelector(
-      [{ field: "assignee", op: "in", value: ME_SENTINEL }],
+      [{ field: "responsible", op: "in", value: ME_SENTINEL }],
       "leave-request",
       PRINCIPALS
     );
-    expect(selector.assignee).toEqual({ $in: PRINCIPALS });
+    expect(selector.responsible).toEqual({ $in: PRINCIPALS });
     expect(selector.docType).toBe("leave-request");
   });
 
   it("fails closed on an empty principal set ($in: [] matches nothing)", () => {
-    const selector = mangoSelector([{ field: "assignee", op: "in", value: ME_SENTINEL }], "x", []);
-    expect(selector.assignee).toEqual({ $in: [] });
+    const selector = mangoSelector([{ field: "responsible", op: "in", value: ME_SENTINEL }], "x", []);
+    expect(selector.responsible).toEqual({ $in: [] });
   });
 
   it("leaves literal values untouched, including arrays and the string elsewhere", () => {
@@ -67,26 +67,26 @@ describe("validateFilter @me rules (ADR-0020)", () => {
   const fieldsOf = (definition: ViewDefinition) => validateViewDefinition(definition).map((error) => error.field);
 
   it("accepts @me with the in op and plain filters unchanged", () => {
-    expect(validateViewDefinition(view({ field: "assignee", op: "in", value: "@me" }))).toEqual([]);
+    expect(validateViewDefinition(view({ field: "responsible", op: "in", value: "@me" }))).toEqual([]);
     expect(validateViewDefinition(view({ field: "state", op: "eq", value: "submitted" }))).toEqual([]);
     expect(validateViewDefinition(view({ field: "payload.tags", op: "in", value: ["a"] }))).toEqual([]);
   });
 
   it("rejects @me with any other op", () => {
     for (const op of ["eq", "ne", "gt", "gte", "lt", "lte"] as const) {
-      expect(fieldsOf(view({ field: "assignee", op, value: "@me" }))).toContain("filters.0.value");
+      expect(fieldsOf(view({ field: "responsible", op, value: "@me" }))).toContain("filters.0.value");
     }
   });
 
   it("rejects @me inside an array value (must be the entire value)", () => {
-    expect(fieldsOf(view({ field: "assignee", op: "in", value: ["@me", "person:bob"] }))).toContain(
+    expect(fieldsOf(view({ field: "responsible", op: "in", value: ["@me", "person:bob"] }))).toContain(
       "filters.0.value"
     );
   });
 
   it("rejects an in op with a scalar non-@me value (catches near-miss typos)", () => {
     for (const value of ["@Me", " @me", "person:bob"]) {
-      expect(fieldsOf(view({ field: "assignee", op: "in", value }))).toContain("filters.0.value");
+      expect(fieldsOf(view({ field: "responsible", op: "in", value }))).toContain("filters.0.value");
     }
   });
 

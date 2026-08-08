@@ -185,14 +185,16 @@ export type WorkflowState = {
   description?: string;
   final?: boolean;
   /**
-   * ADR-0018: who owes action while a document sits in this state. `responsible`
-   * is a static principal; `responsibleFormula` (async lane, server-resolved) wins
-   * when both are present. Stamped as the document's `assignee` on state ENTRY via
-   * a transition — creation never stamps, so an initial-state declaration only
-   * matters for re-entry transitions (e.g. revise → draft). Routing metadata, not
-   * a gate: resolution failure never fails a transition.
+   * ADR-0018/0025: the standing responsibility (pool/team/parties) that owes action
+   * while a document sits in this state. `responsible` is a static principal or set
+   * of principals (`string | string[]`, D1); `responsibleFormula` (async lane,
+   * server-resolved) wins when both are present. Stamped as the document's
+   * `responsible` array on state ENTRY via a transition — creation never stamps, so
+   * an initial-state declaration only matters for re-entry transitions (e.g.
+   * revise → draft). Routing metadata, not a gate: resolution failure never fails a
+   * transition (ADR-0025 §2).
    */
-  responsible?: string;
+  responsible?: string | string[];
   responsibleFormula?: string;
 };
 
@@ -240,8 +242,12 @@ export type TransitionEvent = {
   to: string;
   at: string;
   by: string;
-  /** ADR-0018: who the entered state assigned (absent when the entry cleared it). */
-  assignee?: string;
+  /**
+   * ADR-0025: the standing responsibility set the entered state stamped (absent
+   * when the entry cleared it) — the renamed+widened successor to ADR-0018's
+   * scalar `assignee` history stamp.
+   */
+  responsible?: string[];
 };
 
 export type BusinessDocument = {
@@ -268,13 +274,17 @@ export type BusinessDocument = {
   stateUpdatedBy?: string;
   history?: TransitionEvent[];
   /**
-   * ADR-0018: who owes the next action in the current state — routing metadata,
-   * stamped ONLY by `applyTransition` on state entry (from the target state's
-   * resolved/static responsibility), cleared on final states, never a gate.
-   * Optional and absent until the first assigning transition, like the state trio.
+   * ADR-0025: the standing responsibility — the set of pools/teams/parties that owe
+   * action while a document sits in the current state (renamed+widened from
+   * ADR-0018's scalar `assignee`). Routing metadata, stamped ONLY by
+   * `applyTransition` on state entry (from the target state's resolved/static
+   * `responsible`/`responsibleFormula`), cleared on final states, never a gate.
+   * The empty set is stored as field-absent (never `[]`) so `$in` never matches a
+   * document with no standing responsibility. `responsibleAt` is one timestamp for
+   * the whole set. Absent until the first assigning transition, like the state trio.
    */
-  assignee?: string;
-  assignedAt?: string;
+  responsible?: string[];
+  responsibleAt?: string;
 };
 
 /**

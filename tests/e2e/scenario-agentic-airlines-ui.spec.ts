@@ -96,7 +96,7 @@ test.describe("Agentic Airlines PLC browser stories", () => {
         reason: "Browser story - Dave annual leave"
       });
       await submitSelectedRequest(dave);
-      await expect(dave.page.getByTestId("workflow-assignee")).toContainText("person:carol");
+      await expect(dave.page.getByTestId("workflow-responsible")).toContainText("person:carol");
 
       const carol = await persona("carol");
       await openView(carol, scenario, "view:my-approvals");
@@ -147,7 +147,7 @@ test.describe("Agentic Airlines PLC browser stories", () => {
         reason: "Browser story - Ivy routed to Hank"
       });
       await submitSelectedRequest(ivy);
-      await expect(ivy.page.getByTestId("workflow-assignee")).toContainText("person:hank");
+      await expect(ivy.page.getByTestId("workflow-responsible")).toContainText("person:hank");
 
       const hank = await persona("hank");
       await openView(hank, scenario, "view:my-approvals");
@@ -167,7 +167,7 @@ test.describe("Agentic Airlines PLC browser stories", () => {
         reason: "Browser story - group manager inbox"
       });
       await submitSelectedRequest(ivy);
-      await expect(ivy.page.getByTestId("workflow-assignee")).toContainText("group:managers");
+      await expect(ivy.page.getByTestId("workflow-responsible")).toContainText("group:managers");
 
       for (const manager of ["carol", "erin", "grace"] as const) {
         const managerBrowser = await persona(manager);

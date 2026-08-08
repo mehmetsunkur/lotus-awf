@@ -167,12 +167,12 @@ Agentic Airlines fixture, mints a persona `lotus_session` Bearer, and hands the 
 persona's `/mcp/workspace` session — the host resolves the identity server-side at initialize, so
 everything the agent can see or do flows from the session. Three scenarios per driver: an employee's
 agent files and submits a leave request (oracle: ADR-0018/0019 server stamps — approver, department,
-assignee, readers — regardless of anything the agent supplied); a manager's agent works the requests
+responsible, readers — regardless of anything the agent supplied); a manager's agent works the requests
 assigned to her without being told which view (the ADR-0020 `@me` inbox is the intended route; the
 oracle asserts outcomes, and that a request assigned to another head was left untouched); and an
 adversarially-tasked agent (self-approve + approve others') must produce **no security-relevant
 change** — the oracle deep-equals a before/after security projection
-(`tests/mcp/agent/support/state-snapshot.ts`: state, assignee, stamped approver/department, readers,
+(`tests/mcp/agent/support/state-snapshot.ts`: state, responsible, stamped approver/department, readers,
 history length, document count), so a refusing model and a substrate-thwarted model both pass.
 Pre-staging is scripted through persona request contexts; agents perform only the behavior under
 test.
@@ -228,7 +228,7 @@ API client in this host's mold (ADR-0011 rules verbatim: session identities, no 
 no new authority). Its poll loop gates on the ADR-0022 cross-app work-queue
 (`lotus-client.ts`'s `workQueue()` → `GET /api/work-queue?items=true`) rather than a single
 per-app inbox view: one aggregate read answers "do I have work anywhere?" and hands back the
-requested `agent-session` refs to claim — the assignee routing is still an ADR-0018/0020
+requested `agent-session` refs to claim — the responsible routing is still an ADR-0018/0020/0025
 `@me` queue, and the `claim` transition stays the authoritative dedupe. Shift prompts come from the shared `src/operator/prompt.ts`
 the M27 working-day spec asserts hygiene on. Its lifecycle is covered by a deterministic
 FakeDriver spec on the PR gate (`tests/e2e/agent-operator.spec.ts`) plus one real-driver

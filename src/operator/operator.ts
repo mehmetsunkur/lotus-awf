@@ -125,15 +125,15 @@ export class AgentOperator {
     }
     // Poll gate is the ADR-0022 cross-app aggregate, not a single per-app inbox view:
     // one question — "do I have work anywhere?" — answers spawn-worthiness and hands
-    // back the routing refs. Same `@me`/assignee routing (ADR-0018/0020); the `claim`
+    // back the routing refs. Same `@me`/responsible routing (ADR-0020/0025); the `claim`
     // transition below is still the authoritative dedupe (ADR-0021), this only decides
     // whether to attempt it. Filtered to this operator's own app (single-app daemon).
     const queue = await this.client.workQueue({ items: true });
     const items = queue.byApp.find((entry) => entry.appId === this.config.appId)?.items ?? [];
     const next = items
       .filter((item) => item.docType === "agent-session" && item.state === "requested")
-      // Oldest-assigned first, `_id` (ULID, time-ordered) as a stable tiebreak.
-      .sort((a, b) => (a.assignedAt ?? "").localeCompare(b.assignedAt ?? "") || a._id.localeCompare(b._id))[0];
+      // Oldest standing-responsibility first, `_id` (ULID, time-ordered) as a stable tiebreak.
+      .sort((a, b) => (a.responsibleAt ?? "").localeCompare(b.responsibleAt ?? "") || a._id.localeCompare(b._id))[0];
     if (!next) return { kind: "idle" };
     if (this.claimsToday >= this.config.maxSessionsPerDay) {
       this.log(`daily session cap (${this.config.maxSessionsPerDay}) reached; not claiming ${next._id}`);

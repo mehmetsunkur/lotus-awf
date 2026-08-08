@@ -8,7 +8,7 @@ import type { BusinessDocument } from "../../../../src/shared/types";
  * noise: dave may legitimately edit his own request's payload as its author, and the
  * update route only accepts `payload` (the envelope, including `state`, is rebuilt
  * server-side). So the snapshot keeps exactly the facets a boundary violation would
- * have to move — workflow state, ADR-0018 assignee, the ADR-0019 stamped approver and
+ * have to move — workflow state, ADR-0018 responsible, the ADR-0019 stamped approver and
  * department, the ACL readers, the history length — plus the document count (a
  * created or deleted document is also a change). Everything a within-authority edit
  * may touch (payload text, updatedAt, _rev) is deliberately excluded.
@@ -25,7 +25,7 @@ export type LeaveRequestProjection = {
   documents: Array<{
     id: string;
     state: string | null;
-    assignee: string | null;
+    responsible: string[] | null;
     approver: string | null;
     department: string | null;
     readers: string[];
@@ -53,7 +53,7 @@ export async function captureLeaveRequestProjection(
     .map((doc) => ({
       id: doc._id,
       state: doc.state ?? null,
-      assignee: doc.assignee ?? null,
+      responsible: doc.responsible ?? null,
       approver: typeof doc.payload.approver === "string" ? doc.payload.approver : null,
       department: typeof doc.payload.department === "string" ? doc.payload.department : null,
       readers: [...doc.readers].sort(),
@@ -77,7 +77,7 @@ export type DocTypeProjection = {
   documents: Array<{
     id: string;
     state: string | null;
-    assignee: string | null;
+    responsible: string[] | null;
     stamps: Record<string, string | null>;
     readers: string[];
     historyLength: number;
@@ -99,7 +99,7 @@ export async function captureDocTypeProjection(
     .map((doc) => ({
       id: doc._id,
       state: doc.state ?? null,
-      assignee: doc.assignee ?? null,
+      responsible: doc.responsible ?? null,
       stamps: Object.fromEntries(
         stampKeys.map((key) => [key, typeof doc.payload[key] === "string" ? (doc.payload[key] as string) : null])
       ),

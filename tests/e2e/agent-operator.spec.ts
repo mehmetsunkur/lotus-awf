@@ -107,7 +107,7 @@ const test = base.extend<OperatorFixture>({
   }
 });
 
-type Doc = { _id: string; state?: string; assignee?: string | null; readers: string[]; payload: Record<string, unknown> };
+type Doc = { _id: string; state?: string; responsible?: string[] | null; readers: string[]; payload: Record<string, unknown> };
 
 const getDoc = async (context: APIRequestContext, appId: string, id: string): Promise<Doc> => {
   const response = await context.get(`/api/apps/${appId}/documents/${encodeURIComponent(id)}`);
@@ -141,7 +141,7 @@ test.describe("M28 agent operator (FakeDriver)", () => {
     // Submit routed the session to the operator group (ADR-0018 via responsible).
     const requested = await getDoc(page.request, world.ops.agentOpsAppId, session._id);
     expect(requested.state).toBe("requested");
-    expect(requested.assignee).toBe("group:agent-operators");
+    expect(requested.responsible).toEqual(["group:agent-operators"]);
 
     const driver = new FakeDriver({ ok: true, eventsBytes: ARTIFACT_CONTENT_CAP + 1024 });
     const operator = new AgentOperator(world.operatorConfig(), [driver]);
@@ -154,7 +154,7 @@ test.describe("M28 agent operator (FakeDriver)", () => {
     // touches the requester's document except via transitions.)
     const completed = await getDoc(page.request, world.ops.agentOpsAppId, session._id);
     expect(completed.state).toBe("completed");
-    expect(completed.assignee).toBeFalsy();
+    expect(completed.responsible).toBeFalsy();
 
     // Derived prompt: byte-identical to the shared assembly (ADR-0021 hygiene), both
     // as handed to the driver and as persisted in the prompt artifact.
@@ -247,7 +247,7 @@ test.describe("M28 agent operator (FakeDriver)", () => {
     expect(await operator.tick()).toEqual({ kind: "idle" });
 
     // A filed session surfaces in the SAME cross-app read as a requested agent-session
-    // ref (assignee routed to group:agent-operators) — the exact signal the gate keys on.
+    // ref (responsible routed to group:agent-operators) — the exact signal the gate keys on.
     const carol = await world.as("carol");
     const session = await fileAgentSession(carol, world.ops.agentOpsAppId, {
       persona: "person:ivy",

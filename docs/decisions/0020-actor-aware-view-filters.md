@@ -13,6 +13,12 @@ act (`payload.approver`), but a view still cannot say "…and show *me* mine". M
 explicitly deferred this ("actor-aware `My` view filter DSL"); this ADR builds the
 narrow version of it.
 
+**Amended by ADR-0025** (2026-08-08): the `assignee` routing field these `@me` inboxes
+filter on was renamed and widened to `responsible: string[]`. The `@me` mechanism is
+unchanged — `$in` now matches on array element membership (as it already did for
+`readers`), so a heterogeneous responsible set fans out to every member's inbox. Read
+`responsible` wherever the text below says `assignee`.
+
 ## Context
 
 View filters are static data: `{ field, op, value }` with the value baked into the

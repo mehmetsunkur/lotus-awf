@@ -118,28 +118,28 @@ describe("normalizeResolvedPrincipals", () => {
   });
 });
 
-describe("ADR-0018 assignee stamping", () => {
-  it("stamps the resolved assignee (and the hand-off in history) on state entry", () => {
+describe("ADR-0025 responsible stamping (renamed+widened from ADR-0018 assignee)", () => {
+  it("stamps the resolved responsible set (and the hand-off in history) on state entry", () => {
     const result = applyTransition(doc({ state: "draft" }), workflow(), "submit", "person:dave", ["person:dave"], NOW, {
-      assignee: "person:carol"
+      responsible: ["person:carol"]
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.document.assignee).toBe("person:carol");
-      expect(result.document.assignedAt).toBe(NOW);
-      expect(result.document.history?.at(-1)).toMatchObject({ transition: "submit", assignee: "person:carol" });
+      expect(result.document.responsible).toEqual(["person:carol"]);
+      expect(result.document.responsibleAt).toBe(NOW);
+      expect(result.document.history?.at(-1)).toMatchObject({ transition: "submit", responsible: ["person:carol"] });
     }
   });
 
   it("falls back to the target state's static responsible", () => {
     const result = applyTransition(doc({ state: "draft" }), workflow(), "submit", "person:dave", ["person:dave"], NOW);
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.document.assignee).toBe("group:managers");
+    if (result.ok) expect(result.document.responsible).toEqual(["group:managers"]);
   });
 
-  it("clears the assignee on final states even when the state declares a responsible", () => {
+  it("clears the responsible on final states even when the state declares a responsible", () => {
     const result = applyTransition(
-      doc({ assignee: "person:carol", assignedAt: NOW }),
+      doc({ responsible: ["person:carol"], responsibleAt: NOW }),
       workflow(),
       "approve",
       "person:carol",
@@ -148,8 +148,8 @@ describe("ADR-0018 assignee stamping", () => {
     );
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect("assignee" in result.document).toBe(false);
-      expect("assignedAt" in result.document).toBe(false);
+      expect("responsible" in result.document).toBe(false);
+      expect("responsibleAt" in result.document).toBe(false);
     }
   });
 
@@ -157,18 +157,26 @@ describe("ADR-0018 assignee stamping", () => {
     const def = workflow();
     def.states[0] = { ...def.states[0], responsibleFormula: "doc.createdBy" };
     const result = applyTransition(doc(), def, "revise", "person:erin", ["group:managers"], NOW, {
-      assignee: "person:dave"
+      responsible: ["person:dave"]
     });
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.document.assignee).toBe("person:dave");
+    if (result.ok) expect(result.document.responsible).toEqual(["person:dave"]);
   });
 
-  it("a non-principal resolved value normalizes away and the static responsible wins", () => {
+  it("non-principal resolved values normalize away and the static responsible wins", () => {
     const result = applyTransition(doc({ state: "draft" }), workflow(), "submit", "person:dave", ["person:dave"], NOW, {
-      assignee: "not-a-principal"
+      responsible: ["not-a-principal"]
     });
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.document.assignee).toBe("group:managers");
+    if (result.ok) expect(result.document.responsible).toEqual(["group:managers"]);
+  });
+
+  it("preserves multiple resolved principals as a deduped set", () => {
+    const result = applyTransition(doc({ state: "draft" }), workflow(), "submit", "person:dave", ["person:dave"], NOW, {
+      responsible: ["person:carol", "group:managers", "person:carol"]
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.document.responsible).toEqual(["person:carol", "group:managers"]);
   });
 });
 

@@ -254,7 +254,7 @@ test.describe("MCP digital-twin working day", () => {
             return expenses.documents.filter((doc) => doc.state === "submitted").map((doc) => doc.id);
           }
           const mine = persona === "ivy" ? ["group:ground-ops"] : [`person:${persona}`];
-          return flights.documents.filter((doc) => doc.assignee && mine.includes(doc.assignee)).map((doc) => doc.id);
+          return flights.documents.filter((doc) => doc.responsible?.some((r) => mine.includes(r))).map((doc) => doc.id);
         };
 
         for (const shift of SHIFTS) {
@@ -313,7 +313,7 @@ test.describe("MCP digital-twin working day", () => {
         for (const [key, id] of Object.entries(twin.flightDocIds)) {
           const flight = evening.flights.documents.find((doc) => doc.id === id);
           expect(["dispatched", "grounded"], `flight ${key} should be terminal by evening`).toContain(flight?.state);
-          expect(flight?.assignee, `flight ${key} hand-off cleared in a final state (ADR-0018)`).toBeNull();
+          expect(flight?.responsible, `flight ${key} hand-off cleared in a final state (ADR-0018)`).toBeNull();
         }
         expect(evening.background).toEqual(morning.background);
 

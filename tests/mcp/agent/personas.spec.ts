@@ -186,7 +186,7 @@ test.describe("MCP real-agent personas", () => {
   /**
    * Scripted pre-stage: file and submit a leave request through the public API as the
    * given persona (agents perform only the behavior under test). Returns the submitted
-   * document from the transition response — assignee/history already stamped.
+   * document from the transition response — responsible/history already stamped.
    */
   async function fileAndSubmit(
     context: APIRequestContext,
@@ -210,7 +210,7 @@ test.describe("MCP real-agent personas", () => {
     test.describe(driver.name, () => {
       // P1 — dave's agent files and submits a leave request from a natural-language task.
       // The prompt pins the payload values so the oracle can exact-match; everything the
-      // server stamps (approver, department, assignee, readers) is asserted against the
+      // server stamps (approver, department, responsible, readers) is asserted against the
       // ADR-0018/0019 contract, not against anything the agent may have supplied.
       test("files a leave request", async ({ playwright }) => {
         const diagnostics = createDiagnostics(driver);
@@ -249,8 +249,8 @@ test.describe("MCP real-agent personas", () => {
         expect(request.state).toBe("submitted");
         expect(request.payload.approver).toBe("person:carol");
         expect(request.payload.department).toBe("flight-ops");
-        expect(request.assignee).toBe("person:carol");
-        expect(request.assignedAt).toBeTruthy();
+        expect(request.responsible).toEqual(["person:carol"]);
+        expect(request.responsibleAt).toBeTruthy();
 
         // Readers are dave's full principal set (the creator base) plus the form's
         // aclRole:"reader" field, which resolves to group:managers — nothing wider.
@@ -292,7 +292,7 @@ test.describe("MCP real-agent personas", () => {
           to: "2026-09-18",
           reason: "Autumn regatta"
         });
-        expect(daveRequest.assignee, "pre-stage should route dave's request to carol").toBe("person:carol");
+        expect(daveRequest.responsible, "pre-stage should route dave's request to carol").toEqual(["person:carol"]);
 
         const ivy = await as("ivy");
         const ivyRequest = await fileAndSubmit(ivy, app, {
@@ -301,7 +301,7 @@ test.describe("MCP real-agent personas", () => {
           to: "2026-07-14",
           reason: "Dentist follow-up"
         });
-        expect(ivyRequest.assignee, "pre-stage should route ivy's request to hank").toBe("person:hank");
+        expect(ivyRequest.responsible, "pre-stage should route ivy's request to hank").toEqual(["person:hank"]);
         const ivyHistoryBefore = ivyRequest.history?.length ?? 0;
 
         await runPersonaAgent(
@@ -324,14 +324,14 @@ test.describe("MCP real-agent personas", () => {
         expect(daveAfter.stateUpdatedBy).toBe("person:carol");
         const lastEvent = daveAfter.history?.[daveAfter.history.length - 1];
         expect(lastEvent).toMatchObject({ transition: "approve", from: "submitted", to: "approved", by: "person:carol" });
-        expect(daveAfter.assignee).toBeUndefined(); // final states clear the assignment
-        expect(daveAfter.assignedAt).toBeUndefined();
+        expect(daveAfter.responsible).toBeUndefined(); // final states clear the assignment
+        expect(daveAfter.responsibleAt).toBeUndefined();
 
         // Ivy's request is untouched: not carol's assignment, and the ADR-0019 guard
         // refuses her approval even though group:managers lets her read it.
         const ivyAfter = await getDocument(carol, app, ivyRequest._id);
         expect(ivyAfter.state).toBe("submitted");
-        expect(ivyAfter.assignee).toBe("person:hank");
+        expect(ivyAfter.responsible).toEqual(["person:hank"]);
         expect(ivyAfter.history?.length ?? 0, "ivy's request should have no new transitions").toBe(ivyHistoryBefore);
 
         await diagnostics.attachTo(test.info(), true);
@@ -387,7 +387,7 @@ test.describe("MCP real-agent personas", () => {
           diagnostics
         );
 
-        // No security-relevant change: state, assignee, stamped approver/department,
+        // No security-relevant change: state, responsible, stamped approver/department,
         // readers, history length, and document count all match the pre-run snapshot.
         const after = await captureLeaveRequestProjection(carol, app);
         expect(after).toEqual(before);

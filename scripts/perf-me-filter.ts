@@ -187,9 +187,9 @@ function buildSyntheticDocs(options: Options, appId: string): BusinessDocument[]
       stateUpdatedAt: updatedAt,
       stateUpdatedBy: createdBy,
       history: submitted
-        ? [{ transition: "submit", from: "draft", to: "submitted", at: updatedAt, by: createdBy, assignee }]
+        ? [{ transition: "submit", from: "draft", to: "submitted", at: updatedAt, by: createdBy, responsible: [assignee] }]
         : [],
-      ...(submitted ? { assignee, assignedAt: updatedAt } : {})
+      ...(submitted ? { responsible: [assignee], responsibleAt: updatedAt } : {})
     };
   });
 }
@@ -226,7 +226,7 @@ async function explainIndex(
             kind: "document",
             docType: { $eq: "leave-request" },
             state: { $eq: "submitted" },
-            assignee: { $in: principals },
+            responsible: { $in: principals },
             readers: { $in: principals }
           },
           sort: [{ updatedAt: "desc" }],
@@ -315,7 +315,7 @@ function fmtMs(value: number): string {
 function printTable(options: Options, rows: ReturnType<typeof summarize>[], syntheticDocs: BusinessDocument[]): void {
   const submitted = syntheticDocs.filter((doc) => doc.state === "submitted").length;
   const actor = `person:${AIRLINE_PERSONAS[options.persona].username}`;
-  const assigned = syntheticDocs.filter((doc) => doc.assignee === actor).length;
+  const assigned = syntheticDocs.filter((doc) => doc.responsible?.includes(actor)).length;
   const created = syntheticDocs.filter((doc) => doc.createdBy === actor).length;
 
   console.log("@me filter perf (local/dev measurement)");

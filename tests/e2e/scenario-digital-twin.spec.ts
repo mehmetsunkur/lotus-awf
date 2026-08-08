@@ -11,7 +11,7 @@ import {
 /**
  * Scripted assertions over the M27 digital-twin seeded world — no agents involved.
  * Proves the morning state the working-day agent spec (tests/mcp/agent/twin.spec.ts)
- * relies on: staged flight states and organically stamped assignees/heads, the
+ * relies on: staged flight states and organically stamped responsibles/heads, the
  * authorship-scoped KB readability matrix, the expense queue, job descriptions, and
  * the scripted adversarial boundaries. See docs/M27/02-twin-contract.md.
  */
@@ -40,7 +40,7 @@ const test = base.extend<TwinFixture>({
 type Doc = {
   _id: string;
   state?: string;
-  assignee?: string;
+  responsible?: string[];
   readers: string[];
   history?: unknown[];
   payload: Record<string, unknown>;
@@ -64,20 +64,20 @@ const transition = async (context: APIRequestContext, appId: string, docId: stri
   });
 
 test.describe("Digital twin seeded world", () => {
-  test("stages the morning state: flight states, organic assignees, and computed heads", async ({ twin }) => {
+  test("stages the morning state: flight states, organic responsibles, and computed heads", async ({ twin }) => {
     const carol = await twin.as("carol");
     const app = twin.scenario.turnaroundAppId;
 
-    const expectations: Array<{ key: keyof typeof TWIN_FLIGHTS; state: string; assignee: string }> = [
-      { key: "alpha", state: "scheduled", assignee: "person:carol" },
-      { key: "bravo", state: "crew-assigned", assignee: "group:ground-ops" },
-      { key: "charlie", state: "ramp-checked", assignee: "person:hank" },
-      { key: "delta", state: "fueled", assignee: "person:carol" }
+    const expectations: Array<{ key: keyof typeof TWIN_FLIGHTS; state: string; responsible: string[] }> = [
+      { key: "alpha", state: "scheduled", responsible: ["person:carol"] },
+      { key: "bravo", state: "crew-assigned", responsible: ["group:ground-ops"] },
+      { key: "charlie", state: "ramp-checked", responsible: ["person:hank"] },
+      { key: "delta", state: "fueled", responsible: ["person:carol"] }
     ];
     for (const expected of expectations) {
       const flight = await getDoc(carol, app, twin.scenario.flightDocIds[expected.key]);
       expect(flight.state, `${expected.key} state`).toBe(expected.state);
-      expect(flight.assignee, `${expected.key} assignee`).toBe(expected.assignee);
+      expect(flight.responsible, `${expected.key} responsible`).toEqual(expected.responsible);
       // ADR-0019 stamps, resolved from the per-seed org app at create time.
       expect(flight.payload.opsHead, `${expected.key} opsHead`).toBe("person:carol");
       expect(flight.payload.groundHead, `${expected.key} groundHead`).toBe("person:hank");
@@ -98,7 +98,7 @@ test.describe("Digital twin seeded world", () => {
     const carolQueue = await viewDocs(await twin.as("carol"), app, "view:my-queue");
     expect(carolQueue.map((doc) => doc._id).sort()).toEqual([ids.alpha, ids.delta].sort());
 
-    // bravo's assignee is the group principal — ADR-0020 group expansion puts it in
+    // bravo's responsible is the group principal — ADR-0020 group expansion puts it in
     // every ground-ops member's queue (ivy AND hank).
     const ivyQueue = await viewDocs(await twin.as("ivy"), app, "view:my-queue");
     expect(ivyQueue.map((doc) => doc._id)).toEqual([ids.bravo]);
@@ -218,7 +218,7 @@ test.describe("Digital twin seeded world", () => {
     const alpha = await getDoc(carol, app, ids.alpha);
     expect(alpha.state).toBe("dispatched");
     // Final state: hand-off cleared (ADR-0018), history recorded every hop.
-    expect(alpha.assignee).toBeFalsy();
+    expect(alpha.responsible).toBeFalsy();
 
     // Grace works her queue per the finance procedure.
     expect((await transition(grace, "expense", twin.scenario.expenseDocIds.compliant, "approve")).status()).toBe(200);

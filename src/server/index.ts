@@ -1418,10 +1418,11 @@ app.get(
 // persona (the M27/M28 persona-bearer mechanism), exactly as `@me` resolves to the
 // session in ADR-0020.
 //
-// The cheap gate is a single selector per app db: `assignee ∈ principals`. It needs
-// no workflow definition and no explicit final-state filter — `applyTransition`
-// CLEARS `assignee` on entry to a final state (ADR-0018), so a completed/failed
-// document carries no assignee and never matches. `?actionable=true` tightens this
+// The cheap gate is a single selector per app db: `responsible ∈ principals`
+// (ADR-0025: element membership against the array field). It needs no workflow
+// definition and no explicit final-state filter — `applyTransition` CLEARS
+// `responsible` on entry to a final state, so a completed/failed document carries
+// no standing responsibility and never matches. `?actionable=true` tightens this
 // to "has a transition the caller may take right now" by loading the workflow def
 // per docType; `?items=true` returns the document refs for the spawn payload.
 app.get(
@@ -1443,14 +1444,15 @@ app.get(
         const appScope: PrincipalScope = { ...scope, accessLevel: level };
 
         // Bind the existing ACL index (`m2-readers`): the `readers ∈ principals`
-        // predicate is the selective one, and `assignee`/`kind` are in-memory
+        // predicate is the selective one, and `responsible`/`kind` are in-memory
         // predicates on the scanned rows — the ADR-0020 cost class, literally the
         // same index the ACL filter already relies on (no new index; three-site
-        // rule untouched).
+        // rule untouched). `responsible` is an array field, so `$in` matches on
+        // element membership (ADR-0025 §1), exactly like the `readers` predicate.
         const result = await findDocs<BusinessDocument>(
           "local",
           {
-            selector: { kind: "document", assignee: { $in: principals }, ...accessSelector(appScope) },
+            selector: { kind: "document", responsible: { $in: principals }, ...accessSelector(appScope) },
             use_index: "m2-readers",
             limit: 200
           },
@@ -1466,7 +1468,7 @@ app.get(
           for (const doc of readable) {
             if (!defs.has(doc.docType)) defs.set(doc.docType, await workflowForDocType(doc.docType, app.database));
             const def = defs.get(doc.docType);
-            // No workflow for the type ⇒ the assignee stamp is inert; treat it as
+            // No workflow for the type ⇒ the responsible stamp is inert; treat it as
             // non-actionable rather than guessing a transition exists.
             if (def && availableTransitions(doc, def, scope.person, principals).length > 0) actionable.push(doc);
           }
@@ -1483,7 +1485,7 @@ app.get(
                   _id: doc._id,
                   docType: doc.docType,
                   state: doc.state ?? null,
-                  assignedAt: doc.assignedAt ?? null
+                  responsibleAt: doc.responsibleAt ?? null
                 }))
               }
             : {})
@@ -2300,16 +2302,17 @@ app.post(
       response.status(404).json({ error: "not_found", reason: `No workflow for ${existing.docType}` });
       return;
     }
-    // ADR-0018 (gating itself is sync-lane per ADR-0019): resolve the target
-    // state's responsibility in the async formula lane BEFORE the pure engine
-    // runs — under the ACTOR's ACL scope (lookups can only narrow) and against
-    // the LOCAL replica (offline nodes resolve too). Assignment is routing
+    // ADR-0025 (gating itself is sync-lane per ADR-0019): resolve the target
+    // state's standing responsibility in the async formula lane BEFORE the pure
+    // engine runs — under the ACTOR's ACL scope (lookups can only narrow) and
+    // against the LOCAL replica (offline nodes resolve too). The result is a
+    // normalized principal SET (not narrowed to one). Assignment is routing
     // metadata: resolution fails closed and never fails the transition.
     const requested = def.transitions.find((candidate) => candidate.id === request.body.transition);
     const resolved: ResolvedTransitionContext = {};
     const targetState = def.states.find((candidate) => candidate.name === requested?.to);
     if (targetState?.responsibleFormula) {
-      resolved.assignee = normalizeResolvedPrincipals(
+      resolved.responsible = normalizeResolvedPrincipals(
         await evaluateFormulaAsync(targetState.responsibleFormula, {
           payload: existing.payload,
           doc: existing as unknown as Record<string, unknown>,
@@ -2317,7 +2320,7 @@ app.post(
           scope,
           read: makeDbReader()
         })
-      )[0];
+      );
     }
     // Same shared engine the client uses to offer the action — authoritative here (A2/A3).
     const result = applyTransition(existing, def, request.body.transition, scopeUser(scope), principalsFor(scope), timestamp(), resolved);

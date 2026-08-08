@@ -9,11 +9,11 @@ import {
 
 /**
  * ADR-0022: cross-app work-queue API. `GET /api/work-queue` aggregates the
- * ADR-0018 assignee envelope across every installed app for the AUTHENTICATED
+ * ADR-0018 responsible envelope across every installed app for the AUTHENTICATED
  * caller, so a controller can spawn agents on demand instead of polling per-app
  * inbox views (the ADR-0021 operator's motivating consumer). These specs reuse
  * the Agentic Airlines fixture — two workflow apps (leave-request, expense) with
- * real assignee routing and group fan-out.
+ * real responsible routing and group fan-out.
  */
 
 type AirlineFixture = {
@@ -42,7 +42,7 @@ type QueueEntry = {
   appId: string;
   database: string;
   count: number;
-  items?: Array<{ _id: string; docType: string; state: string | null; assignedAt: string | null }>;
+  items?: Array<{ _id: string; docType: string; state: string | null; responsibleAt: string | null }>;
 };
 type Queue = { total: number; byApp: QueueEntry[] };
 
@@ -72,10 +72,10 @@ const entryFor = (queue: Queue, appId: string): QueueEntry | undefined =>
   queue.byApp.find((entry) => entry.appId === appId);
 
 test.describe("ADR-0022 cross-app work queue", () => {
-  test("routes assigned work to the assignee across apps, and clears it on final states", async ({ airline }) => {
+  test("routes assigned work to the responsible across apps, and clears it on final states", async ({ airline }) => {
     const app = airline.scenario.leaveRequestAppId;
 
-    // Dave files and submits: the engine stamps carol (flight-ops head) as assignee.
+    // Dave files and submits: the engine stamps carol (flight-ops head) as responsible.
     const dave = await airline.as("dave");
     const request = await createDoc(dave, app, "leave-request", {
       type: "annual",
@@ -95,7 +95,7 @@ test.describe("ADR-0022 cross-app work queue", () => {
     // The item carries the routing envelope the spawn payload needs.
     const item = carolLeave?.items?.find((candidate) => candidate._id === request._id);
     expect(item?.state).toBe("submitted");
-    expect(item?.assignedAt).toBeTruthy();
+    expect(item?.responsibleAt).toBeTruthy();
 
     // Erin (a different department head) has no claim on this document.
     const erin = await airline.as("erin");
@@ -103,11 +103,11 @@ test.describe("ADR-0022 cross-app work queue", () => {
     expect(erinLeave?.items ?? []).not.toContainEqual(expect.objectContaining({ _id: request._id }));
     expect(erinLeave?.count ?? 0).toBe(0);
 
-    // Dave is the requester, not the assignee — the open request is not HIS work.
+    // Dave is the requester, not the responsible — the open request is not HIS work.
     const daveLeave = entryFor(await workQueue(dave), app);
     expect(daveLeave?.count ?? 0).toBe(0);
 
-    // Approval is a final state: applyTransition CLEARS the assignee, so the
+    // Approval is a final state: applyTransition CLEARS the responsible, so the
     // document leaves carol's queue with no state filter on the query side.
     await transition(carol, app, request._id, "approve");
     const afterApproval = entryFor(await workQueue(carol), app);
@@ -161,7 +161,7 @@ test.describe("ADR-0022 cross-app work queue", () => {
     expect(actionable?.items?.map((item) => item._id)).toContain(request._id);
   });
 
-  test("ACL still wins: an assignee who cannot read the document sees no work", async ({ airline, page }) => {
+  test("ACL still wins: a responsible who cannot read the document sees no work", async ({ airline, page }) => {
     const app = airline.scenario.leaveRequestAppId;
     const ivy = await airline.as("ivy");
     const request = await createDoc(ivy, app, "leave-request", {
@@ -170,10 +170,10 @@ test.describe("ADR-0022 cross-app work queue", () => {
       to: "2026-07-15",
       reason: "ACL precedence"
     });
-    await transition(ivy, app, request._id, "submit"); // assignee = hank (ground-ops head)
+    await transition(ivy, app, request._id, "submit"); // responsible = hank (ground-ops head)
 
     // Hank keeps app access via a person ACL entry but loses DOCUMENT readership
-    // (removed from group:ground-ops). Assignee still matches; canReadDocument does not.
+    // (removed from group:ground-ops). Responsible still matches; canReadDocument does not.
     const access = (await page.request
       .get(`/api/apps/${app}/access`)
       .then((response) => response.json())) as { entries: Array<{ principal: string; level: string }> };
@@ -200,14 +200,14 @@ test.describe("ADR-0022 cross-app work queue", () => {
     const app = airline.scenario.leaveRequestAppId;
     const couchAuth = { authorization: `Basic ${Buffer.from("admin:password").toString("base64")}` };
 
-    // The exact selector the endpoint issues per app db — assignee/readers are
+    // The exact selector the endpoint issues per app db — responsible/readers are
     // in-memory predicates on the kind-prefix scan (ADR-0020 cost class).
     const explain = await page.request.post(`${localCouchUrl}/${app}_app/_explain`, {
       headers: couchAuth,
       data: {
         selector: {
           kind: "document",
-          assignee: { $in: ["person:carol", "group:managers"] },
+          responsible: { $in: ["person:carol", "group:managers"] },
           readers: { $in: ["person:carol", "group:managers"] }
         },
         limit: 200,

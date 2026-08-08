@@ -109,13 +109,13 @@ test.describe("Airline personas over /mcp/workspace", () => {
     expect(session.principals).not.toContain("group:managers");
   });
 
-  test("ADR-0020 @me: the my-approvals inbox routes by assignee per MCP session", async ({
+  test("ADR-0020 @me: the my-approvals inbox routes by responsible per MCP session", async ({
     playwright,
     apiBaseURL
   }) => {
     const scenario = await seedAirline(playwright, apiBaseURL);
 
-    // Pre-staged via the plain API: dave files and submits, assignee = carol
+    // Pre-staged via the plain API: dave files and submits, responsible = carol
     // (ADR-0018/0019 stamp the department head on submit).
     const request = await fileAndSubmit(playwright, apiBaseURL, scenario, "dave", {
       type: "annual",
@@ -134,7 +134,7 @@ test.describe("Airline personas over /mcp/workspace", () => {
     expect(inbox[0].state).toBe("submitted");
     expect(inbox[0].payload).toMatchObject({ approver: "person:carol", department: "flight-ops" });
 
-    // …while erin (a manager, but not the assignee) gets an empty inbox for the
+    // …while erin (a manager, but not the responsible) gets an empty inbox for the
     // SAME view id — `@me` resolved per session identity, not per view.
     const erinMcp = await connectAsPersona(apiBaseURL, "erin");
     const erinInbox = await erinMcp.callJsonTool<Doc[]>("lotus_workspace_query_view", {

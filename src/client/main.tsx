@@ -553,9 +553,9 @@ function WorkflowBar({
       <span className="statePill" data-testid="workflow-state" data-state={state}>
         {stateDef?.label ?? state}
       </span>
-      {doc.assignee ? (
-        <span className="assigneePill" data-testid="workflow-assignee">
-          Assigned to {doc.assignee}
+      {doc.responsible && doc.responsible.length > 0 ? (
+        <span className="assigneePill" data-testid="workflow-responsible">
+          Responsible: {doc.responsible.join(", ")}
         </span>
       ) : null}
       <div className="workflowActions">

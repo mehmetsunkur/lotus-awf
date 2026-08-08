@@ -151,16 +151,16 @@ supplied by the form's `aclRole` fields projected via `rollupAclProjection` in
   read-access check → resolve the target state's `responsibleFormula` in the async lane (actor's
   ACL scope, local replica, fail-closed; assignment never gates) → shared `applyTransition`
   (gating is sync-lane `requiredRole` + guards, guards receiving the actor's `principals`;
-  assignee stamped for the target state) → write **local** Couch; `403` when unreadable, `422` on
+  `responsible: string[]` stamped for the target state) → write **local** Couch; `403` when unreadable, `422` on
   an illegal/refused transition, `409` on a concurrent-write conflict. (M7) After the
   authoritative write, a transition's `action` effect runs best-effort via `runEffect`, surfaced as
   `effects[]`.
-- Work queue (ADR-0022): `GET /api/work-queue` aggregates the ADR-0018 assignee envelope across every
+- Work queue (ADR-0022): `GET /api/work-queue` aggregates the ADR-0018/0025 responsible envelope across every
   `installedApps()` database for the **authenticated caller** (never a `?principal=` — same
   caller-scoping as ADR-0020 `@me`) → `{ total, byApp: [{ appId, database, count, items? }] }`. Per app:
-  skip below-`reader` access (no 403, no leak), then `findDocs` on `{ kind: "document", assignee: {$in:
-  principals}, ...accessSelector }` binding the existing **`m2-readers`** ACL index (no new index; assignee
-  is an in-memory predicate — final states carry no assignee, so completed work never matches) →
+  skip below-`reader` access (no 403, no leak), then `findDocs` on `{ kind: "document", responsible: {$in:
+  principals}, ...accessSelector }` binding the existing **`m2-readers`** ACL index (no new index; responsible
+  is an in-memory predicate matched by array element membership — final states carry no responsible, so completed work never matches) →
   `canReadDocument` post-filter. `?actionable=true` keeps only docs with an available transition
   (`availableTransitions`); `?items=true` returns doc refs for a spawn payload. Motivating consumer: the
   ADR-0021 operator, so a controller spawns agents on demand instead of polling per-app inbox views.
