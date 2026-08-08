@@ -1,7 +1,8 @@
 import { test, expect } from "./support/fixtures";
 
 // form:expense seeds two sections — "Spend" [amount, gross, description, category,
-// vendorId] and "Accounting" [spentAt, reimbursable, notes].
+// vendorId] and "Accounting" [spentAt, reimbursable, notes] — plus the ADR-0024
+// ACL-flagged field `aclReaders` (aclRole=reader), for nine fields in all.
 test.describe("citizen layout studio", () => {
   test("reorders a field within a section and the preview reflects it", async ({ app, page }) => {
     await app.gotoDesigner();
@@ -41,12 +42,12 @@ test.describe("citizen layout studio", () => {
     await page.getByTestId("definition-select").selectOption("form:expense");
 
     const allFields = page.getByTestId("studio-form-sections").getByTestId("studio-form-field");
-    await expect(allFields).toHaveCount(8);
+    await expect(allFields).toHaveCount(9);
 
     await page.getByTestId("studio-section-remove-1").click(); // remove "Accounting"
     await expect(page.getByTestId("studio-section-1")).toBeHidden();
-    // Its fields moved into the remaining section — still 8 fields, none lost.
-    await expect(allFields).toHaveCount(8);
+    // Its fields moved into the remaining section — still 9 fields, none lost.
+    await expect(allFields).toHaveCount(9);
     // spentAt came from the removed section and now renders in the preview
     // (notes stays conditional on amount >= 100, so we assert an unconditional field).
     await expect(page.getByTestId("studio-preview").locator('[data-testid="preview-field-spentAt"]')).toBeVisible();
