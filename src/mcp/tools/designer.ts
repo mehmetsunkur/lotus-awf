@@ -18,12 +18,17 @@ const transitionSchema = z.object({
   action: z.string().optional()
 });
 
-// ADR-0018: per-state responsibility declarations, editable via update_state.patch.
+// ADR-0018/0025: per-state routing declarations, editable via update_state.patch.
+// `responsible`/`responsibleFormula` feed the standing-responsibility set;
+// `assignee`/`assigneeFormula`/`requireAssignee` (ADR-0025 §2) feed the individual.
 const statePatchSchema = z.object({
   label: z.string().min(1).optional(),
   final: z.boolean().optional(),
   responsible: z.string().optional(),
-  responsibleFormula: z.string().optional()
+  responsibleFormula: z.string().optional(),
+  assignee: z.string().optional(),
+  assigneeFormula: z.string().optional(),
+  requireAssignee: z.boolean().optional()
 });
 
 const workflowPatchOperationSchema = z.discriminatedUnion("type", [

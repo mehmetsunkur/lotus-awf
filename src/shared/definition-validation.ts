@@ -237,6 +237,13 @@ function validateAsyncFormula(formula: string | undefined, field: string): Valid
 }
 
 const principalShaped = (value: string) => value.startsWith("person:") || value.startsWith("group:");
+const personShaped = (value: string) => value.startsWith("person:");
+// ADR-0025 D1: `WorkflowState.responsible` is `string | string[]` — a single
+// principal or a non-empty set, every element principal-shaped.
+const responsibleShaped = (value: unknown): boolean =>
+  Array.isArray(value)
+    ? value.length > 0 && value.every((v) => typeof v === "string" && nonEmpty(v) && principalShaped(v))
+    : typeof value === "string" && nonEmpty(value) && principalShaped(value);
 
 function validateTransition(
   transition: WorkflowTransition,
@@ -288,11 +295,37 @@ export function validateWorkflowDefinition(definition: WorkflowDefinition): Vali
     errors.push(...validateDescription(state.description, `states.${index}.description`));
     if (states.has(state.name)) errors.push(error(`states.${index}.name`, `Duplicate state name: ${state.name}`));
     states.add(state.name);
-    // ADR-0018: per-state responsibility declarations.
-    if (state.responsible !== undefined && !(nonEmpty(state.responsible) && principalShaped(state.responsible))) {
-      errors.push(error(`states.${index}.responsible`, "Responsible must be a person: or group: principal"));
+    // ADR-0018/0025: per-state standing-responsibility declaration (a principal or
+    // a non-empty set of principals, D1).
+    if (state.responsible !== undefined && !responsibleShaped(state.responsible)) {
+      errors.push(error(`states.${index}.responsible`, "Responsible must be a person:/group: principal or a non-empty set of them"));
     }
     errors.push(...validateAsyncFormula(state.responsibleFormula, `states.${index}.responsibleFormula`));
+    // ADR-0025 §2: per-state individual-assignee declaration. Static `assignee` is
+    // exactly one PERSON (a group is not an individual and would normalize away at
+    // runtime, so reject it at author time); `assigneeFormula` mirrors the
+    // responsibleFormula sandbox/compile checks.
+    if (state.assignee !== undefined && !(nonEmpty(state.assignee) && personShaped(state.assignee))) {
+      errors.push(error(`states.${index}.assignee`, "Assignee must be a single person: principal"));
+    }
+    errors.push(...validateAsyncFormula(state.assigneeFormula, `states.${index}.assigneeFormula`));
+    // ADR-0025 §2: `requireAssignee` is opt-in fail-closed. Reject it on a final
+    // state (final always clears routing — a contradiction) and on a state that
+    // declares neither `assignee` nor `assigneeFormula` (it would fail every entry).
+    if (state.requireAssignee !== undefined) {
+      if (typeof state.requireAssignee !== "boolean") {
+        errors.push(error(`states.${index}.requireAssignee`, "requireAssignee must be a boolean"));
+      } else if (state.requireAssignee) {
+        if (state.final) {
+          errors.push(error(`states.${index}.requireAssignee`, "requireAssignee cannot be set on a final state (final clears routing)"));
+        }
+        if (state.assignee === undefined && state.assigneeFormula === undefined) {
+          errors.push(
+            error(`states.${index}.requireAssignee`, "requireAssignee needs an assignee or assigneeFormula to resolve an individual")
+          );
+        }
+      }
+    }
   }
   if (!states.has(definition.initialState)) {
     errors.push(error("initialState", `Initial state does not exist: ${definition.initialState}`));

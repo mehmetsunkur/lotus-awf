@@ -196,6 +196,27 @@ export type WorkflowState = {
    */
   responsible?: string | string[];
   responsibleFormula?: string;
+  /**
+   * ADR-0025 §2: the single individual the entered state puts on the document —
+   * the symmetric counterpart to `responsible`. `assignee` is a static declaration
+   * (exactly one `person:*`); `assigneeFormula` (async lane, server-resolved) wins
+   * when both are present. Resolution normalizes to ONE person (an array yields its
+   * first valid element; a `group:*` normalizes away — the individual is a person,
+   * never a group). Stamped as the document's scalar `assignee` on state ENTRY via
+   * a transition (self-claim `assigneeFormula: "user"`, engine-assign a lookup).
+   * Routing metadata, fail-open by default (§2).
+   */
+  assignee?: string;
+  assigneeFormula?: string;
+  /**
+   * ADR-0025 §2: opt-in fail-CLOSED for an assignment state whose whole purpose is
+   * to land on a person (a pickup target) — when set, `applyTransition` REJECTS
+   * entry if no `assignee` resolves (including a `group:*`-only resolution, which
+   * normalizes away), rather than stranding the document with no individual.
+   * Default is fail-open. Rejected at author time on a final state, or on a state
+   * declaring neither `assignee` nor `assigneeFormula` (would fail every entry).
+   */
+  requireAssignee?: boolean;
 };
 
 export type WorkflowTransition = {
@@ -248,6 +269,13 @@ export type TransitionEvent = {
    * scalar `assignee` history stamp.
    */
   responsible?: string[];
+  /**
+   * ADR-0025 §2: the single individual this entry stamped (absent when the entry
+   * cleared it or none resolved) — the repurposed scalar `assignee`, now the
+   * individual fact alongside the widened `responsible` set. Both recorded so
+   * `history[]` stays a complete hand-off log.
+   */
+  assignee?: string;
 };
 
 export type BusinessDocument = {
@@ -285,6 +313,17 @@ export type BusinessDocument = {
    */
   responsible?: string[];
   responsibleAt?: string;
+  /**
+   * ADR-0025 §1: the single individual currently on the document — the repurposed
+   * scalar `assignee`/`assignedAt`. Exactly one `person:*`, stamped ONLY by
+   * `applyTransition` from the target state's resolved/static
+   * `assignee`/`assigneeFormula` (self-claim or engine-assign), via clear-then-stamp
+   * on every entry, cleared on final states. Routing metadata, never a gate; a
+   * `requireAssignee` state rejects entry when none resolves (§2). Absent until an
+   * assigning transition. `assignee in @me` is the individual "My work" filter.
+   */
+  assignee?: string;
+  assignedAt?: string;
 };
 
 /**

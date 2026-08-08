@@ -21,13 +21,15 @@ import { evaluateBoolean } from "./expression";
  * A document with no `state` is treated as the workflow's `initialState`, which
  * keeps every already-replicated M1/M2 document valid (aspect A1).
  *
- * ADR-0025: the engine also owns the standing-responsibility envelope
- * (`responsible: string[]`, `responsibleAt`, `TransitionEvent.responsible`) —
- * the renamed+widened successor to ADR-0018's scalar `assignee`. Routing metadata
- * stamped on state entry from the target state's resolved/static
- * `responsible`/`responsibleFormula` (a principal SET, group fan-out applied per
- * element by the query lane), cleared on final states, and never consulted as a
- * gate.
+ * ADR-0025: the engine owns BOTH routing envelope pairs, stamped on state entry
+ * via clear-then-stamp and cleared on final states, never consulted as a gate:
+ * the standing-responsibility SET (`responsible: string[]`/`responsibleAt`, from
+ * the target state's resolved/static `responsible`/`responsibleFormula`, group
+ * fan-out applied per element by the query lane) and the single individual
+ * (`assignee`/`assignedAt`, from `assignee`/`assigneeFormula`, normalized to one
+ * person). `applyTransition` is the sole writer of both. Routing resolution is
+ * fail-open (never fails a transition) with ONE opt-in exception: a state marked
+ * `requireAssignee` rejects entry when no individual resolves (§2).
  */
 
 /** A principal id the workflow envelope may carry. */
@@ -47,10 +49,26 @@ export function normalizeResolvedPrincipals(value: unknown): string[] {
   return Array.from(new Set(raw));
 }
 
+/**
+ * ADR-0025 §2: normalize an async-formula (or static) result to EXACTLY ONE
+ * individual — the first `person:*` found (an array yields its first person
+ * element; a bare person string is itself). A `group:*` is NOT a person and
+ * normalizes AWAY (returns undefined), as does any non-principal — the individual
+ * is a person, never a group. Mirror of `normalizeResolvedPrincipals` for the
+ * scalar `assignee`; a malformed formula can never stamp a non-person.
+ */
+export function normalizeResolvedAssignee(value: unknown): string | undefined {
+  const isPerson = (v: unknown): v is string => typeof v === "string" && v.startsWith("person:");
+  if (Array.isArray(value)) return value.find(isPerson);
+  return isPerson(value) ? value : undefined;
+}
+
 /** Pre-resolved async-lane inputs (server-side); absent in advisory contexts. */
 export type ResolvedTransitionContext = {
   /** ADR-0025: normalized responsibleFormula result (a principal set) for the TARGET state. */
   responsible?: string[];
+  /** ADR-0025 §2: normalized assigneeFormula result (one person, or none) for the TARGET state. */
+  assignee?: string;
 };
 
 export function currentState(doc: BusinessDocument, def: WorkflowDefinition): string {
@@ -245,10 +263,11 @@ export function applyTransition(
     };
   }
 
-  // ADR-0025: standing responsibility for the entered state — the resolved
-  // `responsibleFormula` set wins, else the target state's static `responsible`
-  // (scalar or set, normalized), else none; final states always clear. Stored as a
-  // deduped principal SET; the empty set is field-absent (never `[]`).
+  // ADR-0025: standing responsibility (the pool set) AND the individual assignee
+  // for the entered state. For each pair the resolved formula wins, else the target
+  // state's static declaration (normalized), else none; final states always clear
+  // both. `responsible` is a deduped principal SET; `assignee` is exactly one
+  // person. Empty set / no person is field-absent (never `[]`, never a stamp).
   const targetState = def.states.find((candidate) => candidate.name === transition.to);
   const resolvedResponsible = normalizeResolvedPrincipals(resolved.responsible);
   const responsible = targetState?.final
@@ -258,19 +277,43 @@ export function applyTransition(
       : normalizeResolvedPrincipals(targetState?.responsible);
   const hasResponsible = responsible.length > 0;
 
+  const assignee = targetState?.final
+    ? undefined
+    : normalizeResolvedAssignee(resolved.assignee) ?? normalizeResolvedAssignee(targetState?.assignee);
+
+  // ADR-0025 §2/§3: opt-in fail-CLOSED. When the target state's whole purpose is to
+  // land on a person (`requireAssignee`) and none resolved — including a `group:*`
+  // that normalized away — reject the transition BEFORE any stamp, rather than
+  // stranding the document in the state with no individual. Never on a final state
+  // (final clears routing; the definition validator also forbids that combination).
+  if (targetState?.requireAssignee && !targetState.final && !assignee) {
+    return {
+      ok: false,
+      errors: [{ field: "state", message: `${transition.label} requires an individual assignee` }]
+    };
+  }
+
   const event: TransitionEvent = {
     transition: transition.id,
     from: state,
     to: transition.to,
     at: now,
     by: user,
-    ...(hasResponsible ? { responsible } : {})
+    ...(hasResponsible ? { responsible } : {}),
+    ...(assignee ? { assignee } : {})
   };
 
-  // Clear-then-stamp on EVERY entry (ADR-0025 §3): drop the prior standing
-  // responsibility, then re-stamp only what the target state declares. Full
-  // replace, never merge — a state with no responsibility genuinely has none.
-  const { responsible: _clearedResponsible, responsibleAt: _clearedResponsibleAt, ...envelope } = doc;
+  // Clear-then-stamp on EVERY entry (ADR-0025 §3): drop BOTH prior routing pairs,
+  // then re-stamp only what the target state declares. Full replace, never merge —
+  // a state with no responsibility/assignee genuinely has none, so a hand-off never
+  // leaves a stale pool or individual lingering on the board.
+  const {
+    responsible: _clearedResponsible,
+    responsibleAt: _clearedResponsibleAt,
+    assignee: _clearedAssignee,
+    assignedAt: _clearedAssignedAt,
+    ...envelope
+  } = doc;
   return {
     ok: true,
     document: {
@@ -279,6 +322,7 @@ export function applyTransition(
       stateUpdatedAt: now,
       stateUpdatedBy: user,
       ...(hasResponsible ? { responsible, responsibleAt: now } : {}),
+      ...(assignee ? { assignee, assignedAt: now } : {}),
       history: [...(doc.history ?? []), event]
     }
   };

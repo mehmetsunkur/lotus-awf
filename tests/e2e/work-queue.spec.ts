@@ -42,7 +42,13 @@ type QueueEntry = {
   appId: string;
   database: string;
   count: number;
-  items?: Array<{ _id: string; docType: string; state: string | null; responsibleAt: string | null }>;
+  items?: Array<{
+    _id: string;
+    docType: string;
+    state: string | null;
+    responsibleAt: string | null;
+    assignedAt: string | null;
+  }>;
 };
 type Queue = { total: number; byApp: QueueEntry[] };
 
@@ -96,6 +102,9 @@ test.describe("ADR-0022 cross-app work queue", () => {
     const item = carolLeave?.items?.find((candidate) => candidate._id === request._id);
     expect(item?.state).toBe("submitted");
     expect(item?.responsibleAt).toBeTruthy();
+    // The submitted state routes by pool only — no individual was stamped, so the
+    // two routing facts are independent (ADR-0025 §2).
+    expect(item?.assignedAt).toBeNull();
 
     // Erin (a different department head) has no claim on this document.
     const erin = await airline.as("erin");
@@ -112,6 +121,55 @@ test.describe("ADR-0022 cross-app work queue", () => {
     await transition(carol, app, request._id, "approve");
     const afterApproval = entryFor(await workQueue(carol), app);
     expect(afterApproval?.items ?? []).not.toContainEqual(expect.objectContaining({ _id: request._id }));
+  });
+
+  test("routes work matched ONLY by the individual assignee (ADR-0025 §5 union)", async ({ airline, page }) => {
+    const app = airline.scenario.leaveRequestAppId;
+
+    // Re-point the `submitted` state to route by an INDIVIDUAL instead of the pool:
+    // drop the responsible declarations, add an assigneeFormula. A designer-level
+    // definition edit, the same mechanism the scenario itself uses (ADR-0025 §2).
+    const defs = (await page.request
+      .get(`/api/apps/${app}/definitions`)
+      .then((response) => response.json())) as { workflows: Array<{ _id: string; states: Array<Record<string, unknown>> }> };
+    const wf = defs.workflows.find((definition) => definition._id === "workflow:leave-request");
+    if (!wf) throw new Error("leave-request app is missing workflow:leave-request");
+    wf.states = wf.states.map((state) =>
+      state.name === "submitted"
+        ? { name: "submitted", label: "Submitted", assigneeFormula: "payload.approver" }
+        : state
+    );
+    const put = await page.request.put(
+      `/api/apps/${app}/definitions/${encodeURIComponent("workflow:leave-request")}`,
+      { data: wf }
+    );
+    expect(put.status(), "workflow definition edit should succeed").toBe(200);
+
+    // Dave files and submits: the engine stamps carol as the individual assignee,
+    // and — crucially — leaves `responsible` field-absent.
+    const dave = await airline.as("dave");
+    const request = await createDoc(dave, app, "leave-request", {
+      type: "annual",
+      from: "2026-11-09",
+      to: "2026-11-13",
+      reason: "Assignee-only routing"
+    });
+    await transition(dave, app, request._id, "submit");
+
+    // Carol's queue contains it, matched purely by the assignee union arm.
+    const carol = await airline.as("carol");
+    const carolLeave = entryFor(await workQueue(carol, "?items=true"), app);
+    const item = carolLeave?.items?.find((candidate) => candidate._id === request._id);
+    expect(item, "carol is the individual assignee").toBeTruthy();
+    expect(item?.assignedAt).toBeTruthy();
+    expect(item?.responsibleAt).toBeNull();
+
+    // Erin — a manager (in group:managers) who is NOT the assignee — has no claim:
+    // the old pool arm would have matched her, the assignee arm does not.
+    const erin = await airline.as("erin");
+    const erinLeave = entryFor(await workQueue(erin), app);
+    expect(erinLeave?.items ?? []).not.toContainEqual(expect.objectContaining({ _id: request._id }));
+    expect(erinLeave?.count ?? 0).toBe(0);
   });
 
   test("group-valued assignments fan out to every member's queue", async ({ airline, page }) => {
@@ -200,14 +258,16 @@ test.describe("ADR-0022 cross-app work queue", () => {
     const app = airline.scenario.leaveRequestAppId;
     const couchAuth = { authorization: `Basic ${Buffer.from("admin:password").toString("base64")}` };
 
-    // The exact selector the endpoint issues per app db — responsible/readers are
-    // in-memory predicates on the kind-prefix scan (ADR-0020 cost class).
+    // The exact selector the endpoint issues per app db (ADR-0025 §5): only
+    // `kind` + the ACL `readers` predicate bind the index — the routing union
+    // (`responsible ∪ assignee`) is an in-memory OR on the scanned rows, so it is
+    // deliberately absent from the Mango selector (a single index cannot express
+    // that OR across two fields).
     const explain = await page.request.post(`${localCouchUrl}/${app}_app/_explain`, {
       headers: couchAuth,
       data: {
         selector: {
           kind: "document",
-          responsible: { $in: ["person:carol", "group:managers"] },
           readers: { $in: ["person:carol", "group:managers"] }
         },
         limit: 200,

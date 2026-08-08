@@ -62,6 +62,7 @@ import {
   applyTransition,
   availableTransitions,
   currentState,
+  normalizeResolvedAssignee,
   normalizeResolvedPrincipals,
   transitionAffordances,
   type ResolvedTransitionContext
@@ -1444,23 +1445,32 @@ app.get(
         const appScope: PrincipalScope = { ...scope, accessLevel: level };
 
         // Bind the existing ACL index (`m2-readers`): the `readers ∈ principals`
-        // predicate is the selective one, and `responsible`/`kind` are in-memory
-        // predicates on the scanned rows — the ADR-0020 cost class, literally the
-        // same index the ACL filter already relies on (no new index; three-site
-        // rule untouched). `responsible` is an array field, so `$in` matches on
-        // element membership (ADR-0025 §1), exactly like the `readers` predicate.
+        // predicate is the selective one, and `kind` plus the routing union are
+        // in-memory predicates on the scanned rows — the ADR-0020 cost class,
+        // literally the same index the ACL filter already relies on (no new index;
+        // three-site rule untouched). ADR-0025 §5: the work queue is the UNION of
+        // both routing facts (`responsible ∪ assignee`); a Mango selector cannot
+        // express that OR across two fields against a single index, so the selector
+        // binds `m2-readers`+`kind` only and the union runs in memory.
         const result = await findDocs<BusinessDocument>(
           "local",
           {
-            selector: { kind: "document", responsible: { $in: principals }, ...accessSelector(appScope) },
+            selector: { kind: "document", ...accessSelector(appScope) },
             use_index: "m2-readers",
             limit: 200
           },
           app.database
         );
         // ACL post-filter mirrors every list route: the Mango `readers` predicate
-        // is a coarse gate; `canReadDocument` is the authority.
-        let readable = result.docs.filter((doc) => canReadDocument(doc, appScope));
+        // is a coarse gate; `canReadDocument` is the authority. Then narrow to the
+        // routing union — the pool set OR the individual is on this actor.
+        let readable = result.docs
+          .filter((doc) => canReadDocument(doc, appScope))
+          .filter(
+            (doc) =>
+              (Array.isArray(doc.responsible) && doc.responsible.some((r) => principals.includes(r))) ||
+              (typeof doc.assignee === "string" && principals.includes(doc.assignee))
+          );
 
         if (wantActionable) {
           const defs = new Map<string, WorkflowDefinition | null>();
@@ -1485,7 +1495,8 @@ app.get(
                   _id: doc._id,
                   docType: doc.docType,
                   state: doc.state ?? null,
-                  responsibleAt: doc.responsibleAt ?? null
+                  responsibleAt: doc.responsibleAt ?? null,
+                  assignedAt: doc.assignedAt ?? null
                 }))
               }
             : {})
@@ -2314,6 +2325,21 @@ app.post(
     if (targetState?.responsibleFormula) {
       resolved.responsible = normalizeResolvedPrincipals(
         await evaluateFormulaAsync(targetState.responsibleFormula, {
+          payload: existing.payload,
+          doc: existing as unknown as Record<string, unknown>,
+          user: scopeUser(scope),
+          scope,
+          read: makeDbReader()
+        })
+      );
+    }
+    // ADR-0025 §2: the individual assignee resolves in the same async lane, under
+    // the same actor scope / local replica, normalized to EXACTLY ONE person. Same
+    // fail-open posture, save the opt-in `requireAssignee` exception the pure engine
+    // enforces (a state that must land on a person rejects entry when none resolves).
+    if (targetState?.assigneeFormula) {
+      resolved.assignee = normalizeResolvedAssignee(
+        await evaluateFormulaAsync(targetState.assigneeFormula, {
           payload: existing.payload,
           doc: existing as unknown as Record<string, unknown>,
           user: scopeUser(scope),

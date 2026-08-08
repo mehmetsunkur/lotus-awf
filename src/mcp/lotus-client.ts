@@ -30,6 +30,7 @@ export type WorkQueueItem = {
   docType: string;
   state: string | null;
   responsibleAt: string | null;
+  assignedAt: string | null;
 };
 
 /** Per-app slice of the cross-app work queue (ADR-0022). Apps below `reader` are absent. */

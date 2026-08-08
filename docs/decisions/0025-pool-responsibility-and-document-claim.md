@@ -4,7 +4,7 @@ Date: 2026-08-08
 
 ## Status
 
-Proposed.
+Accepted.
 
 Splits the ADR-0018 assignment envelope into two orthogonal, engine-stamped routing facts under
 their honest names — the standing/pool **responsibility** and the **individual assignment** —
