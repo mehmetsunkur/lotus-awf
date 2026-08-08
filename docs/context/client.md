@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `1cd5ee9`
-- Last reviewed date: `2026-07-22`
+- Last code review baseline: `b18f9ff`
+- Last reviewed date: `2026-08-08`
 - Code areas:
   - `src/client/**`
 - Tests:
@@ -68,8 +68,11 @@ resolution panel, and M18 login/logout.
   from `GET .../documents/:id/formulas` when the selected form has formula fields (server-resolved,
   ACL-scoped, may read other apps). Excluded from the editable draft/validation/payload, so the edit path
   stays offline; the derived value is display-only and blank offline.
-- Transition (M3) → `WorkflowBar` renders `availableTransitions` (shared engine) → `POST
-  /api/documents/:id/transition` → refresh.
+- Transition (M3) → `WorkflowBar` renders the state pill plus, read-only beside it, the two
+  ADR-0025 routing facts when present — a `workflow-responsible` pill ("Responsible: …", the joined
+  pool `responsible[]`) and a `workflow-assignee` pill ("Assigned: …", the individual `assignee`) —
+  then `availableTransitions` (shared engine) → `POST /api/documents/:id/transition` → refresh. The
+  pills are display-only mirrors of engine-stamped fields; the client never writes them.
 - Authoring (M4/M16) → Designer workspace left pane lists forms/views/workflows; structured controls
   update the JSON definition in memory → shared `validateDesignDefinition` runs client-side →
   `PUT /api/definitions/:id` (local replica) → refresh.

@@ -558,6 +558,11 @@ function WorkflowBar({
           Responsible: {doc.responsible.join(", ")}
         </span>
       ) : null}
+      {doc.assignee ? (
+        <span className="assigneePill" data-testid="workflow-assignee">
+          Assigned: {doc.assignee}
+        </span>
+      ) : null}
       <div className="workflowActions">
         {actions.map((transition) => (
           <button

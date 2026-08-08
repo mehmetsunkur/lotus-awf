@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `1cd5ee9`
-- Last reviewed date: `2026-07-24`
+- Last code review baseline: `b18f9ff`
+- Last reviewed date: `2026-08-08`
 - Code areas:
   - `src/server/**`
   - `scripts/**`
@@ -147,21 +147,25 @@ supplied by the form's `aclRole` fields projected via `rollupAclProjection` in
 - Search (M9): the same endpoint with `?q=` applies the shared `searchDocuments` matcher **after** the
   `canReadDocument` ACL filter (loading the view's form from local Couch), so search narrows the
   ACL-scoped set and never widens it. No new Mango index; the matcher runs in-memory over the candidates.
-- Transition (M3/M5/M18, ADR-0018/0019): `POST /api/documents/:id/transition` → session +
-  read-access check → resolve the target state's `responsibleFormula` in the async lane (actor's
-  ACL scope, local replica, fail-closed; assignment never gates) → shared `applyTransition`
-  (gating is sync-lane `requiredRole` + guards, guards receiving the actor's `principals`;
-  `responsible: string[]` stamped for the target state) → write **local** Couch; `403` when unreadable, `422` on
-  an illegal/refused transition, `409` on a concurrent-write conflict. (M7) After the
+- Transition (M3/M5/M18, ADR-0018/0019/0025): `POST /api/documents/:id/transition` → session +
+  read-access check → resolve the target state's `responsibleFormula` AND `assigneeFormula` in the
+  async lane (actor's ACL scope, local replica, fail-closed; routing never gates) → shared
+  `applyTransition` (gating is sync-lane `requiredRole` + guards, guards receiving the actor's
+  `principals`; both `responsible: string[]` and the scalar `assignee` clear-then-stamped for the
+  target state) → write **local** Couch; `403` when unreadable, `422` on an illegal/refused
+  transition (including a `requireAssignee` state whose `assigneeFormula` resolves empty), `409` on
+  a concurrent-write conflict. Pickup ("claim") is an ordinary transition, not a new op. (M7) After the
   authoritative write, a transition's `action` effect runs best-effort via `runEffect`, surfaced as
   `effects[]`.
-- Work queue (ADR-0022): `GET /api/work-queue` aggregates the ADR-0018/0025 responsible envelope across every
-  `installedApps()` database for the **authenticated caller** (never a `?principal=` — same
-  caller-scoping as ADR-0020 `@me`) → `{ total, byApp: [{ appId, database, count, items? }] }`. Per app:
-  skip below-`reader` access (no 403, no leak), then `findDocs` on `{ kind: "document", responsible: {$in:
-  principals}, ...accessSelector }` binding the existing **`m2-readers`** ACL index (no new index; responsible
-  is an in-memory predicate matched by array element membership — final states carry no responsible, so completed work never matches) →
-  `canReadDocument` post-filter. `?actionable=true` keeps only docs with an available transition
+- Work queue (ADR-0022/0025): `GET /api/work-queue` aggregates the routing pair (pool `responsible`
+  ∪ individual `assignee`) across every `installedApps()` database for the **authenticated caller**
+  (never a `?principal=` — same caller-scoping as ADR-0020 `@me`) → `{ total, byApp: [{ appId,
+  database, count, items? }] }`. Per app: skip below-`reader` access (no 403, no leak), then a single
+  `findDocs` bound to the **`m2-readers`** ACL index (`accessSelector` only — NEITHER routing field
+  appears in the Mango selector), with the union `responsible ∋ principal OR assignee ∈ principals`
+  applied as an **in-memory** predicate over the scan (a row matching both arms is returned once;
+  items carry both `responsibleAt` and `assignedAt`; final states clear both, so completed work never
+  matches) → `canReadDocument` post-filter. `?actionable=true` keeps only docs with an available transition
   (`availableTransitions`); `?items=true` returns doc refs for a spawn payload. Motivating consumer: the
   ADR-0021 operator, so a controller spawns agents on demand instead of polling per-app inbox views.
 - Compute (M7): `POST/PUT /api/documents` apply `applyComputedFields` (shared) so computed fields are

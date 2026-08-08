@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `1cd5ee9`
-- Last reviewed date: `2026-07-24`
+- Last code review baseline: `b18f9ff`
+- Last reviewed date: `2026-08-08`
 - Code areas:
   - `src/shared/**`
 - Tests:
@@ -156,12 +156,19 @@ absent = editable) orthogonal to the datatype; `src/shared/validation.ts` splits
 and server-owned values skip defaults, coercion, and user-input validation. Guards
 receive the actor's `principals` (5th sync-expression arg), so per-document gating —
 `principals.includes(payload.approver)` — lives in the parity lane; offering and
-enforcement are exact. `src/shared/workflow.ts` owns the responsibility envelope
-(`responsible: string[]`/`responsibleAt` stamped on state entry, cleared on final states —
-the empty set stored field-absent, never `[]` — hand-offs in `history[]`; ADR-0025
-renamed+widened these from the former scalar `assignee`/`assignedAt`, matched by array
-element membership, with the individual-`assignee` pair returning in Stage 2). Definition validation enforces the mode/field matrix and rejects the
-superseded `approverFormula`.
+enforcement are exact. `src/shared/workflow.ts` owns **two** engine-stamped routing facts,
+both written solely by `applyTransition` via clear-then-stamp on every state entry (full
+replace, never merge; both cleared on final states; the empty set / absent person stored
+field-absent, never `[]`, never an empty stamp): the standing/pool **responsibility**
+(`responsible: string[]`/`responsibleAt`, from `responsibleFormula`, matched by array
+element membership) and the individual **assignment** (`assignee`/`assignedAt`, scalar, from
+`assigneeFormula`). ADR-0025 split these from the former single `assignee`/`assignedAt`
+envelope, feeding each from a symmetric per-state formula; hand-offs land in `history[]`.
+`requireAssignee` is the one opt-in fail-closed exception to "routing failure never fails a
+transition" — a `group:*` normalizes away and does not satisfy it; validation rejects it on
+final states and on states declaring neither `assignee` nor `assigneeFormula`. Individual
+pickup ("claim") is an ordinary transition, not a new engine op. Definition validation
+enforces the mode/field matrix and rejects the superseded `approverFormula`.
 
 ADR-0024 adds a third orthogonal `FormField` axis, `aclRole:"reader"|"author"` — the
 Notes-style Readers/Authors flag. It is COMPUTED-ONLY (`definition-validation.ts` rejects an
