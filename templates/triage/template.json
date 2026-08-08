@@ -1,0 +1,398 @@
+{
+  "kind": "template",
+  "templateId": "sample:triage",
+  "appId": "triage",
+  "version": "sample",
+  "createdAt": "2026-08-08T00:00:00.000Z",
+  "createdBy": "system:seed",
+  "source": "templates/triage/template.json",
+  "definitions": [
+    {
+      "_id": "acl:rules",
+      "kind": "acl",
+      "appId": "triage",
+      "policy": "triage.nsf: a support backlog owned by a pool (ADR-0025). Anyone files a ticket; the triage team holds the backlog collectively (responsible = group:triage) and a member picks one up by claiming it into in-progress, where the engine stamps that member as the individual assignee. The pool survives pickup: teammates keep seeing claimed work via responsible in @me, while the claimant sees it in assignee in @me. Neither field is enforcement — who may claim/resolve stays in requiredRole.",
+      "entries": [
+        {
+          "principal": "group:admins",
+          "level": "manager"
+        },
+        {
+          "principal": "group:triage",
+          "level": "editor"
+        },
+        {
+          "principal": "group:employees",
+          "level": "author"
+        }
+      ]
+    },
+    {
+      "_id": "app:config",
+      "kind": "app",
+      "appId": "triage",
+      "title": "Triage Board",
+      "description": "A pooled support backlog: employees file tickets, the triage team owns the queue collectively, and a member claims a ticket to become its individual owner. Demonstrates ADR-0025 standing responsibility (the pool) versus individual assignment (the claimant).",
+      "database": "triage_app"
+    },
+    {
+      "_id": "audit:policy",
+      "kind": "auditpolicy",
+      "appId": "triage",
+      "retentionDays": 365
+    },
+    {
+      "_id": "form:ticket",
+      "kind": "form",
+      "appId": "triage",
+      "docType": "ticket",
+      "title": "Ticket",
+      "description": "A support ticket filed against the triage backlog: what is wrong, how urgent, and — once picked up — which team member owns it.",
+      "sections": [
+        {
+          "title": "Report",
+          "fields": [
+            "summary",
+            "detail",
+            "priority"
+          ]
+        }
+      ],
+      "fields": [
+        {
+          "name": "summary",
+          "type": "text",
+          "label": "Summary",
+          "required": true,
+          "searchable": true,
+          "helpText": "One-line description of the problem."
+        },
+        {
+          "name": "detail",
+          "type": "textarea",
+          "label": "Detail",
+          "searchable": true,
+          "helpText": "Steps to reproduce, context, and anything the triage team needs to act."
+        },
+        {
+          "name": "priority",
+          "type": "select",
+          "label": "Priority",
+          "required": true,
+          "defaultValue": "normal",
+          "options": [
+            {
+              "label": "Urgent",
+              "value": "urgent"
+            },
+            {
+              "label": "Normal",
+              "value": "normal"
+            },
+            {
+              "label": "Low",
+              "value": "low"
+            }
+          ]
+        },
+        {
+          "name": "aclReaders",
+          "type": "text",
+          "label": "Readers",
+          "aclRole": "reader",
+          "mode": "computed-once",
+          "formula": "[\"group:triage\",\"group:managers\"]"
+        }
+      ]
+    },
+    {
+      "_id": "view:backlog",
+      "kind": "view",
+      "appId": "triage",
+      "docType": "ticket",
+      "title": "Unclaimed Backlog",
+      "columns": [
+        {
+          "field": "payload.summary",
+          "label": "Summary"
+        },
+        {
+          "field": "payload.priority",
+          "label": "Priority"
+        },
+        {
+          "field": "responsibleAt",
+          "label": "In backlog since"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "ticket"
+        },
+        {
+          "field": "state",
+          "op": "eq",
+          "value": "backlog"
+        },
+        {
+          "field": "responsible",
+          "op": "in",
+          "value": "@me"
+        }
+      ],
+      "sort": [
+        {
+          "field": "responsibleAt",
+          "direction": "asc"
+        }
+      ]
+    },
+    {
+      "_id": "view:team-queue",
+      "kind": "view",
+      "appId": "triage",
+      "docType": "ticket",
+      "title": "My Team's Queue",
+      "columns": [
+        {
+          "field": "payload.summary",
+          "label": "Summary"
+        },
+        {
+          "field": "payload.priority",
+          "label": "Priority"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        },
+        {
+          "field": "assignee",
+          "label": "Owner"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "ticket"
+        },
+        {
+          "field": "responsible",
+          "op": "in",
+          "value": "@me"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "asc"
+        }
+      ]
+    },
+    {
+      "_id": "view:my-work",
+      "kind": "view",
+      "appId": "triage",
+      "docType": "ticket",
+      "title": "My Work",
+      "columns": [
+        {
+          "field": "payload.summary",
+          "label": "Summary"
+        },
+        {
+          "field": "payload.priority",
+          "label": "Priority"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        },
+        {
+          "field": "assignedAt",
+          "label": "Claimed"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "ticket"
+        },
+        {
+          "field": "assignee",
+          "op": "in",
+          "value": "@me"
+        }
+      ],
+      "sort": [
+        {
+          "field": "assignedAt",
+          "direction": "asc"
+        }
+      ]
+    },
+    {
+      "_id": "view:all-tickets",
+      "kind": "view",
+      "appId": "triage",
+      "docType": "ticket",
+      "title": "All Tickets",
+      "columns": [
+        {
+          "field": "payload.summary",
+          "label": "Summary"
+        },
+        {
+          "field": "payload.priority",
+          "label": "Priority"
+        },
+        {
+          "field": "state",
+          "label": "State"
+        },
+        {
+          "field": "responsible",
+          "label": "Pool"
+        },
+        {
+          "field": "assignee",
+          "label": "Owner"
+        },
+        {
+          "field": "updatedAt",
+          "label": "Updated"
+        }
+      ],
+      "filters": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "document"
+        },
+        {
+          "field": "docType",
+          "op": "eq",
+          "value": "ticket"
+        }
+      ],
+      "sort": [
+        {
+          "field": "updatedAt",
+          "direction": "desc"
+        }
+      ]
+    },
+    {
+      "_id": "workflow:ticket",
+      "kind": "workflow",
+      "appId": "triage",
+      "docType": "ticket",
+      "title": "Ticket Triage",
+      "description": "A ticket's life on the backlog: filed into the pool, claimed by a triage member (who becomes its individual owner), and resolved — or returned to the pool, which clears the individual and puts it back up for grabs.",
+      "initialState": "new",
+      "states": [
+        {
+          "name": "new",
+          "label": "New",
+          "description": "Just filed; not yet on the triage backlog. No routing until it is filed into the pool."
+        },
+        {
+          "name": "backlog",
+          "label": "Backlog",
+          "description": "On the shared triage backlog: the pool is accountable (responsible = group:triage) and no individual owns it yet. Up for grabs.",
+          "responsibleFormula": "\"group:triage\""
+        },
+        {
+          "name": "in-progress",
+          "label": "In progress",
+          "description": "Claimed by a triage member. The pool stays accountable (responsibleFormula re-declares it, so teammates still see it) while the claimant is stamped as the individual owner (assigneeFormula: user). requireAssignee makes the claim fail-closed: entry is rejected if no individual resolves, so a claimed ticket never lands owner-less.",
+          "responsibleFormula": "\"group:triage\"",
+          "assigneeFormula": "user",
+          "requireAssignee": true
+        },
+        {
+          "name": "resolved",
+          "label": "Resolved",
+          "description": "Work is done. Terminal — the engine clears both the pool and the individual (nothing is owed on a done ticket).",
+          "final": true
+        },
+        {
+          "name": "cancelled",
+          "label": "Cancelled",
+          "description": "Withdrawn without resolution (from any non-final state). Terminal; clears all routing.",
+          "final": true
+        }
+      ],
+      "transitions": [
+        {
+          "id": "file",
+          "label": "File to backlog",
+          "description": "Move a new ticket onto the shared triage backlog. Stamps the pool as responsible; leaves it unowned.",
+          "from": "new",
+          "to": "backlog",
+          "guard": "!!payload.summary",
+          "action": "audit-transition"
+        },
+        {
+          "id": "claim",
+          "label": "Claim",
+          "description": "A triage member picks up a backlog ticket, becoming its individual owner. Pickup is an ordinary transition (ADR-0025 §4) gated by pool membership via requiredRole — no bespoke claim operation.",
+          "from": "backlog",
+          "to": "in-progress",
+          "requiredRole": "group:triage",
+          "action": "audit-transition"
+        },
+        {
+          "id": "return-to-backlog",
+          "label": "Return to backlog",
+          "description": "Put a claimed ticket back on the shared backlog. Clear-then-stamp clears the individual owner (backlog declares no assigneeFormula) while re-stamping the pool, so it is up for grabs again and off the returner's My Work.",
+          "from": "in-progress",
+          "to": "backlog",
+          "requiredRole": "group:triage",
+          "action": "audit-transition"
+        },
+        {
+          "id": "resolve",
+          "label": "Resolve",
+          "description": "Close a claimed ticket. Final state clears both the pool and the individual.",
+          "from": "in-progress",
+          "to": "resolved",
+          "requiredRole": "group:triage",
+          "action": "audit-transition"
+        },
+        {
+          "id": "cancel",
+          "label": "Cancel",
+          "description": "Withdraw a ticket from any non-final state.",
+          "from": "*",
+          "to": "cancelled",
+          "requiredRole": "group:triage",
+          "action": "audit-transition"
+        }
+      ]
+    }
+  ]
+}

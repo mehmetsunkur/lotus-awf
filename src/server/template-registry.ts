@@ -74,6 +74,13 @@ const SAMPLE_TEMPLATES: Record<string, SampleTemplateFiles> = {
     appId: "agent-ops",
     title: "Agent operations sample",
     description: "Agent sessions as documents: request, claim, run, and audit autonomous agent shifts."
+  },
+  "sample:triage": {
+    templatePath: "templates/triage/template.json",
+    sampleDataPath: "templates/triage/sample-data.json",
+    appId: "triage",
+    title: "Triage board sample",
+    description: "A pooled support backlog: the triage team owns the queue collectively; a member claims a ticket to become its individual owner (ADR-0025 responsible vs. assignee)."
   }
 };
 

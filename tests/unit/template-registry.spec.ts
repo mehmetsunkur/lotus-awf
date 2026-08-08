@@ -200,6 +200,64 @@ describe("sample template registry", () => {
     ]);
   });
 
+  it("lists and loads the Triage board template as design docs plus separate sample data", () => {
+    expect(listSampleTemplates()).toEqual(
+      expect.arrayContaining([
+        {
+          templateId: "sample:triage",
+          appId: "triage",
+          title: "Triage board sample",
+          description:
+            "A pooled support backlog: the triage team owns the queue collectively; a member claims a ticket to become its individual owner (ADR-0025 responsible vs. assignee)."
+        }
+      ])
+    );
+
+    const sample = loadSampleTemplate("sample:triage");
+
+    expect(sample.template.templateId).toBe("sample:triage");
+    expect(sample.template.definitions.every((definition) => definition.kind !== "document")).toBe(true);
+    expect(sample.template.definitions.map((definition) => definition._id).sort()).toEqual([
+      "acl:rules",
+      "app:config",
+      "audit:policy",
+      "form:ticket",
+      "view:all-tickets",
+      "view:backlog",
+      "view:my-work",
+      "view:team-queue",
+      "workflow:ticket"
+    ]);
+    expect(sample.sampleData.map((doc) => doc._id).sort()).toEqual([
+      "doc:ticket:sample-backlog",
+      "doc:ticket:sample-new"
+    ]);
+    // ADR-0025: the pool/individual split lives on the workflow states — `backlog`
+    // declares only the standing responsibility; `in-progress` adds the individual
+    // (assigneeFormula) and is fail-closed (requireAssignee). Statically checkable.
+    const workflow = sample.template.definitions.find((definition) => definition._id === "workflow:ticket") as {
+      states: Array<{ name: string; responsibleFormula?: string; assigneeFormula?: string; requireAssignee?: boolean }>;
+    };
+    const backlog = workflow.states.find((state) => state.name === "backlog");
+    expect(backlog?.responsibleFormula).toBe('"group:triage"');
+    expect(backlog?.assigneeFormula).toBeUndefined();
+    const inProgress = workflow.states.find((state) => state.name === "in-progress");
+    expect(inProgress?.responsibleFormula).toBe('"group:triage"');
+    expect(inProgress?.assigneeFormula).toBe("user");
+    expect(inProgress?.requireAssignee).toBe(true);
+    // The three ADR-0025 §5 worklist views plus an all-tickets overview.
+    const filterField = (viewId: string, field: string) => {
+      const view = sample.template.definitions.find((definition) => definition._id === viewId) as {
+        filters: Array<{ field: string; op: string; value: unknown }>;
+      };
+      return view.filters.find((filter) => filter.field === field);
+    };
+    expect(filterField("view:team-queue", "responsible")).toEqual({ field: "responsible", op: "in", value: "@me" });
+    expect(filterField("view:my-work", "assignee")).toEqual({ field: "assignee", op: "in", value: "@me" });
+    expect(filterField("view:backlog", "state")).toEqual({ field: "state", op: "eq", value: "backlog" });
+    expect(filterField("view:backlog", "responsible")).toEqual({ field: "responsible", op: "in", value: "@me" });
+  });
+
   it("keeps seedDocuments compatible with the JSON sample artifacts", () => {
     expect(seedDocuments()).toEqual(sampleTemplateDocuments("sample:expense"));
   });

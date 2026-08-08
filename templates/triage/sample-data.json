@@ -1,0 +1,56 @@
+[
+  {
+    "_id": "doc:ticket:sample-new",
+    "kind": "document",
+    "appId": "triage",
+    "docType": "ticket",
+    "createdAt": "2026-08-08T00:00:00.000Z",
+    "updatedAt": "2026-08-08T00:00:00.000Z",
+    "createdBy": "person:dave",
+    "updatedBy": "person:dave",
+    "readers": [
+      "person:dave",
+      "group:triage",
+      "group:managers"
+    ],
+    "authors": [
+      "person:dave"
+    ],
+    "payload": {
+      "summary": "Login page returns 500 after password reset",
+      "detail": "Reset the password, then the login form 500s on submit. Reproduces on Chrome and Firefox.",
+      "priority": "urgent"
+    },
+    "state": "new"
+  },
+  {
+    "_id": "doc:ticket:sample-backlog",
+    "kind": "document",
+    "appId": "triage",
+    "docType": "ticket",
+    "createdAt": "2026-08-07T00:00:00.000Z",
+    "updatedAt": "2026-08-07T12:00:00.000Z",
+    "createdBy": "person:erin",
+    "updatedBy": "person:erin",
+    "readers": [
+      "person:erin",
+      "group:triage",
+      "group:managers"
+    ],
+    "authors": [
+      "person:erin"
+    ],
+    "payload": {
+      "summary": "Export to CSV drops the last row",
+      "detail": "Exporting a report omits the final row when the total count is odd.",
+      "priority": "normal"
+    },
+    "state": "backlog",
+    "stateUpdatedAt": "2026-08-07T12:00:00.000Z",
+    "stateUpdatedBy": "person:erin",
+    "responsible": [
+      "group:triage"
+    ],
+    "responsibleAt": "2026-08-07T12:00:00.000Z"
+  }
+]
