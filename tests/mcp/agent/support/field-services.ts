@@ -221,21 +221,19 @@ export async function seedFieldServicesHandbook(
   );
   const articleForm = kbDefinitions.forms.find((definition) => definition._id === "form:article");
   if (!articleForm) throw new Error("field services handbook is missing form:article");
-  // ADR-0024: extra readers come from an aclRole:"reader" computed-once field
-  // returning the staff groups (was `defaultReaders`) — company-wide article visibility.
+  // ADR-0024: article visibility is carried by the template's shipped
+  // `aclRole:"reader"` computed-once field (was `defaultReaders`). Re-point that
+  // field's formula instead of appending a duplicate `aclReaders` field.
+  const articleFields = articleForm.fields as Array<Json & { aclRole?: string }>;
+  const repointedArticleFields = articleFields.map((field) =>
+    field.aclRole === "reader" ? { ...field, formula: JSON.stringify(FIELD_STAFF_GROUPS) } : field
+  );
+  if (!repointedArticleFields.some((field) => field.aclRole === "reader")) {
+    throw new Error("field services handbook form:article is missing its aclRole:\"reader\" field");
+  }
   await requestJson(admin, "put", `/api/apps/${kbAppId}/definitions/${encodeURIComponent("form:article")}`, {
     ...articleForm,
-    fields: [
-      ...(articleForm.fields as unknown[]),
-      {
-        name: "aclReaders",
-        type: "text",
-        label: "Readers",
-        aclRole: "reader",
-        mode: "computed-once",
-        formula: JSON.stringify(FIELD_STAFF_GROUPS)
-      }
-    ]
+    fields: repointedArticleFields
   });
 
   await requestJson(
