@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `71b0577`
-- Last reviewed date: `2026-08-08`
+- Last code review baseline: `b60cd81`
+- Last reviewed date: `2026-10-11`
 - Code areas:
   - `src/server/**`
   - `scripts/**`
