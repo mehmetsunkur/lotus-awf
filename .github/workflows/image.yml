@@ -38,10 +38,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # No `cache: npm`: runner containers persist between jobs (hosted-git-runners ADR-0001), so
+      # ~/.npm is already warm, and uploading the cache is slow from the arm64 VM.
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: npm
 
       # The actions-runner image ships docker + buildx but not the compose plugin the gate needs.
       - name: Ensure docker compose
