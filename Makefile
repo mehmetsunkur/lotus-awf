@@ -21,7 +21,6 @@ REGISTRY ?= cr.lan.sunkur.net
 IMAGE_REPO ?= lotus-notes/platform
 IMAGE_TAG ?= $(shell git rev-parse --short HEAD)
 PUSH_IMAGE ?= $(REGISTRY)/$(IMAGE_REPO):$(IMAGE_TAG)
-PUSH_LATEST ?= $(REGISTRY)/$(IMAGE_REPO):latest
 K8S_DIR ?= deploy/k8s
 K8S_NAMESPACE ?= lotus-notes
 MCP_API_URL ?= http://localhost:3001
@@ -33,7 +32,7 @@ MCP_CONFIG_DIR ?= .tmp
 MCP_CONFIG ?= $(MCP_CONFIG_DIR)/claude-mcp.lotus.json
 
 .PHONY: help e2e e2e-headed e2e-ui e2e-debug e2e-report setup-e2e \
-	deploy-up deploy-down deploy-seed image-build image-push k8s-dry-run k8s-apply k8s-status \
+	deploy-up deploy-down deploy-seed image-build image-push k8s-set-image k8s-dry-run k8s-apply k8s-status \
 	mcp-api mcp-reset mcp-test mcp-http claude-mcp \
 	claude-mcp-admin claude-mcp-designer claude-mcp-workspace \
 	codex-mcp-admin-install codex-mcp-designer-install codex-mcp-workspace-install \
@@ -74,11 +73,13 @@ deploy-seed: ## Complete first-run setup (if needed) and seed the Agentic Airlin
 image-build: ## Build the Lotus runtime Docker image
 	$(DOCKER) build -t $(LOTUS_IMAGE) .
 
-image-push: ## Build and push Lotus image to registry with git SHA and latest tags
+image-push: ## Build and push a single-arch Lotus image with the git SHA tag (CI owns multi-arch :latest)
 	$(DOCKER) build -t $(PUSH_IMAGE) .
-	$(DOCKER) tag $(PUSH_IMAGE) $(PUSH_LATEST)
 	$(DOCKER) push $(PUSH_IMAGE)
-	$(DOCKER) push $(PUSH_LATEST)
+
+k8s-set-image: ## Point deploy/k8s/app.yaml at $(REGISTRY)/$(IMAGE_REPO):$(IMAGE_TAG)
+	sed -i -E 's#^( +image: )$(REGISTRY)/$(IMAGE_REPO):.*#\1$(PUSH_IMAGE)#' $(K8S_DIR)/app.yaml
+	grep -n 'image: $(REGISTRY)/$(IMAGE_REPO)' $(K8S_DIR)/app.yaml
 
 k8s-dry-run: ## Render Kubernetes manifests locally with kubectl kustomize
 	kubectl kustomize $(K8S_DIR) >/dev/null

@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `71b0577`
-- Last reviewed date: `2026-08-08`
+- Last code review baseline: `b60cd81`
+- Last reviewed date: `2026-10-11`
 - Code areas:
   - `src/server/**`
   - `scripts/**`
@@ -15,6 +15,7 @@
   - `deploy/k8s/**`
   - `Dockerfile`
   - `.env.example`
+  - `.github/workflows/image.yml`
 - Review trigger:
   - Update this doc when API endpoints, replication, conflict handling, ACL, workflow transitions,
     deployment/runtime config, or index seeding change.
@@ -231,7 +232,16 @@ supplied by the form's `aclRole` fields projected via `rollupAclProjection` in
   internal CouchDB `StatefulSet`s, PVCs, ConfigMap/Secret config, and optional ingress; production
   ingress should set `TRUST_PROXY=1`, `COOKIE_SECURE=1`, and a specific `CORS_ORIGIN`. `npm run
   test:deploy` builds/runs the Compose topology and exercises setup, catalog, runtime, and design
-  operations externally over HTTP.
+  operations externally over HTTP; it probes the published host port and the app container IP until
+  one answers (rootless dind exposes only the host port). `LOTUS_IMAGE` names the compose app image
+  and `DEPLOY_SKIP_BUILD=1` gates a prebuilt image instead of rebuilding.
+- Image CI (`.github/workflows/image.yml`): each arch builds natively on the self-hosted
+  `[self-hosted, Linux, X64|ARM64]` runners (rootless dind, so plain `docker build`, no BuildKit
+  container driver), runs `test:deploy` against that exact image, pushes
+  `cr.lan.sunkur.net/lotus-notes/platform:<sha7>-<arch>`, then `imagetools create` publishes the
+  multi-arch `:<sha7>` (+ `:latest` on `main`, `:<tag>` on `v*` tags). PRs build and gate only.
+  `deploy/k8s/app.yaml` pins an immutable registry tag; bump it with `make k8s-set-image
+  IMAGE_TAG=<sha7>`. `make image-push` pushes a single-arch SHA tag only, never `:latest`.
 
 ## Existing Patterns
 

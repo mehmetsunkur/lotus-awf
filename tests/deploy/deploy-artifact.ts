@@ -31,6 +31,7 @@ function selectDockerRunner(): { command: string; args: string[] } {
     `LOTUS_APP_PORT=${process.env.LOTUS_APP_PORT}`,
     `LOTUS_SERVER_COUCH_PORT=${process.env.LOTUS_SERVER_COUCH_PORT}`,
     `LOTUS_LOCAL_COUCH_PORT=${process.env.LOTUS_LOCAL_COUCH_PORT}`,
+    ...(process.env.LOTUS_IMAGE ? [`LOTUS_IMAGE=${process.env.LOTUS_IMAGE}`] : []),
     "docker"
   ];
   if (process.env.DOCKER_USE_SUDO === "1") {
@@ -99,16 +100,16 @@ async function waitFor(path: string, description: string, timeoutMs = 120_000) {
 
 async function isReachable(url: string) {
   try {
-    const response = await fetch(`${url}/api/health`);
+    const response = await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(2_000) });
     return response.ok;
   } catch {
     return false;
   }
 }
 
-async function resolveBaseUrl() {
-  if (process.env.DEPLOY_BASE_URL || (await isReachable(baseUrl))) return;
+function appContainerUrl() {
   const containerId = dockerOut(["ps", "-q", "app"]);
+  if (!containerId) return "";
   const ip = execFileSync(dockerRunner.command, [
     ...dockerRunner.args,
     "inspect",
@@ -116,8 +117,28 @@ async function resolveBaseUrl() {
     "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
     containerId
   ], { encoding: "utf8" }).trim();
-  if (!ip) throw new Error("Could not resolve app container IP after host port probe failed");
-  baseUrl = `http://${ip}:3001`;
+  return ip ? `http://${ip}:3001` : "";
+}
+
+// The app needs a few seconds after `compose up -d` before it listens, so keep probing the
+// published host port and the container IP until one answers. Which one is routable depends
+// on the Docker setup: rootless dind (CI runners) only exposes the host port; some setups
+// only route the container IP.
+async function resolveBaseUrl(timeoutMs = 120_000) {
+  if (process.env.DEPLOY_BASE_URL) return;
+  const hostUrl = baseUrl;
+  const deadline = Date.now() + timeoutMs;
+  let containerUrl = "";
+  while (Date.now() < deadline) {
+    if (await isReachable(hostUrl)) return;
+    containerUrl ||= appContainerUrl();
+    if (containerUrl && (await isReachable(containerUrl))) {
+      baseUrl = containerUrl;
+      return;
+    }
+    await sleep(1_000);
+  }
+  throw new Error(`App not reachable at ${hostUrl}${containerUrl ? ` or ${containerUrl}` : ""}`);
 }
 
 
@@ -390,7 +411,8 @@ async function runAssertions() {
 async function main() {
   docker(["down", "-v", "--remove-orphans"]);
   try {
-    docker(["up", "-d", "--build"]);
+    // DEPLOY_SKIP_BUILD=1 gates a prebuilt LOTUS_IMAGE (CI tests the exact image it pushes).
+    docker(["up", "-d", process.env.DEPLOY_SKIP_BUILD === "1" ? "--no-build" : "--build"]);
     await resolveBaseUrl();
     await runAssertions();
   } finally {

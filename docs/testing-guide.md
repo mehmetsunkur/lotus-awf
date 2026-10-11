@@ -22,6 +22,8 @@ npm run test:mcp:agent # Opt-in real-agent MCP acceptance (builder scenarios + M
                      # playwright-report-mcp-agent
 npm run test:e2e     # Playwright source-mode runtime tests; starts CouchDB pair
 npm run test:deploy  # M13 deploy artifact gate; requires Docker API access
+                     # (env: LOTUS_IMAGE=<image> DEPLOY_SKIP_BUILD=1 gates a prebuilt image;
+                     # DEPLOY_BASE_URL skips app URL discovery)
 npm run seed:airline # seed the M25 Agentic Airlines scenario into a running server for manual testing
                      # (env: API_URL, ADMIN_USER/ADMIN_PASSWORD, ORG_APP_ID/LEAVE_APP_ID, RESET=1)
 npm run playground -- field-services
@@ -68,6 +70,7 @@ make k8s-dry-run     # Kubernetes manifest render check; requires kubectl
 | Agent operator real session (M28) | `npm run test:mcp:agent` — `tests/mcp/agent/operator.spec.ts`; opt-in, one driver run |
 | ADR-0020 `@me` view filter performance | `npm run perf:me-filter -- --docs 10000 --runs 20`; local/dev measurements only |
 | Deploy packaging | `npm run test:deploy` |
+| Image CI (multi-arch) | `.github/workflows/image.yml` on a PR (build + gate both arches); `docker buildx imagetools inspect cr.lan.sunkur.net/lotus-notes/platform:<sha7>` after a `main` run |
 | Docker/compose shape | `docker compose -f deploy/compose.yml config` |
 | Kubernetes manifests | `make k8s-dry-run` |
 
