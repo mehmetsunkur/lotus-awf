@@ -28,12 +28,16 @@ current deploy artifact topology: one app pod, one local CouchDB pod, and one se
 
 ## Build The Image
 
+CI (`.github/workflows/image.yml`) builds and gates the image on amd64 and arm64 for every push to
+`main` and publishes the multi-arch `cr.lan.sunkur.net/lotus-notes/platform:<sha7>` (and `:latest`).
+Point `deploy/k8s/app.yaml` at an immutable tag before applying:
+
 ```bash
-make image-build LOTUS_IMAGE=registry.example.com/lotus-notes/platform:$(git rev-parse --short HEAD)
+make k8s-set-image IMAGE_TAG=<sha7>
 ```
 
-Push the image with your registry tooling, then update `deploy/k8s/app.yaml` to use that immutable
-image tag before applying.
+For a one-off single-arch image from a workstation, `make image-push` pushes `:<sha7>` only (never
+`:latest`); use `REGISTRY=registry.example.com` for another registry.
 
 ## Configure Secrets
 

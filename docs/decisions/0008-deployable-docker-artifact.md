@@ -45,4 +45,6 @@ stack externally over HTTP.
   still exists for dev/e2e compatibility, but it now loads the same JSON artifacts through
   `seedDocuments()`.
 - Consider a multi-stage image if image size matters.
-- Add CI runner support with Docker API access for `npm run test:deploy`.
+- Add CI runner support with Docker API access for `npm run test:deploy`. Done (2026-10-11):
+  `.github/workflows/image.yml` gates each arch on self-hosted rootless-dind runners before publishing
+  the multi-arch image to `cr.lan.sunkur.net/lotus-notes/platform`.

@@ -20,7 +20,7 @@ services:
       - local-couchdb-data:/opt/couchdb/data
 
   app:
-    image: lotus-notes-platform:m13
+    image: ${LOTUS_IMAGE:-lotus-notes-platform:m13}
     build:
       context: ..
       dockerfile: Dockerfile
