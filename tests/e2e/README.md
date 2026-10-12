@@ -11,7 +11,12 @@ SKIP_BUILD=1 npm run test:e2e   # skip the client build when dist/ is fresh
 PLAYWRIGHT_WORKERS=4 npm run test:e2e   # more parallelism on a beefier host
 npm run test:e2e:ui       # Playwright UI mode
 npm run test:e2e:report   # open the last HTML report
+PW_BROWSER=firefox npm run test:e2e   # Playwright's Firefox instead of Chromium
+PW_CHANNEL=chrome PLAYWRIGHT_WORKERS=1 make e2e-headed   # installed Google Chrome instead of bundled Chromium
 ```
+
+`make setup-e2e` installs both Playwright browsers (Chromium and Firefox). `PW_CHANNEL`
+only applies to Chromium; the installed Google Chrome must already be on the machine.
 
 `test:e2e` runs under **`xvfb-run`** (a virtual X display) — required on a display-less
 Linux host, see the rAF gotcha below. On a machine that already has a display (e.g. a dev

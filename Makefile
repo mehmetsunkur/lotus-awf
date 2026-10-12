@@ -43,8 +43,8 @@ help: ## List available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "} {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
-setup-e2e: ## One-time: install Linux Chromium + system deps for Playwright
-	$(NVM) npx playwright install --with-deps chromium
+setup-e2e: ## One-time: install Linux Chromium + Firefox + system deps for Playwright
+	$(NVM) npx playwright install --with-deps chromium firefox
 
 e2e: ## Run the e2e suite headless (CI-equivalent)
 	$(NVM) npx playwright test
