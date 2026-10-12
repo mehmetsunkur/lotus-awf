@@ -21,6 +21,19 @@ import { defineConfig, devices } from "@playwright/test";
 const WORKERS = Number(process.env.PLAYWRIGHT_WORKERS ?? 4);
 // Fail fast: stop the run once this many tests have failed (0 = run everything).
 const MAX_FAILURES = Number(process.env.PLAYWRIGHT_MAX_FAILURES ?? 5);
+// Browser engine: PW_BROWSER=chromium (default) | firefox — Playwright's bundled builds.
+// Opt-in branded Chromium via PW_CHANNEL (e.g. chrome for the installed Google Chrome).
+// Full Chrome is heavier than the headless shell, so pair it with fewer workers
+// (PLAYWRIGHT_WORKERS=1-2).
+const BROWSER = process.env.PW_BROWSER || "chromium";
+const CHANNEL = process.env.PW_CHANNEL || undefined;
+const DEVICES = { chromium: "Desktop Chrome", firefox: "Desktop Firefox" } as const;
+if (!(BROWSER in DEVICES)) {
+  throw new Error(`PW_BROWSER must be one of ${Object.keys(DEVICES).join(", ")}; got "${BROWSER}"`);
+}
+if (CHANNEL && BROWSER !== "chromium") {
+  throw new Error(`PW_CHANNEL (${CHANNEL}) selects a Chromium brand; unset it or use PW_BROWSER=chromium`);
+}
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -40,8 +53,8 @@ export default defineConfig({
   },
   projects: [
     {
-      name: "chromium",
-      use: { ...devices["Desktop Chrome"] }
+      name: CHANNEL ?? BROWSER,
+      use: { ...devices[DEVICES[BROWSER as keyof typeof DEVICES]], channel: CHANNEL }
     }
   ]
 });
