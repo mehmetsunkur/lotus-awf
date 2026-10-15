@@ -5,6 +5,7 @@ import path from "node:path";
 import { ulid } from "ulid";
 import type {
   AccessLevel,
+  AccessibleApp,
   AclRules,
   AgentDefinition,
   AgentRun,
@@ -1331,6 +1332,22 @@ app.get(
   "/api/health",
   asyncRoute(async (_request, response) => {
     response.json({ ok: true, appDb: config.appDb });
+  })
+);
+
+app.get(
+  "/api/apps",
+  asyncRoute(async (request, response) => {
+    const scope = await requireSession(request);
+    const apps = await installedApps();
+    const results = await Promise.all(
+      apps.map(async (app): Promise<AccessibleApp | null> => {
+        const level = await appAccessLevel(scope.principals, app.database);
+        if (accessRank(level) < accessRank("reader")) return null;
+        return { appId: app.appId, title: app.title, description: app.description, accessLevel: level as AccessibleApp["accessLevel"] };
+      })
+    );
+    response.json(results.filter((r): r is AccessibleApp => r !== null));
   })
 );
 

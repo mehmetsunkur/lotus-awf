@@ -524,6 +524,13 @@ export type AppInstall = {
   installedBy: string;
 };
 
+export type AccessibleApp = {
+  appId: string;
+  title: string;
+  description?: string;
+  accessLevel: Exclude<AccessLevel, "none">;
+};
+
 export type SystemApp = {
   appId: string;
   title: string;

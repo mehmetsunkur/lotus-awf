@@ -1,4 +1,5 @@
 import type {
+  AccessibleApp,
   AppAccessUpdate,
   PlatformState,
   SessionState,
@@ -102,6 +103,10 @@ export class LotusClient {
   async getSession(): Promise<SessionState> {
     if (!this.cookie) await this.login();
     return this.request<SessionState>("GET", "/api/session", undefined, false);
+  }
+
+  async listAccessibleApps(): Promise<AccessibleApp[]> {
+    return this.request<AccessibleApp[]>("GET", "/api/apps");
   }
 
   async platformState(): Promise<PlatformState> {

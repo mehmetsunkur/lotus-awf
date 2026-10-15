@@ -6,6 +6,18 @@ import { appIdSchema, jsonObjectSchema } from "./common";
 
 export function registerWorkspaceTools(server: McpServer, client: LotusClient): void {
   server.registerTool(
+    "lotus_workspace_list_apps",
+    {
+      title: "List Accessible Apps",
+      description:
+        "Return the apps this session can access, each with its id, title, optional purpose description, " +
+        "and the caller's access level (reader / author / editor / designer / manager). " +
+        "Call this first to discover available appIds before using any other workspace tool."
+    },
+    () => asToolResult(() => client.listAccessibleApps())
+  );
+
+  server.registerTool(
     "lotus_workspace_get_session",
     {
       title: "Get Lotus Workspace Session",
