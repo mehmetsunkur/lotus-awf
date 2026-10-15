@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `d5953bd`
-- Last reviewed date: `2026-10-12`
+- Last code review baseline: `4945379`
+- Last reviewed date: `2026-10-15`
 - Code areas:
   - `src/server/**`
   - `scripts/**`
@@ -158,6 +158,7 @@ supplied by the form's `aclRole` fields projected via `rollupAclProjection` in
   a concurrent-write conflict. Pickup ("claim") is an ordinary transition, not a new op. (M7) After the
   authoritative write, a transition's `action` effect runs best-effort via `runEffect`, surfaced as
   `effects[]`.
+- Accessible apps: `GET /api/apps` → `requireSession` (platform-level) → `installedApps()` → per-app `appAccessLevel` → filter below `reader` (no 403, no leak) → `AccessibleApp[]` (`appId`, `title`, `description?`, `accessLevel`). No Mango index — pure in-memory filter over the `appinstall:*` catalog. Same ACL pattern as the work-queue skip guard.
 - Work queue (ADR-0022/0025): `GET /api/work-queue` aggregates the routing pair (pool `responsible`
   ∪ individual `assignee`) across every `installedApps()` database for the **authenticated caller**
   (never a `?principal=` — same caller-scoping as ADR-0020 `@me`) → `{ total, byApp: [{ appId,

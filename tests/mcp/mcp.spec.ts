@@ -1,6 +1,6 @@
 import { test, expect } from "./support/fixtures";
 import { connectLotusMcp, type LotusMcpTestClient, type LotusMcpServerKind } from "./support/mcp-client";
-import type { AppInstall, BusinessDocument, PlatformState, SessionState, TemplateArtifact, WorkflowDefinition } from "../../src/shared/types";
+import type { AccessibleApp, AppInstall, BusinessDocument, PlatformState, SessionState, TemplateArtifact, WorkflowDefinition } from "../../src/shared/types";
 import type { TransitionAffordance } from "../../src/shared/workflow";
 
 type DocumentWithAffordances = { document: BusinessDocument; availableTransitions: TransitionAffordance[] };
@@ -145,6 +145,7 @@ test.describe("Lotus MCP server", () => {
   test("workspace surface works with documents and exposes only workspace tools", async ({ apiBaseURL }) => {
     const mcp = await connect("workspace", apiBaseURL);
     const tools = await mcp.listTools();
+    expect(tools).toContain("lotus_workspace_list_apps");
     expect(tools).toContain("lotus_workspace_create_document");
     expect(tools).toContain("lotus_workspace_transition_document");
     expect(tools).toContain("lotus_workspace_get_form");
@@ -152,6 +153,13 @@ test.describe("Lotus MCP server", () => {
     expect(tools).toContain("lotus_workspace_get_workflow");
     expect(tools).not.toContain("lotus_admin_create_app");
     expect(tools).not.toContain("lotus_designer_create_document_type");
+
+    // Discovery: list_apps returns accessible apps with accessLevel.
+    const apps = await mcp.callJsonTool<AccessibleApp[]>("lotus_workspace_list_apps");
+    expect(apps.map((a) => a.appId)).toContain("expense");
+    const expenseApp = apps.find((a) => a.appId === "expense")!;
+    expect(expenseApp.title).toBeTruthy();
+    expect(["reader", "author", "editor", "designer", "manager"]).toContain(expenseApp.accessLevel);
 
     // ADR-0023 Phase 2: the workspace listing is LEAN — self-describing headers
     // only, no field/column/state bodies. Scoped tools fetch one full definition.
@@ -238,5 +246,39 @@ test.describe("Lotus MCP server", () => {
       transition: "submit"
     });
     expect(transitioned.state).toBe("submitted");
+  });
+
+  test("list_apps filters to accessible apps — inaccessible apps are hidden", async ({ request, apiBaseURL }) => {
+    // Create a second app as alice (admin). Bob has no ACL entry on it.
+    const admin = await connect("admin", apiBaseURL);
+    const newAppId = `private-${Date.now().toString(36)}`;
+    await admin.callJsonTool<PlatformState>("lotus_admin_create_app", {
+      appId: newAppId,
+      title: "Private App",
+      docType: "item",
+      docTypeTitle: "Item"
+    });
+
+    // Login as bob and call GET /api/apps directly.
+    const loginRes = await request.post(`${apiBaseURL}/api/session/login`, {
+      data: { username: "bob", password: "password123" }
+    });
+    expect(loginRes.ok()).toBe(true);
+    const cookie = loginRes.headers()["set-cookie"];
+
+    const appsRes = await request.get(`${apiBaseURL}/api/apps`, {
+      headers: { cookie }
+    });
+    expect(appsRes.ok()).toBe(true);
+    const apps = (await appsRes.json()) as AccessibleApp[];
+
+    // Bob has "author" on expense — it must appear.
+    expect(apps.map((a) => a.appId)).toContain("expense");
+    // Bob has no entry on the new app — it must be absent.
+    expect(apps.map((a) => a.appId)).not.toContain(newAppId);
+    // Every returned entry must have a valid non-"none" accessLevel.
+    for (const app of apps) {
+      expect(["reader", "author", "editor", "designer", "manager"]).toContain(app.accessLevel);
+    }
   });
 });

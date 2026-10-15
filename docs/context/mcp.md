@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `38b6dd3`
-- Last reviewed date: `2026-07-24`
+- Last code review baseline: `4945379`
+- Last reviewed date: `2026-10-15`
 - Code areas:
   - `src/mcp/**`
   - `src/operator/**`
@@ -61,8 +61,10 @@ call the existing Express API and import only pure shared validators/helpers.
 - Designer tools: app definitions (full — `lotus_designer_get_app_definitions` reads the untouched
   `/definitions` endpoint), workflow scaffolds, document-type scaffolds, template
   export/diff/apply/validation, and workflow patch preview/apply.
-- Workspace tools: definitions/view discovery plus business document list/query/get/create/update and
-  workflow transitions. ADR-0023 Phase 2 makes discovery **progressive**:
+- Workspace tools: app discovery, definitions/view discovery, plus business document list/query/get/create/update and
+  workflow transitions. `lotus_workspace_list_apps` is the entry point — call it first to discover
+  accessible `appId`s and the caller's `accessLevel` on each (`AccessibleApp[]`; backed by `GET /api/apps`,
+  which filters `installedApps()` to those ≥ reader for the authenticated session). ADR-0023 Phase 2 makes definition discovery **progressive**:
   `lotus_workspace_get_app_definitions` returns a LEAN self-describing index (ids + kinds + titles +
   descriptions, no bodies — served by `/definitions/summary`), and `lotus_workspace_get_form(docType)`
   / `lotus_workspace_get_workflow(docType)` / `lotus_workspace_get_view(viewId)` fetch one full
