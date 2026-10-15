@@ -2,6 +2,8 @@ import { test, expect } from "./support/fixtures";
 
 const couchAuth = { authorization: `Basic ${Buffer.from("admin:password").toString("base64")}` };
 
+type AccessibleApp = { appId: string; title: string; description?: string; accessLevel: string };
+
 type Doc = {
   _id: string;
   _rev?: string;
@@ -11,6 +13,53 @@ type Doc = {
 };
 
 test.describe("ACL scoped runtime", () => {
+  test("GET /api/apps returns accessible apps with accessLevel for the authenticated caller", async ({ bobApi, playwright, apiBaseURL, resetState }) => {
+    void resetState;
+    // Alice is in group:admins → manager on every app.
+    const aliceApi = await playwright.request.newContext({ baseURL: apiBaseURL });
+    await aliceApi.post("/api/session/login", { data: { username: "alice", password: "password123" } });
+
+    const aliceApps = (await aliceApi.get("/api/apps").then((r) => r.json())) as AccessibleApp[];
+    const aliceExpense = aliceApps.find((a) => a.appId === "expense");
+    expect(aliceExpense).toBeDefined();
+    expect(aliceExpense!.title).toBeTruthy();
+    expect(aliceExpense!.accessLevel).toBe("manager");
+    await aliceApi.dispose();
+
+    // Bob has an explicit "author" entry on expense from the template ACL.
+    const bobApps = (await bobApi.get("/api/apps").then((r) => r.json())) as AccessibleApp[];
+    const bobExpense = bobApps.find((a) => a.appId === "expense");
+    expect(bobExpense).toBeDefined();
+    expect(bobExpense!.accessLevel).toBe("author");
+
+    // Every entry must carry a non-"none" accessLevel.
+    for (const app of bobApps) {
+      expect(["reader", "author", "editor", "designer", "manager"]).toContain(app.accessLevel);
+    }
+  });
+
+  test("GET /api/apps hides apps the caller cannot access", async ({ bobApi, playwright, apiBaseURL, resetState }) => {
+    void resetState;
+    const aliceApi = await playwright.request.newContext({ baseURL: apiBaseURL });
+    await aliceApi.post("/api/session/login", { data: { username: "alice", password: "password123" } });
+
+    // Alice (admin) creates a second app with no ACL entry for bob.
+    const newAppId = `private-${Date.now().toString(36)}`;
+    const created = await aliceApi.post("/api/platform/apps", {
+      data: { appId: newAppId, title: "Private App", docType: "item", docTypeTitle: "Item" }
+    });
+    expect(created.ok()).toBeTruthy();
+
+    // Alice can see it.
+    const aliceApps = (await aliceApi.get("/api/apps").then((r) => r.json())) as AccessibleApp[];
+    expect(aliceApps.map((a) => a.appId)).toContain(newAppId);
+    await aliceApi.dispose();
+
+    // Bob cannot — no ACL entry, not in group:admins.
+    const bobApps = (await bobApi.get("/api/apps").then((r) => r.json())) as AccessibleApp[];
+    expect(bobApps.map((a) => a.appId)).not.toContain(newAppId);
+  });
+
   test("lists and select options are scoped by current user principals", async ({ bobApi, page }) => {
     const aliceExpenses = (await page.request.get("/api/apps/expense/documents?docType=expense").then((r) => r.json())) as Doc[];
     const bobExpenses = (await bobApi.get("/api/apps/expense/documents?docType=expense").then((r) => r.json())) as Doc[];
