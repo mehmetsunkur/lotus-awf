@@ -159,6 +159,7 @@ test.describe("Lotus MCP server", () => {
     expect(apps.map((a) => a.appId)).toContain("expense");
     const expenseApp = apps.find((a) => a.appId === "expense")!;
     expect(expenseApp.title).toBeTruthy();
+    expect(expenseApp.description).toBeTruthy();
     expect(["reader", "author", "editor", "designer", "manager"]).toContain(expenseApp.accessLevel);
 
     // ADR-0023 Phase 2: the workspace listing is LEAN — self-describing headers

@@ -764,10 +764,12 @@ async function completeDevPlatformSetup(target: "local" | "server") {
   // Dev/e2e convenience: the expense sample DB is seeded by seedTarget; record it
   // as installed so it resolves like any catalog app (ADR-0015). No expense-specific
   // helper — the generic install record + template registry drive it.
+  const expenseTemplate = instantiateTemplate("sample:expense", "expense", "Expense sample");
+  const expenseAppConfig = expenseTemplate.definitions.find((d) => d._id === "app:config") as AppConfig | undefined;
   await upsertDocInDb(
     target,
     config.platformDb,
-    appInstallRecord("expense", "Expense sample", databaseForAppId("expense"), now, "person:alice", "sample:expense")
+    appInstallRecord("expense", "Expense sample", databaseForAppId("expense"), now, "person:alice", "sample:expense", expenseAppConfig?.description)
   );
 }
 

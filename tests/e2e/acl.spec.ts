@@ -23,6 +23,7 @@ test.describe("ACL scoped runtime", () => {
     const aliceExpense = aliceApps.find((a) => a.appId === "expense");
     expect(aliceExpense).toBeDefined();
     expect(aliceExpense!.title).toBeTruthy();
+    expect(aliceExpense!.description).toBeTruthy();
     expect(aliceExpense!.accessLevel).toBe("manager");
     await aliceApi.dispose();
 
