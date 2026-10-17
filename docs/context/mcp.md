@@ -2,13 +2,14 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `4945379`
-- Last reviewed date: `2026-10-15`
+- Last code review baseline: `c425b82`
+- Last reviewed date: `2026-10-17`
 - Code areas:
   - `src/mcp/**`
   - `src/operator/**`
 - Tests:
   - `tests/unit/workflow-patches.spec.ts`
+  - `tests/unit/directory-members.spec.ts`
   - `tests/unit/operator-prompt.spec.ts`
   - `tests/mcp/**`
   - `tests/e2e/agent-operator.spec.ts`
@@ -43,6 +44,7 @@ call the existing Express API and import only pure shared validators/helpers.
 - `src/mcp/tools/designer.ts` — designer tool registration.
 - `src/mcp/tools/workspace.ts` — workspace tool registration.
 - `src/mcp/workflow-patches.ts` — pure workflow patch operations used by preview/apply tools.
+- `src/mcp/directory-members.ts` — pure group-membership merges for the admin directory tools.
 - `src/mcp/tool-result.ts` — JSON/error result helpers.
 
 ## Key Flows
@@ -54,7 +56,12 @@ call the existing Express API and import only pure shared validators/helpers.
   builds one `LotusClient` per MCP session and proves identity via `GET /api/session`; the principal
   is always resolved server-side, never caller-supplied. Sessions are bound to their surface and
   evicted on close/DELETE/idle-TTL.
-- Admin tools: session/platform state, installed apps, app creation, and app ACL management.
+- Admin tools: session/platform state, installed apps, app creation, app ACL management, and the
+  names.nsf directory (ADR-0012): `lotus_admin_get_directory`, person create/update/set-password,
+  and group create/update/add-members/remove-members over `/api/names/*`. The server enforces
+  manager-only writes, member existence, and the last-active-admin rule; MCP adds no authority.
+  Add/remove-members read the group, merge via `src/mcp/directory-members.ts`, and `PUT` the full
+  list (last write wins). Passwords are accepted as sensitive write-only arguments.
   ADR-0023: `lotus_admin_list_apps` returns each `AppInstall` including its optional `description`
   (a purpose blurb mirrored from `app:config` at install time), so an operator agent can pick the
   right app before reading its definitions.
