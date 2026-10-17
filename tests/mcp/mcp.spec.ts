@@ -108,12 +108,17 @@ test.describe("Lotus MCP server", () => {
     expect((await relogin.callJsonTool<SessionState>("lotus_workspace_get_session")).person?.username).toBe(username);
 
     await call("lotus_admin_create_group", { slug, name: "Ops", members: ["person:bob"] });
-    await call("lotus_admin_add_group_members", { slug, members: [`person:${username}`, "person:bob"] });
+    // Mixed-case slug and principal resolve exactly as the server normalizes them.
+    await call("lotus_admin_add_group_members", { slug: slug.toUpperCase(), members: [`person:${username.toUpperCase()}`, "person:bob"] });
     let directory = await call<DirectoryState>("lotus_admin_get_directory");
     expect(directory.people.find((person) => person.username === username)?.displayName).toBe("Dana Operations");
     expect(directory.groups.find((group) => group._id === groupId)?.members).toEqual(["person:bob", `person:${username}`]);
 
-    await call("lotus_admin_remove_group_members", { slug: groupId, members: ["person:bob", "person:ghost"] });
+    const removed = await call<{ notMembers: string[] }>("lotus_admin_remove_group_members", {
+      slug: `GROUP:${slug}`,
+      members: ["person:Bob", "person:ghost"]
+    });
+    expect(removed.notMembers).toEqual(["person:ghost"]);
     const renamed = await call<{ group: PublicGroup }>("lotus_admin_update_group", { slug, name: "Operations" });
     expect(renamed.group).toEqual({ _id: groupId, kind: "group", name: "Operations", members: [`person:${username}`] });
 

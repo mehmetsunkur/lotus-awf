@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { addMembers, bareGroupSlug, findGroup, removeMembers, type PersonPrincipal } from "../directory-members";
+import { normalizeGroupSlug, normalizePersonPrincipal } from "../../shared/directory";
+import { addMembers, findGroup, missingMembers, removeMembers, type PersonPrincipal } from "../directory-members";
 import type { LotusClient } from "../lotus-client";
 import { asToolResult } from "../tool-result";
 import { appIdSchema } from "./common";
@@ -17,18 +18,19 @@ const passwordSchema = z
   .min(8)
   .describe("SENSITIVE: initial/new password, at least 8 characters. Write-only; never returned by any tool.");
 const membersSchema = z
-  .array(z.string().regex(/^person:.+/, "Members must be person:* principals"))
+  .array(z.string().regex(/^person:.+/i, "Members must be person:* principals"))
   .describe("person:* principals (direct membership only; nested groups are not supported)");
 
 async function mergeGroupMembers(
   client: LotusClient,
   slug: string,
   members: string[],
-  merge: (current: PersonPrincipal[], change: PersonPrincipal[]) => PersonPrincipal[]
+  merge: (current: PersonPrincipal[], change: string[]) => PersonPrincipal[]
 ) {
   const group = findGroup((await client.directory()).groups, slug);
-  if (!group) throw new Error(`Group not found: group:${bareGroupSlug(slug)}`);
-  return client.updateGroup(bareGroupSlug(slug), { members: merge(group.members, members as PersonPrincipal[]) });
+  if (!group) throw new Error(`Group not found: group:${normalizeGroupSlug(slug)}`);
+  const result = await client.updateGroup(normalizeGroupSlug(slug), { members: merge(group.members, members) });
+  return { group: result.group, directory: result.directory, previousMembers: group.members };
 }
 
 export function registerAdminTools(server: McpServer, client: LotusClient): void {
@@ -154,7 +156,7 @@ export function registerAdminTools(server: McpServer, client: LotusClient): void
         members: membersSchema.optional()
       }
     },
-    ({ slug, name, members }) => asToolResult(() => client.createGroup({ slug: bareGroupSlug(slug), name, members }))
+    ({ slug, name, members }) => asToolResult(() => client.createGroup({ slug: normalizeGroupSlug(slug), name, members: members?.map(normalizePersonPrincipal) }))
   );
 
   server.registerTool(
@@ -169,7 +171,7 @@ export function registerAdminTools(server: McpServer, client: LotusClient): void
         members: membersSchema.optional().describe("Replacement person:* members list")
       }
     },
-    ({ slug, name, members }) => asToolResult(() => client.updateGroup(bareGroupSlug(slug), { name, members }))
+    ({ slug, name, members }) => asToolResult(() => client.updateGroup(normalizeGroupSlug(slug), { name, members: members?.map(normalizePersonPrincipal) }))
   );
 
   server.registerTool(
@@ -183,7 +185,11 @@ export function registerAdminTools(server: McpServer, client: LotusClient): void
         members: membersSchema.min(1)
       }
     },
-    ({ slug, members }) => asToolResult(() => mergeGroupMembers(client, slug, members, addMembers))
+    ({ slug, members }) =>
+      asToolResult(async () => {
+        const { group, directory } = await mergeGroupMembers(client, slug, members, addMembers);
+        return { group, directory };
+      })
   );
 
   server.registerTool(
@@ -191,13 +197,17 @@ export function registerAdminTools(server: McpServer, client: LotusClient): void
     {
       title: "Remove Group Members",
       description:
-        "Remove people from a group (manager only); non-members are ignored. group:admins must keep at least one active member. Last write wins against concurrent edits.",
+        "Remove people from a group (manager only). Requested people who were not members are listed in notMembers — check it before assuming a removal happened. group:admins must keep at least one active member. Last write wins against concurrent edits.",
       inputSchema: {
         slug: groupSlugSchema,
         members: membersSchema.min(1)
       }
     },
-    ({ slug, members }) => asToolResult(() => mergeGroupMembers(client, slug, members, removeMembers))
+    ({ slug, members }) =>
+      asToolResult(async () => {
+        const { previousMembers, ...result } = await mergeGroupMembers(client, slug, members, removeMembers);
+        return { ...result, notMembers: missingMembers(previousMembers, members) };
+      })
   );
 
   server.registerTool(
