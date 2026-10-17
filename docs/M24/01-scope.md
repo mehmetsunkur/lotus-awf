@@ -7,6 +7,7 @@
 - Expose tools for platform/app discovery, definition inspection, workflow inspection, and template
   export/diff.
 - Expose admin tools for reading and managing names.nsf people and groups through `/api/names/*`.
+- Expose admin tools for listing bundled templates and installing one as a new app.
 - Expose tools for document-type creation and approval workflow scaffolding.
 - Expose validation tools for individual definitions and template artifacts.
 - Expose guarded workflow patch tools for common state/transition edits.

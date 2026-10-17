@@ -56,11 +56,28 @@ include workspace tools.
 - `lotus_admin_get_platform_state`
 - `lotus_admin_list_apps`
 - `lotus_admin_create_app`
+- `lotus_admin_list_templates`
+- `lotus_admin_install_template`
 - `lotus_admin_get_app_access`
 - `lotus_admin_update_app_access`
 
 Admin tools require the server-side session/app access needed by the backing API. Creating apps uses
 `POST /api/platform/apps`; access tools use `GET/PUT /api/apps/:appId/access`.
+
+### Template install (ADR-0016)
+
+- `lotus_admin_list_templates` — `availableTemplates` from `GET /api/platform/state`
+  (`{ id, title, description }`).
+- `lotus_admin_install_template { templateId, appId?, title? }` — `POST /api/platform/apps` with
+  `fromTemplate: templateId`. `templateId` is an `availableTemplates[].id` (e.g. `kb`); `appId`
+  defaults to `templateId` and `title` to the template title, mirroring the catalog Deploy card.
+  Unknown templates fail before any write; an existing appId fails with `409`; manager-only.
+- The install seeds the template's design and its fixed sample documents into the new app. It then
+  reads `GET /api/apps/:appId/access` (the installer is always manager via `group:admins`) and
+  returns `{ install, accessEntries, unresolvedPrincipals }`: ACL `person:*`/`group:*` principals that
+  are not an active person or existing group. Agents create those with the directory tools. If that
+  follow-up read fails, the app still exists and the tool returns `unresolvedPrincipals: null` plus
+  `accessCheckError` instead of an error.
 
 ### Directory tools (names.nsf, ADR-0012)
 
@@ -132,7 +149,9 @@ conflict-resolution tools in v1.
 - MCP tools never call `/api/reset`, `/api/setup`, or `/api/platform/setup`.
 - Admin/design/workspace tools are exposed by separate MCP servers.
 - Designer tools may mutate design documents; workspace tools may not.
-- Workspace tools may mutate business document payload/state; admin/designer tools may not.
+- Workspace tools may mutate business document payload/state; admin/designer tools may not, except
+  that `lotus_admin_install_template` seeds a bundled template's fixed sample documents into the NEW
+  app it creates (the server refuses an existing appId).
 - MCP tools return structured errors from the Lotus API instead of hiding them.
 - Mutating tools validate locally when possible and rely on the server as final authority.
 - The HTTP host binds one authenticated identity per MCP session at `initialize`, rejects

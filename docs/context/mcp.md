@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `b2062cf`
+- Last code review baseline: `f213265`
 - Last reviewed date: `2026-10-17`
 - Code areas:
   - `src/mcp/**`
@@ -44,7 +44,7 @@ call the existing Express API and import only pure shared validators/helpers.
 - `src/mcp/tools/designer.ts` — designer tool registration.
 - `src/mcp/tools/workspace.ts` — workspace tool registration.
 - `src/mcp/workflow-patches.ts` — pure workflow patch operations used by preview/apply tools.
-- `src/mcp/directory-members.ts` — pure group-membership merges for the admin directory tools.
+- `src/mcp/directory-members.ts` — pure group-membership merges and ACL `unresolvedPrincipals` for the admin directory and template-install tools.
 - `src/mcp/tool-result.ts` — JSON/error result helpers.
 
 ## Key Flows
@@ -63,7 +63,11 @@ call the existing Express API and import only pure shared validators/helpers.
   Add/remove-members read the group, merge via `src/mcp/directory-members.ts`, and `PUT` the full
   list (last write wins); remove reports `notMembers`. Slugs and `person:*` members are normalized
   with the server's shared rules (`src/shared/directory.ts`). Passwords are accepted as sensitive
-  write-only arguments.
+  write-only arguments. Template install (ADR-0016): `lotus_admin_list_templates` returns
+  `availableTemplates`; `lotus_admin_install_template` deploys one as a NEW app via
+  `POST /api/platform/apps` `fromTemplate` (`appId`/`title` default to the template's), seeding its
+  fixed sample documents, and returns `unresolvedPrincipals` — ACL principals missing from the
+  directory — so the agent can create them with the directory tools.
   ADR-0023: `lotus_admin_list_apps` returns each `AppInstall` including its optional `description`
   (a purpose blurb mirrored from `app:config` at install time), so an operator agent can pick the
   right app before reading its definitions.
