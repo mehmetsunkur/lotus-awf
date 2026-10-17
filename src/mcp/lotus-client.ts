@@ -126,6 +126,11 @@ export class LotusClient {
     return this.request<PlatformState>("POST", "/api/platform/apps", body);
   }
 
+  /** ADR-0016: instantiate a bundled template as a new app (`fromTemplate` is an `availableTemplates[].id`). */
+  async installTemplate(body: { appId: string; title: string; templateId: string }): Promise<PlatformState> {
+    return this.request<PlatformState>("POST", "/api/platform/apps", { appId: body.appId, title: body.title, fromTemplate: body.templateId });
+  }
+
   async appAccess(appId: string): Promise<Record<string, unknown>> {
     return this.request<Record<string, unknown>>("GET", `/api/apps/${encodeURIComponent(appId)}/access`);
   }

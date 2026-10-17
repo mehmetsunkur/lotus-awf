@@ -1,5 +1,5 @@
 import { groupIdForSlug, normalizePersonPrincipal } from "../shared/directory";
-import type { PublicGroup } from "../shared/types";
+import type { PublicGroup, PublicPerson } from "../shared/types";
 
 /**
  * Pure group-membership merges for the admin directory tools. `PUT /api/names/groups/:slug`
@@ -33,4 +33,25 @@ export function missingMembers(current: PersonPrincipal[], requested: string[]):
 export function findGroup(groups: PublicGroup[], slug: string): PublicGroup | undefined {
   const id = groupIdForSlug(slug);
   return groups.find((group) => group._id === id);
+}
+
+/**
+ * App ACL principals that the directory cannot resolve: a `person:*` that is not an active person or
+ * a `group:*` that does not exist. Other principal kinds (e.g. `role:*`) are not directory-backed and
+ * are skipped. Deduped and sorted — the install tool reports these so an agent knows which groups or
+ * people to create next.
+ */
+export function unresolvedPrincipals(
+  entries: Array<{ principal: string }>,
+  people: PublicPerson[],
+  groups: PublicGroup[]
+): string[] {
+  const known = new Set<string>([
+    ...people.filter((person) => person.active).map((person) => person._id),
+    ...groups.map((group) => group._id)
+  ]);
+  const unresolved = entries
+    .map((entry) => entry.principal)
+    .filter((principal) => /^(person|group):/.test(principal) && !known.has(principal));
+  return Array.from(new Set(unresolved)).sort();
 }

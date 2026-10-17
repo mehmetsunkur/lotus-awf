@@ -1,6 +1,6 @@
 import { test, expect } from "./support/fixtures";
 import { connectLotusMcp, type LotusMcpCredentials, type LotusMcpTestClient, type LotusMcpServerKind } from "./support/mcp-client";
-import type { AccessibleApp, AppInstall, BusinessDocument, DirectoryState, PlatformState, PublicGroup, PublicPerson, SessionState, TemplateArtifact, WorkflowDefinition } from "../../src/shared/types";
+import type { AccessibleApp, AppInstall, AppTemplate, BusinessDocument, DirectoryState, PlatformState, PublicGroup, PublicPerson, SessionState, TemplateArtifact, WorkflowDefinition } from "../../src/shared/types";
 import type { TransitionAffordance } from "../../src/shared/workflow";
 
 type DocumentWithAffordances = { document: BusinessDocument; availableTransitions: TransitionAffordance[] };
@@ -158,6 +158,61 @@ test.describe("Lotus MCP server", () => {
     for (const [tool, args] of writes) {
       await expect(bob.callJsonTool(tool, args), tool).rejects.toThrow(/403/);
     }
+  });
+
+  test("admin surface installs apps from templates and reports unresolved principals", async ({ apiBaseURL }) => {
+    const admin = await connect("admin", apiBaseURL);
+    expect(await admin.listTools()).toEqual(expect.arrayContaining(["lotus_admin_list_templates", "lotus_admin_install_template"]));
+    for (const kind of ["designer", "workspace"] as const) {
+      const other = await (await connect(kind, apiBaseURL)).listTools();
+      expect(other).not.toContain("lotus_admin_list_templates");
+      expect(other).not.toContain("lotus_admin_install_template");
+    }
+
+    const templates = await admin.callJsonTool<AppTemplate[]>("lotus_admin_list_templates");
+    const kb = templates.find((template) => template.id === "kb");
+    expect(kb?.title).toBeTruthy();
+    expect(kb?.description).toBeTruthy();
+
+    const appId = `kb-${Date.now().toString(36)}`;
+    const installed = await admin.callJsonTool<{ install: AppInstall; accessEntries: Array<{ principal: string }>; unresolvedPrincipals: string[] }>(
+      "lotus_admin_install_template",
+      { templateId: "kb", appId, title: "Company KB" }
+    );
+    expect(installed.install).toMatchObject({ appId, title: "Company KB" });
+    expect(installed.accessEntries.map((entry) => entry.principal)).toEqual(expect.arrayContaining(["group:admins", "group:employees"]));
+    expect(installed.unresolvedPrincipals).toEqual(["group:employees"]);
+    expect((await admin.callJsonTool<AppInstall[]>("lotus_admin_list_apps")).map((app) => app.appId)).toContain(appId);
+
+    // Close the gap the install reported, then the member gets reader access.
+    await admin.callJsonTool("lotus_admin_create_person", { username: "erin", displayName: "Erin Employee", password: "erin-pass-123" });
+    const erin = await connect("workspace", apiBaseURL, { username: "erin", password: "erin-pass-123" });
+    expect((await erin.callJsonTool<AccessibleApp[]>("lotus_workspace_list_apps")).map((app) => app.appId)).not.toContain(appId);
+    await admin.callJsonTool("lotus_admin_create_group", { slug: "employees", name: "Employees", members: ["person:erin"] });
+    const erinApps = await erin.callJsonTool<AccessibleApp[]>("lotus_workspace_list_apps");
+    expect(erinApps.find((app) => app.appId === appId)?.accessLevel).toBe("reader");
+
+    // appId/title default to the template's; existing apps and unknown templates are rejected.
+    const triage = templates.find((template) => template.id === "triage");
+    const defaulted = await admin.callJsonTool<{ install: AppInstall }>("lotus_admin_install_template", { templateId: "triage" });
+    expect(defaulted.install).toMatchObject({ appId: "triage", title: triage?.title });
+    // Ids are trimmed like the server trims them, so a padded appId still resolves its install and ACL.
+    const padded = `${appId}-padded`;
+    const paddedInstall = await admin.callJsonTool<{ install: AppInstall; unresolvedPrincipals: string[] | null }>(
+      "lotus_admin_install_template",
+      { templateId: " kb ", appId: `  ${padded} `, title: " Padded KB " }
+    );
+    expect(paddedInstall.install).toMatchObject({ appId: padded, title: "Padded KB" });
+    expect(paddedInstall.unresolvedPrincipals).toEqual([]);
+    await expect(admin.callJsonTool("lotus_admin_install_template", { templateId: "kb", appId })).rejects.toThrow(/409|already exists/);
+    await expect(admin.callJsonTool("lotus_admin_install_template", { templateId: "nope", appId: "nope-app" })).rejects.toThrow(/Template not found/);
+    expect((await admin.callJsonTool<AppInstall[]>("lotus_admin_list_apps")).map((app) => app.appId)).not.toContain("nope-app");
+  });
+
+  test("template install requires a manager session", async ({ apiBaseURL }) => {
+    const bob = await connect("admin", apiBaseURL, { username: "bob", password: "password123" });
+    expect((await bob.callJsonTool<AppTemplate[]>("lotus_admin_list_templates")).map((template) => template.id)).toContain("kb");
+    await expect(bob.callJsonTool("lotus_admin_install_template", { templateId: "kb", appId: "bob-kb" })).rejects.toThrow(/403/);
   });
 
   test("designer surface changes app design and exposes only designer tools", async ({ apiBaseURL }) => {

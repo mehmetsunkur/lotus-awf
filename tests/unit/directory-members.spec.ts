@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { addMembers, findGroup, missingMembers, removeMembers } from "../../src/mcp/directory-members";
+import { addMembers, findGroup, missingMembers, removeMembers, unresolvedPrincipals } from "../../src/mcp/directory-members";
 import { groupIdForSlug, normalizeGroupSlug, normalizePersonPrincipal } from "../../src/shared/directory";
-import type { PublicGroup } from "../../src/shared/types";
+import type { PublicGroup, PublicPerson } from "../../src/shared/types";
 
 describe("directory id normalization", () => {
   it("normalizes group slugs like the server, with or without a group: prefix", () => {
@@ -56,5 +56,33 @@ describe("directory member merges", () => {
     expect(findGroup(groups, "Finance")?.name).toBe("Finance");
     expect(findGroup(groups, "GROUP:finance")?.name).toBe("Finance");
     expect(findGroup(groups, "sales")).toBeUndefined();
+  });
+});
+
+describe("unresolved ACL principals", () => {
+  const people: PublicPerson[] = [
+    { _id: "person:alice", kind: "person", username: "alice", displayName: "Alice", active: true },
+    { _id: "person:dave", kind: "person", username: "dave", displayName: "Dave", active: false }
+  ];
+  const groups: PublicGroup[] = [{ _id: "group:admins", kind: "group", name: "Admins", members: ["person:alice"] }];
+
+  it("flags missing groups and missing or inactive people, deduped and sorted", () => {
+    const entries = [
+      { principal: "group:employees" },
+      { principal: "group:admins" },
+      { principal: "person:alice" },
+      { principal: "person:dave" },
+      { principal: "person:ghost" },
+      { principal: "group:employees" }
+    ];
+    expect(unresolvedPrincipals(entries, people, groups)).toEqual(["group:employees", "person:dave", "person:ghost"]);
+  });
+
+  it("skips principals that are not directory-backed", () => {
+    expect(unresolvedPrincipals([{ principal: "role:approver" }], people, groups)).toEqual([]);
+  });
+
+  it("returns nothing when every principal resolves", () => {
+    expect(unresolvedPrincipals([{ principal: "group:admins" }, { principal: "person:alice" }], people, groups)).toEqual([]);
   });
 });

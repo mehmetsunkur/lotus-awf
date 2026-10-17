@@ -1,7 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { normalizeGroupSlug, normalizePersonPrincipal } from "../../shared/directory";
-import { addMembers, findGroup, missingMembers, removeMembers, type PersonPrincipal } from "../directory-members";
+import type { AppAccessState } from "../../shared/types";
+import { addMembers, findGroup, missingMembers, removeMembers, unresolvedPrincipals, type PersonPrincipal } from "../directory-members";
 import type { LotusClient } from "../lotus-client";
 import { asToolResult } from "../tool-result";
 import { appIdSchema } from "./common";
@@ -20,6 +21,31 @@ const passwordSchema = z
 const membersSchema = z
   .array(z.string().regex(/^person:.+/i, "Members must be person:* principals"))
   .describe("person:* principals (direct membership only; nested groups are not supported)");
+
+/**
+ * ADR-0016 install: create a NEW app from a bundled template (the server 409s an existing appId, so
+ * only the template's fixed sample data is seeded — the agent never chooses or edits business docs),
+ * then report ACL principals the directory cannot resolve. The app exists once the POST succeeds, so a
+ * failed follow-up access read is reported alongside the install rather than as a tool error.
+ */
+async function installTemplate(client: LotusClient, input: { templateId: string; appId?: string; title?: string }) {
+  const state = await client.platformState();
+  const template = state.availableTemplates.find((candidate) => candidate.id === input.templateId);
+  if (!template) {
+    throw new Error(
+      `Template not found: ${input.templateId}. Available: ${state.availableTemplates.map((candidate) => candidate.id).join(", ")}`
+    );
+  }
+  const appId = input.appId ?? template.id;
+  const installed = await client.installTemplate({ appId, title: input.title ?? template.title, templateId: template.id });
+  const install = installed.installedApps.find((app) => app.appId === appId);
+  try {
+    const access = (await client.appAccess(appId)) as unknown as AppAccessState;
+    return { install, accessEntries: access.entries, unresolvedPrincipals: unresolvedPrincipals(access.entries, access.people, access.groups) };
+  } catch (error) {
+    return { install, unresolvedPrincipals: null, accessCheckError: error instanceof Error ? error.message : String(error) };
+  }
+}
 
 async function mergeGroupMembers(
   client: LotusClient,
@@ -79,6 +105,31 @@ export function registerAdminTools(server: McpServer, client: LotusClient): void
     },
     ({ appId, title, docType, docTypeTitle }) =>
       asToolResult(() => client.createApp({ appId, title, docType, docTypeTitle }))
+  );
+
+  server.registerTool(
+    "lotus_admin_list_templates",
+    {
+      title: "List App Templates",
+      description:
+        "Return the bundled app templates that lotus_admin_install_template can deploy: id (pass as templateId), title, and description."
+    },
+    () => asToolResult(async () => (await client.platformState()).availableTemplates)
+  );
+
+  server.registerTool(
+    "lotus_admin_install_template",
+    {
+      title: "Install App From Template",
+      description:
+        "Create a NEW business app from a bundled template (manager only). Seeds the template's design and its fixed sample documents; fails if the appId already exists. Returns the install record, the app's ACL entries, and unresolvedPrincipals — ACL person:*/group:* principals missing from the directory. Create those with the directory tools (e.g. lotus_admin_create_group) so the intended people get access.",
+      inputSchema: {
+        templateId: z.string().trim().min(1).describe("Template id from lotus_admin_list_templates, e.g. kb"),
+        appId: z.string().trim().min(1).optional().describe("Lowercase app id slug for the new app; defaults to templateId"),
+        title: z.string().trim().min(1).optional().describe("Human-readable app title; defaults to the template title")
+      }
+    },
+    ({ templateId, appId, title }) => asToolResult(() => installTemplate(client, { templateId, appId, title }))
   );
 
   server.registerTool(
