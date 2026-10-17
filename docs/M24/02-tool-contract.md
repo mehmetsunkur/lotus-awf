@@ -71,7 +71,8 @@ Admin tools require the server-side session/app access needed by the backing API
 - `lotus_admin_install_template { templateId, appId?, title? }` — `POST /api/platform/apps` with
   `fromTemplate: templateId`. `templateId` is an `availableTemplates[].id` (e.g. `kb`); `appId`
   defaults to `templateId` and `title` to the template title, mirroring the catalog Deploy card.
-  Unknown templates fail before any write; an existing appId fails with `409`; manager-only.
+  Inputs are trimmed (as the server trims `appId`). Unknown templates fail before any write; an
+  existing appId fails with `409`; manager-only.
 - The install seeds the template's design and its fixed sample documents into the new app. It then
   reads `GET /api/apps/:appId/access` (the installer is always manager via `group:admins`) and
   returns `{ install, accessEntries, unresolvedPrincipals }`: ACL `person:*`/`group:*` principals that
