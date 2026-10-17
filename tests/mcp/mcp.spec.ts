@@ -196,6 +196,14 @@ test.describe("Lotus MCP server", () => {
     const triage = templates.find((template) => template.id === "triage");
     const defaulted = await admin.callJsonTool<{ install: AppInstall }>("lotus_admin_install_template", { templateId: "triage" });
     expect(defaulted.install).toMatchObject({ appId: "triage", title: triage?.title });
+    // Ids are trimmed like the server trims them, so a padded appId still resolves its install and ACL.
+    const padded = `${appId}-padded`;
+    const paddedInstall = await admin.callJsonTool<{ install: AppInstall; unresolvedPrincipals: string[] | null }>(
+      "lotus_admin_install_template",
+      { templateId: " kb ", appId: `  ${padded} `, title: " Padded KB " }
+    );
+    expect(paddedInstall.install).toMatchObject({ appId: padded, title: "Padded KB" });
+    expect(paddedInstall.unresolvedPrincipals).toEqual([]);
     await expect(admin.callJsonTool("lotus_admin_install_template", { templateId: "kb", appId })).rejects.toThrow(/409|already exists/);
     await expect(admin.callJsonTool("lotus_admin_install_template", { templateId: "nope", appId: "nope-app" })).rejects.toThrow(/Template not found/);
     expect((await admin.callJsonTool<AppInstall[]>("lotus_admin_list_apps")).map((app) => app.appId)).not.toContain("nope-app");

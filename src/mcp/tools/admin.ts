@@ -124,9 +124,9 @@ export function registerAdminTools(server: McpServer, client: LotusClient): void
       description:
         "Create a NEW business app from a bundled template (manager only). Seeds the template's design and its fixed sample documents; fails if the appId already exists. Returns the install record, the app's ACL entries, and unresolvedPrincipals — ACL person:*/group:* principals missing from the directory. Create those with the directory tools (e.g. lotus_admin_create_group) so the intended people get access.",
       inputSchema: {
-        templateId: z.string().min(1).describe("Template id from lotus_admin_list_templates, e.g. kb"),
-        appId: z.string().min(1).optional().describe("Lowercase app id slug for the new app; defaults to templateId"),
-        title: z.string().min(1).optional().describe("Human-readable app title; defaults to the template title")
+        templateId: z.string().trim().min(1).describe("Template id from lotus_admin_list_templates, e.g. kb"),
+        appId: z.string().trim().min(1).optional().describe("Lowercase app id slug for the new app; defaults to templateId"),
+        title: z.string().trim().min(1).optional().describe("Human-readable app title; defaults to the template title")
       }
     },
     ({ templateId, appId, title }) => asToolResult(() => installTemplate(client, { templateId, appId, title }))
