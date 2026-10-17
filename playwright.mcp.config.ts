@@ -14,7 +14,9 @@ export default defineConfig({
   testDir: "./tests/mcp",
   // The opt-in real-agent suite (tests/mcp/agent) has its own config
   // (playwright.mcp.agent.config.ts) and must never run under this gate suite.
-  testIgnore: "**/agent/**",
+  // Anchored to tests/mcp/agent: a bare "**/agent/**" glob is matched against the absolute
+  // path, so it ignores every spec when the checkout itself lives under an `agent/` directory.
+  testIgnore: /tests[\\/]mcp[\\/]agent[\\/]/,
   globalSetup: "./tests/e2e/support/global-setup.ts",
   fullyParallel: true,
   workers: 2,
