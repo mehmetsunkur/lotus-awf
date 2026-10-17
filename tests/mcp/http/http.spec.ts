@@ -86,6 +86,9 @@ test.describe("Lotus MCP over HTTP", () => {
     const apps = await admin.callJsonTool<Array<{ appId: string }>>("lotus_admin_list_apps");
     expect(apps.map((app) => app.appId)).toContain("expense");
 
+    const directory = await admin.callJsonTool<{ people: Array<{ username: string }> }>("lotus_admin_get_directory");
+    expect(directory.people.map((person) => person.username)).toContain("alice");
+
     const definitions = await designer.callJsonTool<{ forms: unknown[] }>(
       "lotus_designer_get_app_definitions",
       { appId: "expense" }

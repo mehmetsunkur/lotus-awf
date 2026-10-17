@@ -1,7 +1,10 @@
 import type {
   AccessibleApp,
   AppAccessUpdate,
+  DirectoryState,
   PlatformState,
+  PublicGroup,
+  PublicPerson,
   SessionState,
   TemplateArtifact,
   WorkflowDefinition
@@ -12,6 +15,12 @@ import type {
  * because `src/mcp/**` must not import from `src/server/**` (layering boundary).
  */
 const SESSION_COOKIE = "lotus_session";
+
+/** Mutation response of `/api/names/people*` (ADR-0012); sanitized, never carries password fields. */
+export type DirectoryPersonResult = { person: PublicPerson; directory: DirectoryState };
+
+/** Mutation response of `/api/names/groups*` (ADR-0012). */
+export type DirectoryGroupResult = { group: PublicGroup; directory: DirectoryState };
 
 export type LotusClientConfig = {
   apiUrl: string;
@@ -123,6 +132,30 @@ export class LotusClient {
 
   async updateAppAccess(appId: string, body: AppAccessUpdate): Promise<Record<string, unknown>> {
     return this.request<Record<string, unknown>>("PUT", `/api/apps/${encodeURIComponent(appId)}/access`, body);
+  }
+
+  async directory(): Promise<DirectoryState> {
+    return this.request<DirectoryState>("GET", "/api/names/directory");
+  }
+
+  async createPerson(body: { username: string; displayName: string; password: string }): Promise<DirectoryPersonResult> {
+    return this.request<DirectoryPersonResult>("POST", "/api/names/people", body);
+  }
+
+  async updatePerson(username: string, body: { displayName?: string; active?: boolean }): Promise<DirectoryPersonResult> {
+    return this.request<DirectoryPersonResult>("PUT", `/api/names/people/${encodeURIComponent(username)}`, body);
+  }
+
+  async setPersonPassword(username: string, password: string): Promise<DirectoryPersonResult> {
+    return this.request<DirectoryPersonResult>("POST", `/api/names/people/${encodeURIComponent(username)}/password`, { password });
+  }
+
+  async createGroup(body: { slug: string; name: string; members?: string[] }): Promise<DirectoryGroupResult> {
+    return this.request<DirectoryGroupResult>("POST", "/api/names/groups", body);
+  }
+
+  async updateGroup(slug: string, body: { name?: string; members?: string[] }): Promise<DirectoryGroupResult> {
+    return this.request<DirectoryGroupResult>("PUT", `/api/names/groups/${encodeURIComponent(slug)}`, body);
   }
 
   async appDefinitions(appId: string): Promise<Record<string, unknown>> {

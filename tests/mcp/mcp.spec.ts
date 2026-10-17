@@ -1,6 +1,6 @@
 import { test, expect } from "./support/fixtures";
-import { connectLotusMcp, type LotusMcpTestClient, type LotusMcpServerKind } from "./support/mcp-client";
-import type { AccessibleApp, AppInstall, BusinessDocument, PlatformState, SessionState, TemplateArtifact, WorkflowDefinition } from "../../src/shared/types";
+import { connectLotusMcp, type LotusMcpCredentials, type LotusMcpTestClient, type LotusMcpServerKind } from "./support/mcp-client";
+import type { AccessibleApp, AppInstall, BusinessDocument, DirectoryState, PlatformState, PublicGroup, PublicPerson, SessionState, TemplateArtifact, WorkflowDefinition } from "../../src/shared/types";
 import type { TransitionAffordance } from "../../src/shared/workflow";
 
 type DocumentWithAffordances = { document: BusinessDocument; availableTransitions: TransitionAffordance[] };
@@ -22,8 +22,8 @@ test.describe("Lotus MCP server", () => {
     await Promise.all(clients.splice(0).map((client) => client.close()));
   });
 
-  async function connect(kind: LotusMcpServerKind, apiBaseURL: string): Promise<LotusMcpTestClient> {
-    const client = await connectLotusMcp(kind, apiBaseURL);
+  async function connect(kind: LotusMcpServerKind, apiBaseURL: string, credentials?: LotusMcpCredentials): Promise<LotusMcpTestClient> {
+    const client = await connectLotusMcp(kind, apiBaseURL, credentials);
     clients.push(client);
     return client;
   }
@@ -57,6 +57,107 @@ test.describe("Lotus MCP server", () => {
       { appId }
     );
     expect(access.entries).toContainEqual({ principal: "person:alice", level: "manager" });
+  });
+
+  test("admin surface manages the names.nsf directory", async ({ apiBaseURL }) => {
+    const directoryTools = [
+      "lotus_admin_get_directory",
+      "lotus_admin_create_person",
+      "lotus_admin_update_person",
+      "lotus_admin_set_person_password",
+      "lotus_admin_create_group",
+      "lotus_admin_update_group",
+      "lotus_admin_add_group_members",
+      "lotus_admin_remove_group_members"
+    ];
+    const admin = await connect("admin", apiBaseURL);
+    const adminTools = await admin.listTools();
+    for (const tool of directoryTools) expect(adminTools).toContain(tool);
+    for (const kind of ["designer", "workspace"] as const) {
+      const other = await (await connect(kind, apiBaseURL)).listTools();
+      for (const tool of directoryTools) expect(other).not.toContain(tool);
+    }
+
+    const outputs: unknown[] = [];
+    const call = async <T,>(name: string, args: Record<string, unknown> = {}): Promise<T> => {
+      const result = await admin.callJsonTool<T>(name, args);
+      outputs.push(result);
+      return result;
+    };
+
+    const suffix = Date.now().toString(36);
+    const username = `dana-${suffix}`;
+    const slug = `ops-${suffix}`;
+    const groupId = `group:${slug}`;
+
+    const created = await call<{ person: PublicPerson }>("lotus_admin_create_person", {
+      username,
+      displayName: "Dana Ops",
+      password: "first-pass-123"
+    });
+    expect(created.person).toMatchObject({ _id: `person:${username}`, displayName: "Dana Ops", active: true });
+
+    const dana = await connect("workspace", apiBaseURL, { username, password: "first-pass-123" });
+    const danaSession = await dana.callJsonTool<SessionState>("lotus_workspace_get_session");
+    expect(danaSession.person?.username).toBe(username);
+
+    await call("lotus_admin_update_person", { username, displayName: "Dana Operations" });
+    await call("lotus_admin_set_person_password", { username, password: "second-pass-456" });
+    await expect(connect("workspace", apiBaseURL, { username, password: "first-pass-123" }).then((c) => c.callJsonTool("lotus_workspace_get_session"))).rejects.toThrow();
+    const relogin = await connect("workspace", apiBaseURL, { username, password: "second-pass-456" });
+    expect((await relogin.callJsonTool<SessionState>("lotus_workspace_get_session")).person?.username).toBe(username);
+
+    await call("lotus_admin_create_group", { slug, name: "Ops", members: ["person:bob"] });
+    // Mixed-case slug and principal resolve exactly as the server normalizes them.
+    await call("lotus_admin_add_group_members", { slug: slug.toUpperCase(), members: [`person:${username.toUpperCase()}`, "person:bob"] });
+    let directory = await call<DirectoryState>("lotus_admin_get_directory");
+    expect(directory.people.find((person) => person.username === username)?.displayName).toBe("Dana Operations");
+    expect(directory.groups.find((group) => group._id === groupId)?.members).toEqual(["person:bob", `person:${username}`]);
+
+    const removed = await call<{ notMembers: string[] }>("lotus_admin_remove_group_members", {
+      slug: `GROUP:${slug}`,
+      members: ["person:Bob", "person:ghost"]
+    });
+    expect(removed.notMembers).toEqual(["person:ghost"]);
+    const renamed = await call<{ group: PublicGroup }>("lotus_admin_update_group", { slug, name: "Operations" });
+    expect(renamed.group).toEqual({ _id: groupId, kind: "group", name: "Operations", members: [`person:${username}`] });
+
+    await call("lotus_admin_update_person", { username, active: false });
+    await expect(connect("workspace", apiBaseURL, { username, password: "second-pass-456" }).then((c) => c.callJsonTool("lotus_workspace_get_session"))).rejects.toThrow();
+    directory = await call<DirectoryState>("lotus_admin_get_directory");
+    expect(directory.people.find((person) => person.username === username)?.active).toBe(false);
+
+    // Server-side guards surface as tool errors.
+    await expect(admin.callJsonTool("lotus_admin_remove_group_members", { slug: "admins", members: ["person:alice"] })).rejects.toThrow(
+      /At least one active admin is required/
+    );
+    await expect(admin.callJsonTool("lotus_admin_add_group_members", { slug, members: ["person:ghost"] })).rejects.toThrow();
+    await expect(admin.callJsonTool("lotus_admin_add_group_members", { slug: `missing-${suffix}`, members: ["person:bob"] })).rejects.toThrow(
+      /Group not found/
+    );
+    await expect(admin.callJsonTool("lotus_admin_create_group", { slug: `bad-${suffix}`, name: "Bad", members: ["group:finance"] })).rejects.toThrow();
+
+    // Responses never carry password material.
+    expect(JSON.stringify(outputs)).not.toMatch(/passwordHash|passwordSalt|passwordParams|second-pass-456|first-pass-123/);
+  });
+
+  test("directory writes require a manager session", async ({ apiBaseURL }) => {
+    const bob = await connect("admin", apiBaseURL, { username: "bob", password: "password123" });
+    const directory = await bob.callJsonTool<DirectoryState>("lotus_admin_get_directory");
+    expect(directory.people.map((person) => person.username)).toContain("alice");
+
+    const writes: Array<[string, Record<string, unknown>]> = [
+      ["lotus_admin_create_person", { username: "mallory", displayName: "Mallory", password: "password123" }],
+      ["lotus_admin_update_person", { username: "alice", active: false }],
+      ["lotus_admin_set_person_password", { username: "alice", password: "password456" }],
+      ["lotus_admin_create_group", { slug: "rogue", name: "Rogue" }],
+      ["lotus_admin_update_group", { slug: "admins", members: ["person:bob"] }],
+      ["lotus_admin_add_group_members", { slug: "admins", members: ["person:bob"] }],
+      ["lotus_admin_remove_group_members", { slug: "finance", members: ["person:alice"] }]
+    ];
+    for (const [tool, args] of writes) {
+      await expect(bob.callJsonTool(tool, args), tool).rejects.toThrow(/403/);
+    }
   });
 
   test("designer surface changes app design and exposes only designer tools", async ({ apiBaseURL }) => {

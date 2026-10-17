@@ -50,6 +50,7 @@ import {
   rollupAclProjection,
   type PrincipalScope
 } from "../shared/access";
+import { groupIdForSlug, normalizeGroupSlug } from "../shared/directory";
 import { validateDesignDefinition } from "../shared/definition-validation";
 import {
   diffTemplateDefinitions,
@@ -515,13 +516,6 @@ async function upsertGroup(target: "local" | "server", id: `group:${string}`, na
   });
 }
 
-function normalizeGroupSlug(slug: string): string {
-  return normalizeUsername(slug);
-}
-
-function groupIdForSlug(slug: string): `group:${string}` {
-  return `group:${normalizeGroupSlug(slug)}`;
-}
 
 async function deleteSessionsForPerson(personId: `person:${string}`): Promise<void> {
   await Promise.all(

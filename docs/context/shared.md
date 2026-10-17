@@ -28,6 +28,10 @@ No DOM, no Node/server-only APIs.
   app-access editor payloads.
 - `src/shared/types.ts` also carries M19 platform shell types: `SystemApp`, `PublicGroup`, and
   `DirectoryState`.
+- `src/shared/directory.ts` (ADR-0012) — pure names.nsf id normalization: `normalizeUsername`,
+  `personIdForUsername`, `normalizeGroupSlug` (accepts an optional `group:` prefix in any case),
+  `groupIdForSlug`, `normalizePersonPrincipal`. Used by the server directory routes (re-exported from
+  `src/server/auth.ts`) and the MCP admin directory tools so both resolve ids identically.
 - `src/shared/access.ts` (M5/M18) — pure helpers for session-derived principal scopes, readable docs,
   editable docs, app ACL levels, and access selectors. `canEditDocument` is the ADR-0024 two-layer gate
   (Layer 1 Editor+ ACL bypass via `hasAccessLevel`; Layer 2 group/role-aware `authors` intersection).

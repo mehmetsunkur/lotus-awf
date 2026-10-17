@@ -8,13 +8,7 @@ const scrypt = promisify(scryptCallback);
 export const SESSION_COOKIE = "lotus_session";
 export const PASSWORD_PARAMS: PasswordParams = { algorithm: "scrypt", keyLength: 64 };
 
-export function normalizeUsername(username: string): string {
-  return username.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
-}
-
-export function personIdForUsername(username: string): `person:${string}` {
-  return `person:${normalizeUsername(username)}`;
-}
+export { normalizeUsername, personIdForUsername } from "../shared/directory";
 
 export async function hashPassword(password: string, salt = randomBytes(16).toString("base64")) {
   const derived = (await scrypt(password, salt, PASSWORD_PARAMS.keyLength)) as Buffer;

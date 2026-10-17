@@ -7,6 +7,10 @@
 - Replaced the generic MCP entrypoint with three non-layered stdio servers:
   `src/mcp/admin-server.ts`, `src/mcp/designer-server.ts`, and `src/mcp/workspace-server.ts`.
 - Added admin tools for session/platform state, app list, app creation, and app access management.
+- Added names.nsf directory admin tools (`lotus_admin_get_directory`, person create/update/
+  set-password, group create/update/add-members/remove-members) over `/api/names/*`, with pure
+  member merges in `src/mcp/directory-members.ts` and id normalization shared with the server in
+  `src/shared/directory.ts`.
 - Added designer tools for definitions, workflows, document-type creation, approval workflow
   scaffolding, template export/diff/apply/validation, and workflow patch preview/apply.
 - Added workspace tools for definitions, document list/query/get/create/update, and workflow
