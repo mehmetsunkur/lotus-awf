@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `c425b82`
+- Last code review baseline: `b2062cf`
 - Last reviewed date: `2026-10-17`
 - Code areas:
   - `src/mcp/**`
@@ -61,7 +61,9 @@ call the existing Express API and import only pure shared validators/helpers.
   and group create/update/add-members/remove-members over `/api/names/*`. The server enforces
   manager-only writes, member existence, and the last-active-admin rule; MCP adds no authority.
   Add/remove-members read the group, merge via `src/mcp/directory-members.ts`, and `PUT` the full
-  list (last write wins). Passwords are accepted as sensitive write-only arguments.
+  list (last write wins); remove reports `notMembers`. Slugs and `person:*` members are normalized
+  with the server's shared rules (`src/shared/directory.ts`). Passwords are accepted as sensitive
+  write-only arguments.
   ADR-0023: `lotus_admin_list_apps` returns each `AppInstall` including its optional `description`
   (a purpose blurb mirrored from `app:config` at install time), so an operator agent can pick the
   right app before reading its definitions.

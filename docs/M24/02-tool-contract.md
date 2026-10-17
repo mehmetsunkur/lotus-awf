@@ -72,7 +72,12 @@ Admin tools require the server-side session/app access needed by the backing API
 - `lotus_admin_update_group` — `PUT /api/names/groups/:slug`; `members` replaces the whole list.
 - `lotus_admin_add_group_members` / `lotus_admin_remove_group_members` — read the group from the
   directory, merge (`src/mcp/directory-members.ts`), then `PUT` the full list. Last write wins; there
-  is no revision check between read and write.
+  is no revision check between read and write. `remove_group_members` returns `notMembers`: the
+  requested principals that were not in the group, so a no-op removal is never silent.
+
+Group slugs and `person:*` members are normalized with the server's rules
+(`src/shared/directory.ts`: lowercase, invalid characters → `-`, optional `group:` prefix in any case),
+so every directory tool resolves `Finance`, `group:finance`, and `GROUP:finance` to the same group.
 
 Writes are manager-only (`group:admins`), enforced by the server. The server also validates that
 group members are existing `person:*` principals, refuses to leave `group:admins` without an active

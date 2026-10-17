@@ -4,6 +4,9 @@
   stdio.
 - Each MCP server can authenticate to a running Lotus API with username/password and session cookie.
 - Admin tools can list apps, create an app, and inspect app access.
+- Admin tools can read the names.nsf directory and manage people and groups (create/update person,
+  set password, create/update group, add/remove members). Writes are manager-only (enforced by the
+  server), passwords are write-only and never returned, and the last active admin cannot be removed.
 - Designer tools can create document types, scaffold approval workflows, validate design changes,
   patch workflows, and export templates.
 - Workspace tools can discover views, create/query/update business documents, and run workflow
