@@ -27,7 +27,7 @@
         },
         {
           "principal": "group:inventory",
-          "level": "editor"
+          "level": "author"
         },
         {
           "principal": "group:billing",
