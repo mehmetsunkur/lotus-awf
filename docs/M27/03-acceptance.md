@@ -1,5 +1,7 @@
 # 03 - Acceptance
 
+> **Amended by ADR-0026 (2026-10-19):** per-document `readers` were removed — document visibility is the app ACL. Criteria below are restated accordingly; the original readers-based wording is history.
+
 Verified by `npm run test:mcp:agent` (with agent credentials) for the twin working-day
 spec, `npm run test:e2e` for fixture/template coverage that needs no agent, and
 `npm run test:mcp` / `npm run test:mcp:http` staying green (no adapter changes). The
@@ -15,11 +17,10 @@ with a printed reason; the PR gate is unaffected.
   state — and a scripted e2e spec (no agent) asserts the seeded world: flight states
   and responsibles, expense queue, KB readability matrix (who can read which
   articles/procedures), org job descriptions.
-- **Knowledge scoping**: the readability matrix proves department procedures are
-  scoped by authorship (ADR-0015 creator principals): dave and ivy each read their own
-  department's procedure and not the others'; company-wide articles are readable by
-  every staff persona; grace cannot read any flight (form `defaultReaders` excludes
-  `group:managers`).
+- **Knowledge scoping** (restated by ADR-0026): every kb member reads every article and
+  every department's procedure; procedure authorship still governs edits (dave cannot
+  edit ground-ops' procedure); grace cannot read any flight because she holds no
+  turnaround app ACL entry (the app ACL, not a readers field, is the boundary).
 - **Prompt hygiene**: the assembled shift prompt (diagnostics `prompt.txt`) contains
   the job description, the persona identity line, and the kb appId — no other appId,
   no view id, no tool name, no document id, no per-run value. Enforced by a harness
@@ -36,7 +37,7 @@ with a printed reason; the PR gate is unaffected.
   the ADR-0018/0025 responsible hand-off history (organic — staged the same way by the fixture,
   so the oracle cannot distinguish staging from agent work by mechanism, only by when).
 - **Adversarial (scripted)**: grace 403/404-or-empty on flights; cross-department
-  procedure reads refused; out-of-authority transitions (e.g. ivy dispatching a fueled
+  procedure edits refused (reads are allowed — ADR-0026); out-of-authority transitions (e.g. ivy dispatching a fueled
   flight) refused by the guard with no state change.
 - **Diagnostics**: each shift writes the standard redacted bundle (manifest, events,
   prompt, final message) into a per-shift subdirectory under the working-day test's

@@ -1,5 +1,7 @@
 # 02 - Operator contract
 
+> **Amended by ADR-0026 (2026-10-19):** per-document `readers` were removed — document visibility is the app ACL.
+
 ## Resolved scope questions
 
 - **Driver-code home**: promoted. `agent-driver.ts` and the diagnostics
@@ -24,13 +26,12 @@
   the operator's only write authority over a session is TRANSITIONS. Outcome facts
   (`outcome`, `startedAt`, `finishedAt`, persona, driver) live in an operator-authored
   `outcome.json` artifact instead; state/responsible/history/audit on the session are
-  engine-stamped. `defaultReaders: [group:agent-operators, group:admins]` (the
-  requester reads their own session via creator principals).
+  engine-stamped. Visible to every agent-ops app reader (ADR-0026; originally
+  `defaultReaders: [group:agent-operators, group:admins]`).
 - `form:artifact` — `sessionId`, `name` (e.g. `prompt.txt`, `final_message.txt`,
   `events.jsonl`, `tool-transcript.jsonl`), `content` (textarea, capped).
-  `defaultReaders: [group:admins]` — operator-created, so effective readers are
-  operator principals + admins. Requester-visible transcripts are the ADR-0021
-  accepted limitation.
+  Operator-authored and visible to every agent-ops app reader, the requester included
+  (ADR-0026 removed the ADR-0021 operators + admins scoping).
 - `workflow:agent-session` — `draft` (initial) → `submit` → `requested` (responsible
   `group:agent-operators` → the operator's `@me` queue) → `claim` → `running`
   (responsible `group:agent-operators`) → `complete` → `completed` (final) or
@@ -99,7 +100,7 @@ loop. SIGTERM: finish or fail the in-flight session, then exit.
   deterministic, no credentials): seeds the twin fixture + agent-ops app + operator
   identity, runs operator ticks in-process with an injected fake driver, and proves:
   claim (responsible/history stamped), artifact documents created with capped/redacted
-  content and correct readers, `completed` and `failed` paths, double-claim 422
+  content and operator authorship, `completed` and `failed` paths, double-claim 422
   (scripted second claim), orphan sweep (a pre-staged `running` session fails with
   `orphaned` on startup), and the derived prompt exactly equals
   `assembleShiftPrompt`'s output for the persona (prompt-hygiene by construction).

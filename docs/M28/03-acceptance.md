@@ -1,5 +1,7 @@
 # 03 - Acceptance
 
+> **Amended by ADR-0026 (2026-10-19):** per-document `readers` were removed — document visibility is the app ACL. Criteria below are restated accordingly; the original readers-based wording is history.
+
 Verified by `npm run test:unit` (registry), `npm run test:e2e` (FakeDriver operator
 lifecycle — on the PR gate), and `npm run test:mcp:agent` (one real-driver operator
 session, opt-in / nightly, self-skipping). `npm run test:mcp` / `test:mcp:http` stay
@@ -20,8 +22,9 @@ green (driver-code move only; no MCP surface change).
   persona's own session — the operator identity holds no read grants on org/kb, and
   the FakeDriver spec asserts the prompt it received.
 - **Artifacts**: one `artifact` document per diagnostics file, content capped at
-  64 KB and redacted, `sessionId` linked, readable by operators + admins (the
-  requester-visibility limitation is recorded in ADR-0021, not silently absent).
+  64 KB and redacted, `sessionId` linked, authored by the operator and readable by every
+  agent-ops app reader, the requester included (ADR-0026 removed the ADR-0021 operators +
+  admins scoping — an accepted consequence).
 - **Outcomes**: `completed` only on a clean driver run; `failed` carries a reason
   (`driver-error`, `budget`, `orphaned`, ...); a pre-staged orphaned `running` session
   is swept to `failed(orphaned)` on daemon startup; a failing run never kills the

@@ -21,5 +21,5 @@ M9 is complete when the project can prove:
 - searchable fields are driven by data (`searchable` flag), defaulting text-ish fields on and honoring
   explicit opt-in/opt-out;
 - search runs against the local replica with no server round-trip (identical offline and server-side);
-- search never surfaces a document outside the user's `readers` (it narrows the ACL-scoped set);
+- search never surfaces a document outside the user's app access (it narrows the app-ACL-scoped set; ADR-0026);
 - the matcher is pure and deterministic, unit-verified, with no new substrate or Mango index.

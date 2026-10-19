@@ -1,5 +1,7 @@
 # 02 — Data Contract
 
+> **Amended by ADR-0026 (2026-10-19):** per-document `readers` were removed — document visibility is the app ACL.
+
 ## Business documents
 
 M2 keeps the M1 envelope:
@@ -14,7 +16,6 @@ M2 keeps the M1 envelope:
   "updatedAt": "2026-06-12T21:00:00Z",
   "createdBy": "user:alice",
   "updatedBy": "user:alice",
-  "readers": ["user:alice", "role:finance"],
   "authors": ["user:alice"],
   "payload": {}
 }
@@ -80,7 +81,7 @@ Supported field types:
 (ADR-0020) A view filter value may be the reserved sentinel `"@me"` — valid only with
 `op: "in"` and only as the entire value — which the server substitutes per request with
 the caller's full principal set (person + groups). An `in` value must otherwise be an
-array; filters on the `readers`/`authors` envelope fields are rejected (the ACL selector
+array; filters on the `readers`/`authors` envelope fields are rejected (originally because the ACL selector
 always overrides them); `@me` views require every node at or above the ADR-0020 build
 (older code renders a malformed `$in` — a Mango 400 on that view).
 
@@ -144,7 +145,7 @@ M2 creates Mango indexes for runtime lists:
 - `kind`
 - `docType`
 - `updatedAt`
-- `readers`
+- ~~`readers`~~ (`m2-readers` removed by ADR-0026)
 
 The runtime should use `_find` for business document lists instead of scanning all documents.
 

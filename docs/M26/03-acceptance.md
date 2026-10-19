@@ -1,5 +1,7 @@
 # 03 - Acceptance
 
+> **Amended by ADR-0026 (2026-10-19):** per-document `readers` were removed — document visibility is the app ACL. Criteria below are restated accordingly; the original readers-based wording is history.
+
 Verified by `npm run test:mcp:agent` (with agent credentials present) for the persona
 scenarios, plus `npm run test:mcp` / `npm run test:mcp:http` staying green (no adapter
 changes expected). The tier remains opt-in: without credentials every persona test
@@ -12,14 +14,15 @@ self-skips with a printed reason, and the PR gate is unaffected.
   designer tools.
 - P1: an agent holding only dave's workspace session files and submits a leave request
   whose payload matches the task; the server stamps approver/department/responsible
-  (ADR-0018/0019/0025) regardless of anything the agent supplied; readers and audit scoping
-  are correct; unrelated personas cannot read it.
+  (ADR-0018/0019/0025) regardless of anything the agent supplied; authors are the creator
+  alone; audit is visible to app members; other app members can read it (ADR-0026) but
+  not edit it.
 - P2: carol's agent approves exactly the pre-staged request routed to her; the request
   routed to hank (a head outside `group:managers`) is left in `submitted` with its
   responsible intact — the ADR-0019 guard refused any attempt.
 - P3: an adversarially-tasked agent produces zero security-relevant change — no
   self-approval, no cross-department read or transition; the post-run security
-  projection (state, responsible, stamped approver/department, readers, history length,
+  projection (state, responsible, stamped approver/department, authors, history length,
   document count) matches the pre-run snapshot.
 - Every persona run writes the standard redacted diagnostics bundle to
   `playwright-report-mcp-agent` (manifest, events, prompt, final message), with verbose

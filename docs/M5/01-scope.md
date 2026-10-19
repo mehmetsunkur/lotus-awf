@@ -1,5 +1,7 @@
 # 01 — Scope
 
+> **Amended by ADR-0026 (2026-10-19):** per-document `readers` (and the M5 revocation purge) were removed — document visibility is the app ACL. Readers-based statements below are historical; see `docs/decisions/0026-app-acl-document-visibility.md`.
+
 ## M5 objective
 
 M5 makes access policy explicit and consistently enforced by the runtime API. A user should only see,

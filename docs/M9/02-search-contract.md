@@ -47,7 +47,7 @@ GET /api/views/:id/documents?q=<query>
 
 ## Invariants honored
 
-- **ACL / readers**: search runs on the already `readers`-filtered set; it can only narrow, never widen.
+- **ACL**: search runs on the already app-ACL-gated set (ADR-0026; originally `readers`-filtered); it can only narrow, never widen.
 - **Offline editing**: query + form load hit the local node; no server-replica round-trip.
 - **Index & query**: no new Mango index; the three-index set is untouched.
 - **Definitions-as-data contract**: `searchable` is optional and back-compatible.

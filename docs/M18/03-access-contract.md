@@ -1,5 +1,7 @@
 # 03 - Access Contract
 
+> **Amended by ADR-0026 (2026-10-19):** per-document `readers` were removed — document visibility is the app ACL.
+
 ## Principal Resolution
 
 An authenticated session resolves to:
@@ -49,7 +51,8 @@ Ordering is ascending. First enforcement:
 - `designer+` can edit definitions and scaffold document types.
 - `manager` can install/manage apps.
 
-Document `readers` and `authors` still govern row-level read/edit/delete access.
+Document `authors` govern row-level edit/delete access; read access is the app ACL (ADR-0026 removed
+document `readers`).
 
 ## Expense Principals
 

@@ -1,5 +1,7 @@
 # M27 — Digital-twin tier: job-description-driven persona agents
 
+> **Amended by ADR-0026 (2026-10-19):** per-document `readers` (and the M5 revocation purge) were removed — document visibility is the app ACL. Readers-based statements below are historical; see `docs/decisions/0026-app-acl-document-visibility.md`.
+
 The next step past M26: agent personas of Agentic Airlines PLC receive **no scenario
 prompts at all**. Everything that steers an agent is company data readable over
 `/mcp/workspace`:
