@@ -71,8 +71,9 @@ test.describe("Agentic Airlines PLC scenario", () => {
       expect.arrayContaining(["expense", airline.scenario.orgAppId, airline.scenario.leaveRequestAppId])
     );
 
-    // Frank (cabin crew, no admin rights) sees exactly the airline org chart —
-    // the template's admin-only sample departments/employees stay invisible.
+    // Frank (cabin crew, no admin rights) sees exactly the airline org chart — the
+    // fixture removes the template's sample departments/employees (ADR-0026 would
+    // otherwise show them to every org reader).
     const frank = await airline.as("frank");
     const departments = await viewDocs(frank, airline.scenario.orgAppId, "view:departments");
     const headBySlug = new Map(departments.map((doc) => [doc.payload.slug, doc.payload.head]));
@@ -134,8 +135,8 @@ test.describe("Agentic Airlines PLC scenario", () => {
     expect(approved.status()).toBe(200);
     expect((await approved.json()).state).toBe("approved");
 
-    // Audit events copy the source document's readers: the manager sees the
-    // trail, an unrelated employee does not.
+    // Audit visibility is the app ACL (ADR-0026): the manager and any other app
+    // member see the trail.
     await page.request.post(`/api/apps/${airline.scenario.leaveRequestAppId}/audit/run`);
     const carolEvents = (await carol
       .get(`/api/apps/${airline.scenario.leaveRequestAppId}/audit`)
@@ -146,7 +147,7 @@ test.describe("Agentic Airlines PLC scenario", () => {
     const frankEvents = (await frank
       .get(`/api/apps/${airline.scenario.leaveRequestAppId}/audit`)
       .then((response) => response.json())) as Array<{ docId: string }>;
-    expect(frankEvents.map((event) => event.docId)).not.toContain(request._id);
+    expect(frankEvents.map((event) => event.docId)).toContain(request._id);
   });
 
   test("a manager can reject a submitted leave request", async ({ airline }) => {
@@ -165,7 +166,7 @@ test.describe("Agentic Airlines PLC scenario", () => {
     expect((await rejected.json()).state).toBe("rejected");
   });
 
-  test("leave requests are isolated: peers cannot read them and requesters cannot self-approve", async ({
+  test("leave requests are app-visible but peers cannot edit them and requesters cannot self-approve", async ({
     airline
   }) => {
     const dave = await airline.as("dave");
@@ -177,13 +178,17 @@ test.describe("Agentic Airlines PLC scenario", () => {
     });
     await transition(dave, airline.scenario.leaveRequestAppId, request._id, "submit");
 
-    // Frank is in another department: the request is neither listed nor
-    // directly readable for him.
+    // Frank is in another department: the request is not in his personal view
+    // (@me filter), but — ADR-0026, visibility is the app ACL — he can read it.
+    // He cannot edit it: an app author outside the Authors field (Layer 2).
     const frank = await airline.as("frank");
     const frankSees = await viewDocs(frank, airline.scenario.leaveRequestAppId, "view:my-requests");
     expect(frankSees.map((doc) => doc._id)).not.toContain(request._id);
-    const direct = await frank.get(`/api/apps/${airline.scenario.leaveRequestAppId}/documents/${encodeURIComponent(request._id)}`);
-    expect([403, 404]).toContain(direct.status());
+    const docUrl = `/api/apps/${airline.scenario.leaveRequestAppId}/documents/${encodeURIComponent(request._id)}`;
+    const direct = await frank.get(docUrl);
+    expect(direct.status()).toBe(200);
+    const frankEdit = await frank.put(docUrl, { data: { payload: (await direct.json()).payload } });
+    expect(frankEdit.status()).toBe(403);
 
     // Dave authored the request but is not in group:managers — the workflow
     // gate refuses his own approval.
@@ -500,16 +505,9 @@ test.describe("Agentic Airlines PLC scenario", () => {
     await transition(carol, app, daveRequest._id, "approve");
     expect((await viewDocs(carol, app, "view:my-approvals")).map((doc) => doc._id)).not.toContain(daveRequest._id);
 
-    // ACL precedence pinned (review M4): hank stays ivy's responsible but loses
-    // DOCUMENT readership (removed from group:ground-ops) — the inbox must NOT
-    // show it. He keeps app-level access via a person entry so the view route
-    // itself still answers (we are testing doc ACL, not the app gate).
-    const access = (await page.request
-      .get(`/api/apps/${app}/access`)
-      .then((response) => response.json())) as { entries: Array<{ principal: string; level: string }> };
-    await page.request.put(`/api/apps/${app}/access`, {
-      data: { entries: [...access.entries, { principal: "person:hank", level: "author" }] }
-    });
+    // ACL precedence pinned (review M4, ADR-0026): hank stays ivy's responsible but
+    // loses APP access (removed from group:ground-ops, his only ACL path) — the
+    // inbox is refused at the app gate rather than showing it.
     const directory = (await page.request.get("/api/names/directory").then((response) => response.json())) as {
       groups: Array<{ _id: string; members: string[] }>;
     };
@@ -518,9 +516,8 @@ test.describe("Agentic Airlines PLC scenario", () => {
       data: { members: (groundOps?.members ?? []).filter((member) => member !== "person:hank") }
     });
     const hankBlind = await airline.as("hank");
-    expect((await viewDocs(hankBlind, app, "view:my-approvals")).map((doc) => doc._id)).not.toContain(
-      ivyRequest._id
-    );
+    const hankInbox = await hankBlind.get(`/api/apps/${app}/views/${encodeURIComponent("view:my-approvals")}/documents`);
+    expect(hankInbox.status()).toBe(403);
 
     // Index binding verified, not assumed (ADR-0020 performance guard): the
     // inbox selector still binds the m3 index per CouchDB _explain.
@@ -531,8 +528,7 @@ test.describe("Agentic Airlines PLC scenario", () => {
           kind: "document",
           docType: { $eq: "leave-request" },
           state: { $eq: "submitted" },
-          responsible: { $in: ["person:carol", "group:managers"] },
-          readers: { $in: ["person:carol", "group:managers"] }
+          responsible: { $in: ["person:carol", "group:managers"] }
         },
         sort: [{ updatedAt: "desc" }],
         limit: 200,
@@ -572,7 +568,7 @@ test.describe("Agentic Airlines PLC scenario", () => {
     expect((await viewDocs(hank, app, "view:my-approvals")).map((doc) => doc._id)).not.toContain(request._id);
   });
 
-  test("the same personas work the expense app: crew files, finance approves, others see nothing", async ({
+  test("the same personas work the expense app: crew files, finance approves, others cannot edit", async ({
     airline
   }) => {
     const frank = await airline.as("frank");
@@ -593,12 +589,16 @@ test.describe("Agentic Airlines PLC scenario", () => {
     expect(approved.status()).toBe(200);
     expect((await approved.json()).state).toBe("approved");
 
-    // Dave is in neither cabin-crew nor finance, so Frank's expense stays
-    // invisible to him.
+    // Dave is in neither cabin-crew nor finance: as an expense app member he can
+    // see Frank's expense (ADR-0026 — visibility is the app ACL) but not edit it.
     const dave = await airline.as("dave");
     const daveSees = await dave
       .get("/api/apps/expense/documents?docType=expense")
       .then((response) => response.json() as Promise<Doc[]>);
-    expect(daveSees.map((doc) => doc._id)).not.toContain(expense._id);
+    expect(daveSees.map((doc) => doc._id)).toContain(expense._id);
+    const daveEdit = await dave.put(`/api/apps/expense/documents/${encodeURIComponent(expense._id)}`, {
+      data: { payload: expense.payload }
+    });
+    expect(daveEdit.status()).toBe(403);
   });
 });

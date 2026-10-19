@@ -61,4 +61,41 @@ test.describe("ADR-0014 formula fields", () => {
     await expect(page.getByTestId("field-bookCount")).toHaveText("2");
     expect(await page.getByTestId("field-bookCount").evaluate((el) => el.tagName)).toBe("OUTPUT");
   });
+
+  test("a cross-app lookup is gated on the caller's ACL in the TARGET app (ADR-0026)", async ({ page, bobApi }) => {
+    const api = page.request;
+
+    // library: no ACL entry for bob. desk: bob is a reader.
+    await createApp(api, "library", "book");
+    await putForm(api, "library", "book", [{ name: "title", type: "text", label: "Title", required: true }]);
+    await createDoc(api, "library", "book", { title: "Alpha" });
+    await createDoc(api, "library", "book", { title: "Beta" });
+
+    await createApp(api, "desk", "note");
+    await putForm(api, "desk", "note", [
+      { name: "title", type: "text", label: "Title", required: true },
+      { name: "bookCount", type: "number", mode: "computed-for-display", label: "Books", formula: "(await DbColumn('library', 'book', 'payload.title')).length" },
+      { name: "firstBook", type: "text", mode: "computed-for-display", label: "First", formula: "await DbLookup('library', 'book', 'payload.title', 'Alpha', 'payload.title')" }
+    ]);
+    const noteId = await createDoc(api, "desk", "note", { title: "Sprint notes" });
+    const grant = async (appId: string, entries: Array<{ principal: string; level: string }>) => {
+      const res = await api.put(`/api/apps/${appId}/access`, {
+        data: { entries: [{ principal: "group:admins", level: "manager" }, ...entries] }
+      });
+      expect(res.ok(), `grant ${appId}: ${res.status()} ${await res.text()}`).toBeTruthy();
+    };
+    await grant("desk", [{ principal: "person:bob", level: "reader" }]);
+
+    const bobFormulas = async () =>
+      (await bobApi.get(`/api/apps/desk/documents/${encodeURIComponent(noteId)}/formulas`)).json();
+
+    // Bob can read the note, but the lookup into an app he cannot access returns nothing.
+    expect(await bobFormulas()).toMatchObject({ bookCount: 0 });
+    expect((await bobFormulas()).firstBook ?? null).toBeNull();
+    expect((await bobApi.get("/api/apps/library/documents?docType=book")).status()).toBe(403);
+
+    // Granting bob Reader on the target app opens every row to his lookups.
+    await grant("library", [{ principal: "person:bob", level: "reader" }]);
+    expect(await bobFormulas()).toMatchObject({ bookCount: 2, firstBook: "Alpha" });
+  });
 });

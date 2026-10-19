@@ -1,3 +1,4 @@
+import type { APIRequestContext } from "@playwright/test";
 import { test, expect } from "./support/fixtures";
 
 const couchAuth = { authorization: `Basic ${Buffer.from("admin:password").toString("base64")}` };
@@ -7,10 +8,23 @@ type AccessibleApp = { appId: string; title: string; description?: string; acces
 type Doc = {
   _id: string;
   _rev?: string;
-  readers: string[];
   authors: string[];
   payload: Record<string, unknown>;
 };
+
+// ADR-0026: document visibility is the app ACL — every app reader sees every
+// document; revoking app access is enforced at the API gate.
+async function setExpenseAccess(page: { request: APIRequestContext }, bob?: string) {
+  const res = await page.request.put("/api/apps/expense/access", {
+    data: {
+      entries: [
+        { principal: "group:finance", level: "manager" },
+        ...(bob ? [{ principal: "person:bob", level: bob }] : [])
+      ]
+    }
+  });
+  expect(res.ok(), `set expense access: ${res.status()} ${await res.text()}`).toBeTruthy();
+}
 
 test.describe("ACL scoped runtime", () => {
   test("GET /api/apps returns accessible apps with accessLevel for the authenticated caller", async ({ bobApi, playwright, apiBaseURL, resetState }) => {
@@ -61,17 +75,35 @@ test.describe("ACL scoped runtime", () => {
     expect(bobApps.map((a) => a.appId)).not.toContain(newAppId);
   });
 
-  test("lists and select options are scoped by current user principals", async ({ bobApi, page }) => {
+  test("every app reader sees every document and option; no app access sees nothing", async ({ bobApi, page }) => {
     const aliceExpenses = (await page.request.get("/api/apps/expense/documents?docType=expense").then((r) => r.json())) as Doc[];
     const bobExpenses = (await bobApi.get("/api/apps/expense/documents?docType=expense").then((r) => r.json())) as Doc[];
 
+    // Bob (app author) sees Alice's documents too — no per-document readers (ADR-0026).
     expect(aliceExpenses.map((doc) => doc.payload.description)).toContain("Stationery");
-    expect(bobExpenses.map((doc) => doc.payload.description)).not.toContain("Stationery");
-    expect(bobExpenses.map((doc) => doc.payload.description)).toContain("Client dinner");
+    expect(bobExpenses.map((doc) => doc.payload.description).sort()).toEqual(
+      aliceExpenses.map((doc) => doc.payload.description).sort()
+    );
 
     const bobOptions = await bobApi.get("/api/apps/expense/forms/expense/options").then((r) => r.json());
     const vendorLabels = (bobOptions.vendorId ?? []).map((option: { label: string }) => option.label);
-    expect(vendorLabels).toEqual([]);
+    expect(vendorLabels.length).toBeGreaterThan(0);
+
+    // Remove bob from the app ACL: every read path refuses at the app gate.
+    const stationery = aliceExpenses.find((doc) => doc.payload.description === "Stationery")!;
+    await setExpenseAccess(page);
+    const id = encodeURIComponent(stationery._id);
+    for (const path of [
+      "/api/apps/expense/documents?docType=expense",
+      "/api/apps/expense/forms/expense/options",
+      `/api/apps/expense/documents/${id}`,
+      `/api/apps/expense/documents/${id}/formulas`,
+      "/api/apps/expense/audit",
+      "/api/apps/expense/conflicts"
+    ]) {
+      const refused = await bobApi.get(path);
+      expect(refused.status(), path).toBe(403);
+    }
   });
 
   test("payload edits enforce the two-layer authorship gate", async ({ bobApi, page, localCouchUrl }) => {
@@ -90,9 +122,8 @@ test.describe("ACL scoped runtime", () => {
 
     // Layer 2 — group/role-aware Authors intersection (ADR-0024). Bob is app-level
     // `author` (below Editor), so with no ACL bypass he may edit only documents whose
-    // Authors field intersects his principals. Seed a doc bob can READ (readers include
-    // person:bob) but does NOT author (authors=[person:alice]); his edit must be refused.
-    // No standing sample doc fits — every bob-readable seed doc is also bob-authored.
+    // Authors field intersects his principals. Seed a doc bob can read (every app
+    // reader can, ADR-0026) but does NOT author (authors=[person:alice]).
     const foreignId = "doc:expense:acl-layer2-fixture";
     const seed = await page.request.put(`${localCouchUrl}/expense_app/${encodeURIComponent(foreignId)}`, {
       headers: couchAuth,
@@ -105,7 +136,6 @@ test.describe("ACL scoped runtime", () => {
         updatedAt: "2026-01-01T00:00:00.000Z",
         createdBy: "person:alice",
         updatedBy: "person:alice",
-        readers: ["person:alice", "person:bob", "group:finance"],
         authors: ["person:alice"],
         payload: { ...clientDinner!.payload, description: "Finance shared" }
       }
@@ -117,54 +147,58 @@ test.describe("ACL scoped runtime", () => {
     });
     expect(refused.status()).toBe(403);
     expect(JSON.stringify(await refused.json())).toContain("not editable");
+
+    // ADR-0026: a Reader never edits, even a document whose Authors lists them.
+    // Client dinner is authored by bob; demote him to reader and both writes refuse.
+    await setExpenseAccess(page, "reader");
+    const dinnerId = encodeURIComponent(clientDinner!._id);
+    const readerEdit = await bobApi.put(`/api/apps/expense/documents/${dinnerId}`, {
+      data: { payload: { ...clientDinner!.payload, description: "Reader edit" } }
+    });
+    expect(readerEdit.status()).toBe(403);
+    expect(JSON.stringify(await readerEdit.json())).toContain("author access is required");
+    expect((await bobApi.delete(`/api/apps/expense/documents/${dinnerId}`)).status()).toBe(403);
   });
 
-  test("workflow transitions require read access before role checks", async ({ bobApi, page }) => {
+  test("workflow transitions require app access before role checks", async ({ bobApi, page }) => {
     const aliceExpenses = (await page.request.get("/api/apps/expense/documents?docType=expense").then((r) => r.json())) as Doc[];
-    const aliceOnly = aliceExpenses.find((doc) => doc.payload.description === "Stationery");
-    expect(aliceOnly).toBeTruthy();
+    const stationery = aliceExpenses.find((doc) => doc.payload.description === "Stationery");
+    expect(stationery).toBeTruthy();
 
-    const refused = await bobApi.post(`/api/apps/expense/documents/${encodeURIComponent(aliceOnly!._id)}/transition`, {
+    await setExpenseAccess(page);
+    const refused = await bobApi.post(`/api/apps/expense/documents/${encodeURIComponent(stationery!._id)}/transition`, {
       data: { transition: "submit" }
     });
 
     expect(refused.status()).toBe(403);
-    expect(JSON.stringify(await refused.json())).toContain("not readable");
+    expect(JSON.stringify(await refused.json())).toContain("reader access is required");
   });
 
-  test("revocation purge removes unauthorized local revisions without deleting the server document", async ({ bobApi, page, localCouchUrl, serverCouchUrl }) => {
+  test("revoking app access is enforced at the API gate; sync never purges per document", async ({ bobApi, page, localCouchUrl }) => {
     const bobExpenses = (await bobApi.get("/api/apps/expense/documents?docType=expense").then((r) => r.json())) as Doc[];
     const visible = bobExpenses.find((doc) => doc.payload.description === "Client dinner");
     expect(visible).toBeTruthy();
 
-    // Reset seeds local and server independently; sync first so the exact local
-    // revision Bob can see also exists on the server for revocation.
-    await page.request.post("/api/apps/expense/replicate");
-
-    const revoke = await page.request.post("/api/admin/revoke-reader", {
-      data: { id: visible!._id, readers: ["person:bob"] }
-    });
-    expect(revoke.ok()).toBeTruthy();
-
+    // A reader's sync replicates and reconciles; there is no per-document purge (ADR-0026).
     const sync = await bobApi.post("/api/apps/expense/replicate");
     expect(sync.ok()).toBeTruthy();
     const syncBody = await sync.json();
-    expect(syncBody.purge.purged).toContain(visible!._id);
+    expect(syncBody).not.toHaveProperty("purge");
+    expect(syncBody.pull).toHaveProperty("business");
 
-    const afterBob = (await bobApi.get("/api/apps/expense/documents?docType=expense").then((r) => r.json())) as Doc[];
-    expect(afterBob.map((doc) => doc._id)).not.toContain(visible!._id);
+    // The per-document revocation route is gone.
+    const revoke = await page.request.post("/api/admin/revoke-reader", {
+      data: { id: visible!._id, readers: ["person:bob"] }
+    });
+    expect(revoke.status()).toBe(404);
 
+    // Revocation is an app ACL change: bob is refused everywhere, documents untouched.
+    await setExpenseAccess(page);
+    expect((await bobApi.post("/api/apps/expense/replicate")).status()).toBe(403);
+    expect((await bobApi.get("/api/apps/expense/documents?docType=expense")).status()).toBe(403);
     const localDoc = await page.request.get(`${localCouchUrl}/expense_app/${encodeURIComponent(visible!._id)}`, {
       headers: couchAuth
     });
-    expect(localDoc.status()).toBe(404);
-
-    const serverDoc = await page.request.get(`${serverCouchUrl}/expense_app/${encodeURIComponent(visible!._id)}`, {
-      headers: couchAuth
-    });
-    expect(serverDoc.ok()).toBeTruthy();
-    const serverBody = (await serverDoc.json()) as Doc;
-    expect(serverBody.payload.description).toBe("Client dinner");
-    expect(serverBody.readers).not.toContain("person:bob");
+    expect(localDoc.ok()).toBeTruthy();
   });
 });

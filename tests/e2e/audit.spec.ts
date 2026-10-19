@@ -4,7 +4,7 @@ import type { APIRequestContext } from "@playwright/test";
 const couchAuth = { authorization: `Basic ${Buffer.from("admin:password").toString("base64")}` };
 
 type Doc = { _id: string; payload: Record<string, unknown> };
-type Event = { _id: string; docId: string; action: string; readers: string[] };
+type Event = { _id: string; docId: string; action: string };
 
 const expenseId = async (request: APIRequestContext, description: string): Promise<string> => {
   const docs = (await request.get("/api/apps/expense/documents?docType=expense").then((r) => r.json())) as Doc[];
@@ -30,18 +30,24 @@ test.describe("audit & retention", () => {
     expect(second.length).toBe(first.length);
   });
 
-  test("audit visibility mirrors the document's readers", async ({ bobApi, page }) => {
+  test("audit visibility is the app ACL (ADR-0026)", async ({ bobApi, page }) => {
     await page.request.post("/api/apps/expense/audit/run");
 
-    const stationery = await expenseId(page.request, "Stationery"); // alice / finance only
-    const dinner = await expenseId(bobApi, "Client dinner"); // bob can read
+    const stationery = await expenseId(page.request, "Stationery"); // created by alice
+    const dinner = await expenseId(bobApi, "Client dinner"); // created by bob
 
+    // Every app reader sees the whole trail — events carry no readers.
     const bobAudit = (await bobApi.get("/api/apps/expense/audit").then((r) => r.json())) as Event[];
-    expect(bobAudit.some((e) => e.docId === stationery)).toBe(false);
+    expect(bobAudit.some((e) => e.docId === stationery)).toBe(true);
     expect(bobAudit.some((e) => e.docId === dinner)).toBe(true);
+    expect(bobAudit.every((e) => !("readers" in e))).toBe(true);
 
-    const aliceAudit = (await page.request.get("/api/apps/expense/audit").then((r) => r.json())) as Event[];
-    expect(aliceAudit.some((e) => e.docId === stationery)).toBe(true);
+    // Without app access the trail is refused outright.
+    const revoke = await page.request.put("/api/apps/expense/access", {
+      data: { entries: [{ principal: "group:finance", level: "manager" }] }
+    });
+    expect(revoke.ok()).toBeTruthy();
+    expect((await bobApi.get("/api/apps/expense/audit")).status()).toBe(403);
   });
 
   test("retention prunes events past the policy horizon", async ({ page, localCouchUrl }) => {
@@ -60,8 +66,7 @@ test.describe("audit & retention", () => {
         rev: "1-aged",
         action: "created",
         actor: "person:alice",
-        at: "2000-01-01T00:00:00.000Z",
-        readers: ["person:alice", "group:finance"]
+        at: "2000-01-01T00:00:00.000Z"
       }
     });
 

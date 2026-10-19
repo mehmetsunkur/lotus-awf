@@ -46,7 +46,6 @@ const doc = (overrides: Partial<BusinessDocument> = {}): BusinessDocument => ({
   updatedAt: NOW,
   createdBy: "alice",
   updatedBy: "alice",
-  readers: ["alice"],
   authors: ["alice"],
   payload: { amount: 100 },
   ...overrides

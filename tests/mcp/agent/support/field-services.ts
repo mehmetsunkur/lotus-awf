@@ -213,28 +213,7 @@ export async function seedFieldServicesHandbook(
       { principal: "group:managers", level: "reader" }
     ]
   });
-
-  const kbDefinitions = await requestJson<{ forms: Array<Json & { _id: string }> }>(
-    admin,
-    "get",
-    `/api/apps/${kbAppId}/definitions`
-  );
-  const articleForm = kbDefinitions.forms.find((definition) => definition._id === "form:article");
-  if (!articleForm) throw new Error("field services handbook is missing form:article");
-  // ADR-0024: article visibility is carried by the template's shipped
-  // `aclRole:"reader"` computed-once field (was `defaultReaders`). Re-point that
-  // field's formula instead of appending a duplicate `aclReaders` field.
-  const articleFields = articleForm.fields as Array<Json & { aclRole?: string }>;
-  const repointedArticleFields = articleFields.map((field) =>
-    field.aclRole === "reader" ? { ...field, formula: JSON.stringify(FIELD_STAFF_GROUPS) } : field
-  );
-  if (!repointedArticleFields.some((field) => field.aclRole === "reader")) {
-    throw new Error("field services handbook form:article is missing its aclRole:\"reader\" field");
-  }
-  await requestJson(admin, "put", `/api/apps/${kbAppId}/definitions/${encodeURIComponent("form:article")}`, {
-    ...articleForm,
-    fields: repointedArticleFields
-  });
+  // ADR-0026: article visibility is the kb app ACL granted above — no per-document readers.
 
   await requestJson(
     admin,
