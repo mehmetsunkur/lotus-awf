@@ -2617,6 +2617,16 @@ app.post(
       response.status(403).json({ error: "forbidden", reason: "Document conflict is not editable by current user" });
       return;
     }
+    // Design/runtime docs are not governed by `authors`: resolving one needs the
+    // level that may write it — designer, and manager for the app ACL itself (an
+    // Author must never be able to elect an `acl:rules` revision that raises them).
+    if (details.winning.kind !== "document" || chosen.kind !== "document") {
+      const required = details.winning.kind === "acl" || chosen.kind === "acl" ? "manager" : "designer";
+      if (!hasAccessLevel(scope, required)) {
+        response.status(403).json({ error: "forbidden", reason: `${required} access is required` });
+        return;
+      }
+    }
 
     // ADR-0019 (review B1): the elected payload is a payload WRITE — it runs the
     // normalize -> compute-handlers -> stamp pipeline so a resolver cannot

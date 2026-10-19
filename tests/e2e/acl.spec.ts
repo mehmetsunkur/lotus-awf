@@ -174,6 +174,33 @@ test.describe("ACL scoped runtime", () => {
     expect(JSON.stringify(await refused.json())).toContain("reader access is required");
   });
 
+  test("resolving a design-doc conflict needs the level that may write it (acl:rules → manager)", async ({ bobApi, page, localCouchUrl }) => {
+    // Force a LOSING second leaf on acl:rules with new_edits=false (same generation,
+    // lower rev hash, so the real ACL stays the winner) in which bob is a manager.
+    const db = `${localCouchUrl}/expense_app`;
+    const current = await page.request.get(`${db}/acl%3Arules`, { headers: couchAuth }).then((r) => r.json());
+    const forged = {
+      ...current,
+      _rev: `${String(current._rev).split("-")[0]}-${"0".repeat(32)}`,
+      entries: [...current.entries, { principal: "person:bob", level: "manager" }]
+    };
+    const bulk = await page.request.post(`${db}/_bulk_docs`, {
+      headers: couchAuth,
+      data: { docs: [forged], new_edits: false }
+    });
+    expect(bulk.ok()).toBeTruthy();
+    const winning = await page.request.get(`${db}/acl%3Arules?conflicts=true`, { headers: couchAuth }).then((r) => r.json());
+    expect(winning._rev).toBe(current._rev);
+    expect(winning._conflicts).toContain(forged._rev);
+
+    // Bob (app author) must not be able to elect the revision that promotes him.
+    const refused = await bobApi.post("/api/apps/expense/conflicts/acl%3Arules/resolve", {
+      data: { chosenRev: forged._rev }
+    });
+    expect(refused.status()).toBe(403);
+    expect(JSON.stringify(await refused.json())).toContain("manager access is required");
+  });
+
   test("revoking app access is enforced at the API gate; sync never purges per document", async ({ bobApi, page, localCouchUrl }) => {
     const bobExpenses = (await bobApi.get("/api/apps/expense/documents?docType=expense").then((r) => r.json())) as Doc[];
     const visible = bobExpenses.find((doc) => doc.payload.description === "Client dinner");

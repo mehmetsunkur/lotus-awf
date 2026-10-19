@@ -65,13 +65,17 @@ CDC, state reconcile) remain server-authoritative and unscoped.
 `canEditDocument`: Layer 1 — app Editor+ edits anything readable; Layer 2 — app **Author+** whose
 principals intersect `authors`. A Reader listed in `authors` cannot edit (Notes-faithful; this
 was previously possible because document PUT/DELETE only required `reader`). Document PUT,
-DELETE and conflict-resolve require `author` at the route. `authors` keeps the creator base plus
+DELETE and conflict-resolve require `author` at the route. Resolving a conflict on a design/runtime
+doc (not governed by `authors`) requires `designer`, and `manager` for `acl:rules` — otherwise an
+Author could elect a losing `acl:rules` revision that promotes them (a pre-existing gap closed here). `authors` keeps the creator base plus
 `aclRole:"author"` computed field values (`rollupAclProjection`, now authors-only, additive).
 
 ### 4. `aclRole` is `"author"` only
 
 `aclRole:"reader"` is rejected by definition validation. A stored legacy form carrying it is
-treated as an ordinary computed field (no ACL effect).
+treated as an ordinary computed field (no ACL effect) at runtime, but re-saving it is refused (422)
+until the designer removes `aclRole` or the field — the error says so. There is no automatic
+migration (pre-release; templates and fixtures are already clean).
 
 ### 5. Replication, purge, revocation
 
@@ -93,6 +97,10 @@ the app ACL alone.
 index only when the selector names every indexed field, so the scan selector is
 `{ kind: "document", docType: { $gt: null }, updatedAt: { $gt: null } }`. Same cost class as
 before (the readers predicate no longer narrows anything).
+
+Existing databases keep an orphaned `_design/m2-readers` index (nothing recreates it, but CouchDB
+still maintains it on writes). `/api/reset` and new app databases start clean; on a long-lived
+database delete it once with `DELETE /<db>/_design/m2-readers?rev=<rev>`.
 
 Measured with `npm run perf:me-filter -- --docs 10000 --runs 20` (local dev, carol) against `main`
 on the same host — index bindings unchanged and latencies within run-to-run noise:

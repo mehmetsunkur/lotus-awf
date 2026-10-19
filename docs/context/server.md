@@ -222,6 +222,9 @@ Documents carry no `readers` — visibility is the app ACL (ADR-0026). (ADR-0016
   slate: it drops every business-app database (`<appId>_app`) along with the control
   databases before re-seeding, so leftover catalog/template apps cannot 409 the next
   create-app.
+- Conflict resolve (`POST /api/apps/:appId/conflicts/:id/resolve`) requires app `author`; a business
+  document additionally needs `canEditDocument`, a design/runtime doc needs `designer`, and
+  `acl:rules` needs `manager` (ADR-0026).
 - Sync: `POST /api/replicate` (app `reader`) → `replicateBidirectional(userSync)` (push all; pull
   design kinds + business documents by `kind`) → `reconcileStates` reports concurrent state
   divergence. There is no per-document purge and no revoke-reader route (ADR-0026) — revocation

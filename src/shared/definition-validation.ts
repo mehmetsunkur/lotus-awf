@@ -121,7 +121,12 @@ function validateField(field: FormField, index: number): ValidationError[] {
   if (field.aclRole !== undefined) {
     if ((field.aclRole as string) === "reader") {
       // ADR-0026: document visibility is the app ACL; per-document Readers are deferred.
-      errors.push(error(`${prefix}.aclRole`, `aclRole "reader" is not supported: document visibility is the app ACL (ADR-0026)`));
+      errors.push(
+        error(
+          `${prefix}.aclRole`,
+          `aclRole "reader" is not supported: document visibility is the app ACL (ADR-0026). Remove aclRole (or the field) to save this form`
+        )
+      );
     } else if (field.aclRole !== "author") {
       errors.push(error(`${prefix}.aclRole`, `Field aclRole is invalid: ${String(field.aclRole)}`));
     } else if (field.mode !== "computed" && field.mode !== "computed-once") {
