@@ -19,6 +19,8 @@ unchanged — `$in` now matches on array element membership (as it already did f
 `readers`), so a heterogeneous responsible set fans out to every member's inbox. Read
 `responsible` wherever the text below says `assignee`.
 
+**Amended by ADR-0026** (2026-10-19): there is no `accessSelector`; the list route re-asserts `kind: "document"` after the authored filters instead, and `@me` stays an in-memory-cost predicate on the existing indexes.
+
 ## Context
 
 View filters are static data: `{ field, op, value }` with the value baked into the

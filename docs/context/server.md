@@ -2,7 +2,7 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `b2062cf`
+- Last code review baseline: `ff4e62d`
 - Last reviewed date: `2026-10-17`
 - Code areas:
   - `src/server/**`
@@ -23,8 +23,8 @@
 ## Purpose
 
 Express API over **two** CouchDB replicas (local `:5985`, server `:5984`). Owns definitions,
-definition validation, business documents, ACL-scoped query/write paths, bidirectional replication,
-revocation purge, conflict inspection/resolution, Mango indexes, (M3) workflow transitions + sync
+definition validation, business documents, app-ACL-gated query/write paths, bidirectional replication,
+conflict inspection/resolution, Mango indexes, (M3) workflow transitions + sync
 reconciliation, (M6) template export/diff/apply, (M13) production static-client serving/readiness,
 (M18) directory-backed session authentication, and (M21) catalog-created business app databases.
 
@@ -79,9 +79,9 @@ the server's own behavior.
   and app-scoped APIs under `/api/apps/:appId/*`. (ADR-0015) The runtime is **app-scoped only**:
   `appContextFromRequest` requires an `:appId`, `resolveBusinessApp` resolves every app (incl.
   expense) via its `appinstall` record. Expense is no longer special-cased; `createDocument` takes
-  an explicit `appId`; new-doc readers are the creator's principals, with extra readers/authors
-supplied by the form's `aclRole` fields projected via `rollupAclProjection` in
-`stampComputedFields` (ADR-0024; replaced ADR-0015's `defaultReaders`). (ADR-0016) Apps are
+  an explicit `appId`; new-doc authors are the creator, with extra authors supplied by the form's
+`aclRole:"author"` fields projected via `rollupAclProjection` in `stampComputedFields` (ADR-0024).
+Documents carry no `readers` — visibility is the app ACL (ADR-0026). (ADR-0016) Apps are
   created via `POST /api/platform/apps` — blank (`docType`/`docTypeTitle`) or from a bundled template
   (`fromTemplate`); `instantiateTemplate` re-stamps the template's docs to the chosen appId (templates
   are appId-agnostic). `platformState.availableTemplates` lists bundled templates; there is no
@@ -89,7 +89,8 @@ supplied by the form's `aclRole` fields projected via `rollupAclProjection` in
 - App access editor (M22): `GET/PUT /api/apps/:appId/access` requires app manager access, returns
   sanitized directory people/groups plus `acl:rules.entries`, validates active people/existing
   groups and access levels, normalizes duplicate principals, and writes the app's local `acl:rules`
-  design doc without changing existing document `readers`/`authors`.
+  design doc without changing existing document `authors`. Granting app access exposes every
+  document in the app (ADR-0026).
 - Workflow scaffold (M23): `GET /api/apps/:appId/workflows/scaffold-options` requires designer access
   and returns sanitized directory people/groups; `POST /api/apps/:appId/workflows/scaffold` requires
   designer access, validates the doc type and approver principal, rejects existing workflow/generated
@@ -123,7 +124,7 @@ supplied by the form's `aclRole` fields projected via `rollupAclProjection` in
   app-scoped alias) checks `form:<docType>` exists, creates `workflow:<docType>` plus
   `view:<docType>-submitted`, `view:<docType>-mine`, and `view:<docType>-all`, validates each
   definition, and writes them local-first. It does not mutate app ACL or business document
-  `readers`/`authors`.
+  `authors`.
 - Directory/session (M18/M19, ADR-0012): `person:*` and `group:*` live in `names_app` (the
   `names.nsf` directory); `session:*` lives in `platform_app`. `POST /api/session/login` sets the HTTP-only `lotus_session` cookie, and
   `requireSession()` resolves the request to a principal scope before protected routes run. `GET
@@ -133,21 +134,23 @@ supplied by the form's `aclRole` fields projected via `rollupAclProjection` in
 - Formula fields (ADR-0014): `GET /api/apps/:appId/documents/:id/formulas` resolves a document's
   `type: "formula"` fields via `resolveFormulaFields` → `evaluateFormulaAsync` (the async lane). A
   per-request `DbReader` reads the LOCAL replica of the target app (`resolveBusinessApp` → `getBusinessDocs`,
-  memoized) and returns all rows; the formula lane applies the single ACL filter (`canReadDocument`).
+  memoized) and is the ACL boundary: it resolves the caller's level on the TARGET app and returns no
+  rows below `reader`, otherwise all rows (ADR-0026).
   Kept off the document/list read paths; the client fetches it only when a form has formula fields.
 - Access (M5/M18): current principals come from the authenticated session (`person:<username>`,
   direct groups, plus any explicit principals) and app-level `acl:rules` entries grant
-  `reader`/`author`/`editor`/`designer`/`manager`. Business reads match document `readers`, payload
-  writes/deletes require `authors`, design routes require designer-level access, and sourced select
-  options use the same readable-document scope.
+  `reader`/`author`/`editor`/`designer`/`manager`. Business reads require app `reader` (every
+  document in the app; ADR-0026 — no per-document readers), payload writes/deletes require app
+  `author` plus Layer 2 `authors` (or Editor+), design routes require designer-level access, and
+  sourced select options list every document of the source docType.
 - List: `GET /api/views/:id/documents` → shared `mangoSelector(view.filters, docType,
   principals)` (ADR-0020: the `@me` sentinel substitutes THIS caller's principal set;
-  fail-closed on empty scope) + access selector spread last →
+  fail-closed on empty scope) + `kind: "document"` re-asserted last (ADR-0026) →
   `findDocs`; on `updatedAt` sort binds `m3-docType-state-updatedAt` for state-filtered views, else
   `m2-kind-docType-updatedAt` (hints bind because `createIndex` pins `ddoc === name`).
-- Search (M9): the same endpoint with `?q=` applies the shared `searchDocuments` matcher **after** the
-  `canReadDocument` ACL filter (loading the view's form from local Couch), so search narrows the
-  ACL-scoped set and never widens it. No new Mango index; the matcher runs in-memory over the candidates.
+- Search (M9): the same endpoint with `?q=` applies the shared `searchDocuments` matcher over the
+  view's result set (loading the view's form from local Couch), so search narrows the view and never
+  widens it; the app ACL gate runs first. No new Mango index; the matcher runs in-memory over the candidates.
 - Transition (M3/M5/M18, ADR-0018/0019/0025): `POST /api/documents/:id/transition` → session +
   read-access check → resolve the target state's `responsibleFormula` AND `assigneeFormula` in the
   async lane (actor's ACL scope, local replica, fail-closed; routing never gates) → shared
@@ -163,13 +166,13 @@ supplied by the form's `aclRole` fields projected via `rollupAclProjection` in
   ∪ individual `assignee`) across every `installedApps()` database for the **authenticated caller**
   (never a `?principal=` — same caller-scoping as ADR-0020 `@me`) → `{ total, byApp: [{ appId,
   database, count, items? }] }`. Per app: skip below-`reader` access (no 403, no leak), then one
-  `findDocs` selector bound to the **`m2-readers`** ACL index (`accessSelector` only — NEITHER routing
-  field appears in the Mango selector), **paged to exhaustion via the CouchDB `_find` bookmark** (a
-  fixed `limit` would silently truncate: final-state docs keep their `readers` and consume the budget,
-  so live routed work past the cap would vanish), with the union `responsible ∋ principal OR assignee ∈
+  `findDocs` selector bound to **`m2-kind-docType-updatedAt`** (`kind` plus `$gt: null` presence
+  predicates — NEITHER routing field appears in the Mango selector), **paged to exhaustion via the
+  CouchDB `_find` bookmark** (a fixed `limit` would silently truncate: final-state docs stay in the
+  scan and consume the budget, so live routed work past the cap would vanish), with the union `responsible ∋ principal OR assignee ∈
   principals` applied as an **in-memory** predicate over the full scan (a row matching both arms is returned once;
   items carry both `responsibleAt` and `assignedAt`; final states clear both, so completed work never
-  matches) → `canReadDocument` post-filter. `?actionable=true` keeps only docs with an available transition
+  matches). `?actionable=true` keeps only docs with an available transition
   (`availableTransitions`); `?items=true` returns doc refs for a spawn payload. Motivating consumer: the
   ADR-0021 operator, so a controller spawns agents on demand instead of polling per-app inbox views.
 - Compute (M7): `POST/PUT /api/documents` apply `applyComputedFields` (shared) so computed fields are
@@ -179,7 +182,7 @@ supplied by the form's `aclRole` fields projected via `rollupAclProjection` in
   durable `auditevent:*` for business create/update (deduped by `docId@rev`), advances the checkpoint,
   then prunes events past `audit:policy.retentionDays` via tombstone `DELETE` (replicates the prune;
   not M5 `_purge`). Deletes are recorded best-effort in the `DELETE /api/documents/:id` path. `GET
-  /api/audit` is principal-scoped (events copy the source `readers`). `audit:policy` is a templated
+  /api/audit` is gated by the app ACL (events carry no `readers`; ADR-0026). `audit:policy` is a templated
   design doc; `auditevent`/`audit:state` are runtime data. No new Mango index.
 - Agents (M8): `POST /api/agents/run` ticks `runAgents()` — runs due scheduled agents and drains
   `changesSince(checkpoint)` for on-change agents, writing durable `agentrun:*` records and advancing
@@ -204,8 +207,8 @@ supplied by the form's `aclRole` fields projected via `rollupAclProjection` in
   are NOT packaged.
 - JSON templates (M17/ADR-0016): bundled templates (`templates/expense/*`, `templates/org/*`,
   `templates/leave-request/*`, and — M27 — `templates/kb/*` and `templates/turnaround/*`) are
-  packaged design + demo docs. The M27 pair backs the digital-twin tier: `kb` scopes team
-  procedures by AUTHORSHIP (creator principal set; no per-document readers API, by design) with a
+  packaged design + demo docs. The M27 pair backs the digital-twin tier: `kb` holds team
+  procedures authored by a department member (visible to every kb member — ADR-0026) with a
   `form:article`/`form:procedure` split, and `turnaround` chains a 4-hop cross-department workflow
   (`workflow:flight`: planned → scheduled → crew-assigned → ramp-checked → fueled →
   dispatched/grounded) whose per-hop authority is guard-gated on ADR-0019 computed heads
@@ -219,8 +222,10 @@ supplied by the form's `aclRole` fields projected via `rollupAclProjection` in
   slate: it drops every business-app database (`<appId>_app`) along with the control
   databases before re-seeding, so leftover catalog/template apps cannot 409 the next
   create-app.
-- Sync: `POST /api/replicate` → scoped `replicateBidirectional` → local `_purge` of server-revoked
-  docs → `reconcileStates` reports concurrent state divergence; conflicts surfaced via
+- Sync: `POST /api/replicate` (app `reader`) → `replicateBidirectional(userSync)` (push all; pull
+  design kinds + business documents by `kind`) → `reconcileStates` reports concurrent state
+  divergence. There is no per-document purge and no revoke-reader route (ADR-0026) — revocation
+  is an app ACL change enforced at the API gate; conflicts surfaced via
   `/api/conflicts`. Resolve accepts `chosenRev` to elect the winning revision's state.
 - Readiness/deploy (M13/M14): `GET /api/health` is cheap liveness; `GET /api/ready` checks CouchDB
   plus first-run setup/platform readiness. When `dist/index.html` exists, Express serves the built
@@ -248,13 +253,13 @@ supplied by the form's `aclRole` fields projected via `rollupAclProjection` in
 
 - Endpoints are thin; CouchDB access goes through `couch.ts` helpers.
 - Payload and definition validation always go via `src/shared` (never re-implemented server-side).
-- Access checks go through `src/shared/access.ts`; do not inline ad hoc `readers`/`authors` logic in
-  routes.
+- Access checks go through `requireAppSession` and `src/shared/access.ts`; do not inline ad hoc
+  `authors` logic in routes, and do not reintroduce per-document `readers` (ADR-0026).
 - Template normalization/diff goes through `src/shared/template.ts`.
 
 ## Invariants
 
-See `docs/invariants.md`: **Replication & conflict**, **ACL / readers**, **Identity & sessions**, **Offline editing**,
+See `docs/invariants.md`: **Replication & conflict**, **ACL**, **Identity & sessions**, **Offline editing**,
 **Index & query**, **Validation parity**, **Definitions-as-data contract**, **Handler / plugin
 runtime**, **Agent runtime**, **Search**, **Audit & retention**, **Document-type creation** govern
 this subsystem.
@@ -269,6 +274,7 @@ this subsystem.
 - `docs/decisions/0012-names-directory-split.md`
 - `docs/decisions/0014-formula-language-and-agents.md`
 - `docs/decisions/0023-self-describing-schema-and-scoped-reads.md`
+- `docs/decisions/0026-app-acl-document-visibility.md`
 - `docs/M5/02-access-policy.md`
 - `docs/M5/03-replication-purge.md`
 - `docs/M6/02-template-contract.md`
@@ -282,8 +288,8 @@ this subsystem.
 
 ## Common Pitfalls
 
-- **Index triplication**: the three indexes (`m2-kind-docType-updatedAt`, `m2-readers`,
-  `m3-docType-state-updatedAt`) live in `scripts/seed.ts`, `scripts/reset.ts`, AND `ensureIndexes` in
+- **Index triplication**: the indexes (`m2-kind-docType-updatedAt`, `m3-docType-state-updatedAt`;
+  `m2-readers` was removed by ADR-0026) live in `scripts/seed.ts`, `scripts/reset.ts`, AND `ensureIndexes` in
   `src/server/index.ts` — update all three together.
 - Adding a server save path that bypasses shared validation.
 - Letting `PUT /api/definitions/:id` accept a new definition kind without updating shared validation.
@@ -292,15 +298,15 @@ this subsystem.
 - Forgetting to copy `templates/` into the Docker image; deploy installs must not depend on a source
   checkout bind mount.
 - Letting workflow scaffolding overwrite an existing `workflow:*` or generated worklist view.
-- A query path that ignores `readers` filtering and leaks across people/groups.
+- A read path (incl. a cross-app lookup or aggregate) that skips the app ACL check on the TARGET app.
 - A protected route that forgets `requireSession()` or checks app ACL levels ad hoc.
-- An app access change that mutates existing business document `readers`/`authors`; M22 edits only
+- An app access change that mutates existing business document `authors`; M22 edits only
   app-level `acl:rules`.
 - Exposing `passwordHash`, `passwordSalt`, `passwordParams`, raw session tokens, or `session:*` docs
   through the setup directory APIs.
 - Letting setup directory mutations remove or deactivate the last active admin.
-- Using normal `DELETE` for revocation cleanup; it can replicate as a global delete. Use local
-  `_purge` for M5 revocation shape.
+- Using normal `DELETE` for replica cleanup; it can replicate as a global delete. (The M5
+  per-document revocation purge was removed by ADR-0026.)
 - A change that makes an offline action depend on the server replica.
 - Running a transition effect before the authoritative write, or letting an effect throw into the
   route (it must be best-effort and never block/revert the transition).

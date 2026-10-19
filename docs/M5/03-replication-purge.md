@@ -1,5 +1,7 @@
 # 03 — Replication And Purge
 
+> **Superseded by ADR-0026 (2026-10-19):** the per-document revocation purge and `/api/admin/revoke-reader` are removed; pull replication scopes business documents by `kind` only and revocation is an app ACL change enforced at the API gate.
+
 ## Filtered pull
 
 M5 keeps the dual-CouchDB spike topology. Push replication remains unfiltered so local edits can move

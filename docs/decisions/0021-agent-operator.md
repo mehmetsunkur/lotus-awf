@@ -12,6 +12,8 @@ Accepted
 > over a requester's session is transitions. This strengthened the decision's own rule:
 > the operator never mutates documents it did not author.
 
+**Amended by ADR-0026** (2026-10-19): transcript scoping to operators + admins is no longer enforced — every agent-ops app reader can read sessions and artifacts (an accepted consequence; restrict via the app ACL if needed).
+
 ## Context
 
 M26/M27 proved external coding-agent CLIs can operate the platform as business users,

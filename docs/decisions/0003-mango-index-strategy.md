@@ -6,6 +6,8 @@ Date: 2026-06-14
 
 Accepted
 
+**Amended by ADR-0026** (2026-10-19): the `m2-readers` index is removed (documents carry no `readers`); the remaining indexes are `m2-kind-docType-updatedAt` and `m3-docType-state-updatedAt`.
+
 ## Context
 
 Views translate `sort`/`filters` into CouchDB Mango selectors. Sorting by `updatedAt` requires a

@@ -24,6 +24,8 @@ not a new engine operation** — so no second writer of any envelope field is in
 - **Reuses ADR-0020 `@me`** verbatim on both fields. **Holds the ADR-0018/0024 line**: neither
   field is enforcement — assignment confers no access.
 
+**Amended by ADR-0026** (2026-10-19): the work-queue scan binds `m2-kind-docType-updatedAt` rather than `m2-readers` (removed).
+
 ## Context
 
 A document sitting in a state owned by a **team** is the common shape the current envelope names

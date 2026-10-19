@@ -9,6 +9,8 @@ is parked**: we are NOT committing to formula-defined agents. Whether the write 
 formula-agents or a safer **declarative derivation rule** is an open question, revisited when a
 concrete need (e.g. org.nsf as pure data) is scheduled. See "Write side (deferred, undecided)".
 
+**Amended by ADR-0026** (2026-10-19): with per-document `readers` removed, cross-app `@DbLookup`/`@DbColumn` are gated on the caller's ACL level in the TARGET app (`makeDbReader` resolves `acl:rules` per target app and returns no rows below `reader`) — the app-level gate this ADR anticipated.
+
 ## Context
 
 lotus-notes is a **code-as-data** platform: an app's behavior should live in its

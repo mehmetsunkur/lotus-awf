@@ -1,5 +1,7 @@
 # 02 - Twin contract
 
+> **Amended by ADR-0026 (2026-10-19):** per-document readers are removed — kb procedures and flights are visible to every member of their app; the knowledge-scoping-by-authorship and readers assertions below are historical.
+
 ## Resolved scope questions
 
 - **Workflow depth**: 4 hops. The extra ground-ops state buys an intra-department

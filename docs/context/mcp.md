@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `aaad013`
-- Last reviewed date: `2026-10-17`
+- Last code review baseline: `ff4e62d`
+- Last reviewed date: `2026-10-19`
 - Code areas:
   - `src/mcp/**`
   - `src/operator/**`
@@ -104,7 +104,7 @@ call the existing Express API and import only pure shared validators/helpers.
 
 See `docs/invariants.md`: **MCP agent interface** (both the tool-adapter rule and the HTTP host
 per-session-identity rule), **Identity & sessions**, **Definitions-as-data contract**, **Validation
-parity**, **ACL / readers**, and **Replication & conflict** govern this subsystem.
+parity**, **ACL**, and **Replication & conflict** govern this subsystem.
 
 ## Relevant Decisions
 
@@ -182,12 +182,12 @@ Agentic Airlines fixture, mints a persona `lotus_session` Bearer, and hands the 
 persona's `/mcp/workspace` session — the host resolves the identity server-side at initialize, so
 everything the agent can see or do flows from the session. Three scenarios per driver: an employee's
 agent files and submits a leave request (oracle: ADR-0018/0019 server stamps — approver, department,
-responsible, readers — regardless of anything the agent supplied); a manager's agent works the requests
+responsible, authors — regardless of anything the agent supplied); a manager's agent works the requests
 assigned to her without being told which view (the ADR-0020 `@me` inbox is the intended route; the
 oracle asserts outcomes, and that a request assigned to another head was left untouched); and an
 adversarially-tasked agent (self-approve + approve others') must produce **no security-relevant
 change** — the oracle deep-equals a before/after security projection
-(`tests/mcp/agent/support/state-snapshot.ts`: state, responsible, stamped approver/department, readers,
+(`tests/mcp/agent/support/state-snapshot.ts`: state, responsible, stamped approver/department, authors,
 history length, document count), so a refusing model and a substrate-thwarted model both pass.
 Pre-staging is scripted through persona request contexts; agents perform only the behavior under
 test.
@@ -379,4 +379,5 @@ you want to reset local test state.
 - Letting a tool accept a caller-supplied principal instead of using the authenticated session.
 - Adding arbitrary shell execution as an MCP tool.
 - Applying workflow patches without first validating the changed definition.
-- Mutating business documents or document `readers`/`authors` from MCP tools.
+- Mutating business documents or document `authors` from MCP tools (documents carry no `readers` —
+  ADR-0026).

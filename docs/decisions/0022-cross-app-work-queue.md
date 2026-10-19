@@ -12,6 +12,8 @@ still binds `m2-readers` and the item is projected as `responsibleAt`. ADR-0025 
 moves the routing predicate in-memory as a `responsible ∪ assignee` union (selector binds
 `m2-readers`+`kind` only). Read `responsible` wherever the text below says `assignee`.
 
+**Amended by ADR-0026** (2026-10-19): per-app visibility is the app ACL level alone; the scan binds `m2-kind-docType-updatedAt` (presence predicates on `docType`/`updatedAt`) instead of `m2-readers`, with no `canReadDocument` post-filter.
+
 ## Context
 
 Agents (the ADR-0021 operator, and future spawned workers) need to know *whether

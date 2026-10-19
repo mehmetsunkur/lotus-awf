@@ -1,5 +1,7 @@
 # 02 — Audit Contract
 
+> **Amended by ADR-0026 (2026-10-19):** audit events no longer copy `readers`; `GET /api/audit` is gated by the app ACL alone.
+
 ## Policy (definitions-as-data)
 
 ```ts

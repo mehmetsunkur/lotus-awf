@@ -6,6 +6,8 @@ Date: 2026-06-16
 
 Accepted
 
+**Amended by ADR-0026** (2026-10-19): audit visibility is the app ACL — `auditevent`s no longer copy `readers` and `GET /api/apps/:appId/audit` is gated by app `reader` access alone.
+
 ## Context
 
 The vision's Phase 9 hardening bundle calls for **audit/retention**. We want a durable, queryable

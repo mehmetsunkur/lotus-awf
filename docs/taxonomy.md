@@ -35,7 +35,7 @@ Classes map to the path-tagged aspects in `docs/invariants.md`.
 | Definitions-as-data | `form:*`/`view:*` documents drive the runtime | Form/View definition shape, back-compat | `docs/context/shared.md`, `docs/context/server.md` |
 | Validation & expressions | Shared rules + portable evaluator | parity (client+API), eval safety, determinism | `docs/context/shared.md` |
 | Replication & conflict | Bidirectional CouchDB sync + resolution | `_rev`/`_conflicts`, push/pull | `docs/context/server.md` |
-| Access control | Filtered replication by `readers`/`authors` | ACL leak surface | `docs/context/server.md` |
+| Access control | App ACL gates every read (ADR-0026); `authors` gates edits | ACL leak surface (incl. cross-app reads) | `docs/context/server.md` |
 | Identity & sessions | Directory people/groups, login, session cookies, app ACL levels | names.nsf directory (`names_app`), `person:*`, `group:*`, `session:*` | `docs/context/server.md`, `docs/context/client.md`, `docs/context/shared.md` |
 | Offline-first | Local-replica editing with no server round-trip | local vs server CouchDB | `docs/context/server.md`, `docs/context/client.md` |
 | Query & indexing | Mango selectors + indexes for views | `use_index`, index triplication | `docs/context/server.md` |
@@ -65,9 +65,9 @@ Mapped to the path-tagged aspects in `docs/invariants.md`.
 | Handler safety | Handler / plugin runtime | Manifest-declared + kind-matched references; pure handlers portable & fail closed; effects server-only, best-effort, never block the transition |
 | Agent safety | Agent runtime | Server-authoritative tick; durable at-least-once runs with dedupe; checkpoint advances after writes; failing handler never crashes the tick; runtime docs never templated |
 | Data integrity | Replication & conflict | `_rev`/`_conflicts` correctness; no silent loss on resolve |
-| Security | ACL / readers | No cross-user/role leak; `readers` honoured |
+| Security | ACL | No cross-app/ACL-level leak; app ACL checked on every read path, including cross-app lookups; `authors` honoured for edits |
 | Authentication | Identity & sessions | Sessions are HTTP-only, token hashes only, protected routes require session + app ACL |
-| Agent interface safety | MCP agent interface | MCP tools call Express APIs, never CouchDB directly; no business-doc or readers/authors mutation |
+| Agent interface safety | MCP agent interface | MCP tools call Express APIs, never CouchDB directly; no business-doc or authors mutation |
 | Availability | Offline editing | Works against local replica with no server round-trip |
 | Performance | Index & query | New sort/filter has an index; three index sites in sync |
 
