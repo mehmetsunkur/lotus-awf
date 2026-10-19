@@ -130,7 +130,8 @@ function validateSampleDocument(doc: BusinessDocument, index: number, appId: str
   if (!doc.updatedAt?.trim()) messages.push(`${prefix} updatedAt is required`);
   if (!doc.createdBy?.trim()) messages.push(`${prefix} createdBy is required`);
   if (!doc.updatedBy?.trim()) messages.push(`${prefix} updatedBy is required`);
-  if (!Array.isArray(doc.readers)) messages.push(`${prefix} readers must be an array`);
+  // ADR-0026: document visibility is the app ACL — sample data must not carry readers.
+  if ("readers" in doc) messages.push(`${prefix} must not include readers (ADR-0026)`);
   if (!Array.isArray(doc.authors)) messages.push(`${prefix} authors must be an array`);
   if (!doc.payload || typeof doc.payload !== "object" || Array.isArray(doc.payload)) {
     messages.push(`${prefix} payload must be an object`);

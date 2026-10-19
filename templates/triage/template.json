@@ -94,14 +94,6 @@
               "value": "low"
             }
           ]
-        },
-        {
-          "name": "aclReaders",
-          "type": "text",
-          "label": "Readers",
-          "aclRole": "reader",
-          "mode": "computed-once",
-          "formula": "[\"group:triage\",\"group:managers\"]"
         }
       ]
     },

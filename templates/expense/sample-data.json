@@ -8,10 +8,6 @@
     "updatedAt": "2026-06-18T00:00:00.000Z",
     "createdBy": "person:alice",
     "updatedBy": "person:alice",
-    "readers": [
-      "person:alice",
-      "group:finance"
-    ],
     "authors": [
       "person:alice"
     ],
@@ -31,10 +27,6 @@
     "updatedAt": "2026-06-18T00:00:00.000Z",
     "createdBy": "person:alice",
     "updatedBy": "person:alice",
-    "readers": [
-      "person:alice",
-      "group:finance"
-    ],
     "authors": [
       "person:alice"
     ],
@@ -67,10 +59,6 @@
     "updatedAt": "2026-06-18T00:00:00.000Z",
     "createdBy": "person:bob",
     "updatedBy": "person:bob",
-    "readers": [
-      "person:bob",
-      "group:finance"
-    ],
     "authors": [
       "person:bob"
     ],
@@ -110,10 +98,6 @@
     "updatedAt": "2026-06-18T00:00:00.000Z",
     "createdBy": "person:alice",
     "updatedBy": "person:alice",
-    "readers": [
-      "person:alice",
-      "group:finance"
-    ],
     "authors": [
       "person:alice"
     ],
@@ -133,10 +117,6 @@
     "updatedAt": "2026-06-18T00:00:00.000Z",
     "createdBy": "person:alice",
     "updatedBy": "person:alice",
-    "readers": [
-      "person:alice",
-      "group:finance"
-    ],
     "authors": [
       "person:alice"
     ],

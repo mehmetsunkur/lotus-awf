@@ -160,14 +160,6 @@
           "type": "textarea",
           "label": "Notes",
           "visibleWhen": "payload.amount >= 100"
-        },
-        {
-          "name": "aclReaders",
-          "type": "text",
-          "label": "Readers",
-          "aclRole": "reader",
-          "mode": "computed-once",
-          "formula": "[\"group:finance\"]"
         }
       ]
     },

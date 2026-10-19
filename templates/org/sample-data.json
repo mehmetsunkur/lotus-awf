@@ -8,9 +8,6 @@
     "updatedAt": "2026-07-01T00:00:00.000Z",
     "createdBy": "person:alice",
     "updatedBy": "person:alice",
-    "readers": [
-      "group:admins"
-    ],
     "authors": [
       "person:alice"
     ],
@@ -30,9 +27,6 @@
     "updatedAt": "2026-07-01T00:00:00.000Z",
     "createdBy": "person:alice",
     "updatedBy": "person:alice",
-    "readers": [
-      "group:admins"
-    ],
     "authors": [
       "person:alice"
     ],
@@ -52,10 +46,6 @@
     "updatedAt": "2026-07-01T00:00:00.000Z",
     "createdBy": "person:alice",
     "updatedBy": "person:alice",
-    "readers": [
-      "group:admins",
-      "person:alice"
-    ],
     "authors": [
       "person:alice"
     ],
@@ -74,10 +64,6 @@
     "updatedAt": "2026-07-01T00:00:00.000Z",
     "createdBy": "person:alice",
     "updatedBy": "person:alice",
-    "readers": [
-      "group:admins",
-      "person:bob"
-    ],
     "authors": [
       "person:alice"
     ],

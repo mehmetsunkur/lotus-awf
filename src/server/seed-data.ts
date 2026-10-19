@@ -10,7 +10,6 @@ export function createDocument(
   docType: string,
   payload: Record<string, unknown>,
   user = config.appUser,
-  readers = [user],
   appId = ""
 ): BusinessDocument {
   const timestamp = now();
@@ -23,26 +22,17 @@ export function createDocument(
     updatedAt: timestamp,
     createdBy: user,
     updatedBy: user,
-    readers,
     authors: [user],
     payload
   };
 }
 
-export function createExpenseDoc(
-  payload: Record<string, unknown>,
-  user = config.appUser,
-  readers = ["person:alice", "group:finance"]
-): BusinessDocument {
-  return createDocument("expense", payload, user, readers, "expense");
+export function createExpenseDoc(payload: Record<string, unknown>, user = config.appUser): BusinessDocument {
+  return createDocument("expense", payload, user, "expense");
 }
 
-export function createVendorDoc(
-  payload: Record<string, unknown>,
-  user = config.appUser,
-  readers = ["person:alice", "group:finance"]
-): BusinessDocument {
-  return createDocument("vendor", payload, user, readers, "expense");
+export function createVendorDoc(payload: Record<string, unknown>, user = config.appUser): BusinessDocument {
+  return createDocument("vendor", payload, user, "expense");
 }
 
 export function seedDocuments(): Array<

@@ -1,5 +1,4 @@
 import type { BusinessDocument, CouchDocument } from "../shared/types";
-import { accessSelector, type PrincipalScope } from "../shared/access";
 import { config } from "./config";
 
 export type CouchTarget = "local" | "server";
@@ -221,12 +220,12 @@ export async function getDesignDoc(target: CouchTarget, id: string, db = config.
   return getDoc(target, id, "", db);
 }
 
-export async function getBusinessDocs(target: CouchTarget, docType: string, scope?: PrincipalScope, db = config.appDb) {
+// ADR-0026: no per-document read filter — callers gate on the app ACL first.
+export async function getBusinessDocs(target: CouchTarget, docType: string, db = config.appDb) {
   const result = await findDocs<BusinessDocument>(target, {
     selector: {
       kind: "document",
-      docType,
-      ...(scope ? accessSelector(scope) : {})
+      docType
     },
     sort: [{ updatedAt: "desc" }],
     use_index: "m2-kind-docType-updatedAt",
@@ -247,9 +246,15 @@ export async function replicateOnce(direction: "push" | "pull", selector?: Recor
   });
 }
 
-export async function replicateBidirectional(scope?: PrincipalScope, db = config.appDb) {
+/**
+ * `userSync` (the app-scoped Sync route) pulls only design kinds and business
+ * documents — runtime kinds (audit events, agent runs, checkpoints) stay on the
+ * server. ADR-0026: business documents are pulled by `kind` alone; the caller's
+ * app ACL level is checked by the route before syncing.
+ */
+export async function replicateBidirectional(userSync = false, db = config.appDb) {
   const push = await replicateOnce("push", undefined, db);
-  if (!scope) {
+  if (!userSync) {
     const pull = await replicateOnce("pull", undefined, db);
     return { push, pull };
   }
@@ -259,9 +264,6 @@ export async function replicateBidirectional(scope?: PrincipalScope, db = config
       $in: ["app", "form", "view", "workflow", "acl", "auditpolicy", "agent"]
     }
   }, db);
-  const pullBusiness = await replicateOnce("pull", {
-    kind: "document",
-    ...accessSelector(scope)
-  }, db);
+  const pullBusiness = await replicateOnce("pull", { kind: "document" }, db);
   return { push, pull: { design: pullDesign, business: pullBusiness } };
 }

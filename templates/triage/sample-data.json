@@ -8,11 +8,6 @@
     "updatedAt": "2026-08-08T00:00:00.000Z",
     "createdBy": "person:dave",
     "updatedBy": "person:dave",
-    "readers": [
-      "person:dave",
-      "group:triage",
-      "group:managers"
-    ],
     "authors": [
       "person:dave"
     ],
@@ -32,11 +27,6 @@
     "updatedAt": "2026-08-07T12:00:00.000Z",
     "createdBy": "person:erin",
     "updatedBy": "person:erin",
-    "readers": [
-      "person:erin",
-      "group:triage",
-      "group:managers"
-    ],
     "authors": [
       "person:erin"
     ],

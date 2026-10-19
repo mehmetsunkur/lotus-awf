@@ -128,14 +128,6 @@
           "type": "date",
           "label": "Requested date",
           "required": true
-        },
-        {
-          "name": "aclReaders",
-          "type": "text",
-          "label": "Readers",
-          "aclRole": "reader",
-          "mode": "computed-once",
-          "formula": "[\"group:dispatch\",\"group:managers\"]"
         }
       ]
     },
@@ -258,14 +250,6 @@
               "message": "Billable hours cannot be negative"
             }
           ]
-        },
-        {
-          "name": "aclReaders",
-          "type": "text",
-          "label": "Readers",
-          "aclRole": "reader",
-          "mode": "computed-once",
-          "formula": "[\"group:dispatch\",\"group:technicians\",\"group:inventory\",\"group:billing\",\"group:managers\"]"
         }
       ]
     },
@@ -354,14 +338,6 @@
           "type": "textarea",
           "label": "Shortage reason",
           "requiredWhen": "doc.state == 'backordered'"
-        },
-        {
-          "name": "aclReaders",
-          "type": "text",
-          "label": "Readers",
-          "aclRole": "reader",
-          "mode": "computed-once",
-          "formula": "[\"group:inventory\",\"group:technicians\",\"group:dispatch\",\"group:managers\"]"
         }
       ]
     },
@@ -444,14 +420,6 @@
           "type": "textarea",
           "label": "Void reason",
           "requiredWhen": "doc.state == 'void'"
-        },
-        {
-          "name": "aclReaders",
-          "type": "text",
-          "label": "Readers",
-          "aclRole": "reader",
-          "mode": "computed-once",
-          "formula": "[\"group:billing\",\"group:dispatch\",\"group:managers\"]"
         }
       ]
     },

@@ -41,9 +41,7 @@ import type {
   WorkflowDefinition
 } from "../shared/types";
 import {
-  accessSelector,
   canEditDocument,
-  canReadDocument,
   accessRank,
   hasAccessLevel,
   principalsFor,
@@ -582,7 +580,6 @@ async function seedDevDirectory(target: "local" | "server", adminUser = "alice",
 
 async function ensureIndexes(target: "local" | "server", db = config.appDb) {
   await createIndex(target, "m2-kind-docType-updatedAt", ["kind", "docType", "updatedAt"], db);
-  await createIndex(target, "m2-readers", ["readers"], db);
   await createIndex(target, "m3-docType-state-updatedAt", ["docType", "state", "updatedAt"], db);
 }
 
@@ -797,11 +794,9 @@ async function replicationTasks() {
   ];
 }
 
-async function conflictDetails(id: string, scope?: PrincipalScope, db = config.appDb): Promise<ConflictDetails | null> {
+// ADR-0026: callers gate on the app ACL; every revision is as visible as the document.
+async function conflictDetails(id: string, db = config.appDb): Promise<ConflictDetails | null> {
   const winning = await getDoc<CouchDocument & { _conflicts?: string[] }>("local", id, "?conflicts=true", db);
-  if (scope && winning.kind === "document" && !canReadDocument(winning, scope)) {
-    throw new CouchError(403, { error: "forbidden", reason: "Document is not readable by current user" });
-  }
   if (!winning._conflicts?.length) return null;
 
   const conflicts = await Promise.all(
@@ -878,43 +873,17 @@ async function definitionExists(id: string, db = config.appDb): Promise<boolean>
   }
 }
 
-async function getReadableDocument(id: string, scope: PrincipalScope, db = config.appDb): Promise<BusinessDocument> {
-  const doc = await getDoc<BusinessDocument>("local", id, "", db);
-  if (!canReadDocument(doc, scope)) {
-    throw new CouchError(403, { error: "forbidden", reason: "Document is not readable by current user" });
+/**
+ * ADR-0026: document visibility is the app ACL, already enforced by the route's
+ * `requireAppSession`; there is no per-document read check. Only business
+ * documents are served here — design/runtime docs are not reachable by this id.
+ */
+async function getBusinessDocument(id: string, db = config.appDb): Promise<BusinessDocument> {
+  const doc = await getDoc<CouchDocument>("local", id, "", db);
+  if (doc.kind !== "document") {
+    throw new CouchError(404, { error: "not_found", reason: "Document not found" });
   }
-  return doc;
-}
-
-async function purgeUnreadableLocalDocs(scope: PrincipalScope, db = config.appDb) {
-  const [localResult, serverVisible] = await Promise.all([
-    allDocs<BusinessDocument & { _conflicts?: string[] }>("local", {
-      include_docs: true,
-      conflicts: true
-    }, db),
-    findDocs<BusinessDocument>("server", {
-      selector: {
-        kind: "document",
-        ...accessSelector(scope)
-      },
-      limit: 1000
-    }, db)
-  ]);
-  const serverVisibleIds = new Set(serverVisible.docs.map((doc) => doc._id));
-  const result = localResult;
-  const revisions: Record<string, string[]> = {};
-
-  for (const row of result.rows) {
-    const doc = row.doc;
-    if (!doc || doc.kind !== "document") continue;
-    if (canReadDocument(doc, scope) && serverVisibleIds.has(doc._id)) continue;
-    const revs = [doc._rev, ...(doc._conflicts ?? [])].filter((rev): rev is string => Boolean(rev));
-    if (revs.length) revisions[doc._id] = revs;
-  }
-
-  if (!Object.keys(revisions).length) return { purged: [] };
-  await purgeDocs("local", revisions, db);
-  return { purged: Object.keys(revisions) };
+  return doc as BusinessDocument;
 }
 
 /**
@@ -1012,8 +981,7 @@ function buildAgentRun(
     sourceRev: document?._rev,
     startedAt: now,
     ok: result.ok,
-    detail: result.detail,
-    readers: document?.readers ?? ["group:admins"]
+    detail: result.detail
   };
 }
 
@@ -1080,7 +1048,7 @@ function runAgents(now = timestamp(), db = config.appDb): Promise<{ ran: number;
 // retention horizon. Deletes are recorded at the API delete path (the feed has no
 // body for a deleted doc). `auditevent`/`audit:state` writes reappear in the feed
 // but `shouldAudit` skips non-`document` kinds, so the recorder never audits
-// itself. Audit visibility mirrors the source document's `readers`.
+// itself. ADR-0026: audit visibility is the app ACL (no per-event readers).
 
 async function loadAuditState(appId: string, db = config.appDb): Promise<AuditState> {
   try {
@@ -1106,8 +1074,7 @@ function buildAuditEvent(
     rev: doc._rev ?? "",
     action,
     actor,
-    at: now,
-    readers: doc.readers
+    at: now
   };
 }
 
@@ -1172,7 +1139,7 @@ async function selectOptionsForForm(form: FormDefinition, scope: PrincipalScope,
     form.fields
       .filter((field) => field.type === "select" && field.source)
       .map(async (field) => {
-        const docs = await getBusinessDocs("local", field.source!.docType, scope, db);
+        const docs = await getBusinessDocs("local", field.source!.docType, db);
         return [
           field.name,
           docs.map((doc) => ({
@@ -1195,21 +1162,25 @@ function getPath(source: Record<string, unknown>, path: string): unknown {
 
 /**
  * ADR-0014: a `DbReader` for the async formula lane. Reads the LOCAL replica only
- * (offline-first, no server round-trip), returning ALL rows of a docType — the
- * formula lane applies the single ACL filter (`canReadDocument`) against the
- * caller's scope. A per-call memo bounds N+1 when several formulas hit the same
- * source. Unknown/uninstalled target apps read as empty.
+ * (offline-first, no server round-trip), returning ALL rows of a docType.
+ * ADR-0026: this is the ACL boundary — a caller below `reader` on the TARGET app
+ * (resolved from its own `acl:rules`) reads nothing. A per-call memo bounds N+1
+ * when several formulas hit the same source. Unknown/uninstalled target apps read
+ * as empty.
  */
 function makeDbReader(): DbReader {
   const memo = new Map<string, Promise<BusinessDocument[]>>();
-  return (appId, docType) => {
-    const key = `${appId}:${docType}`;
+  return (appId, docType, scope) => {
+    const principals = principalsFor(scope);
+    const key = `${principals.join(",")}|${appId}:${docType}`;
     let pending = memo.get(key);
     if (!pending) {
       pending = (async () => {
         try {
           const app = await resolveBusinessApp(appId);
-          return await getBusinessDocs("local", docType, undefined, app.database);
+          const level = await appAccessLevel(principals, app.database);
+          if (accessRank(level) < accessRank("reader")) return [];
+          return await getBusinessDocs("local", docType, app.database);
         } catch {
           return [];
         }
@@ -1290,11 +1261,13 @@ async function stampComputedFields(
       scope,
       read
     });
-    if (field.aclRole === "reader" || field.aclRole === "author") {
+    if (field.aclRole === "author") {
       // ADR-0024 §1/§3: an ACL-flagged field resolves to a principal LIST, not a
       // scalar — normalized principal-shaped (same posture as `responsibleFormula`)
       // so a malformed formula can never stamp a non-principal into the projection.
-      // Stored as the field's value; it feeds the readers/authors rollup below.
+      // Stored as the field's value; it feeds the authors rollup below. A legacy
+      // `aclRole:"reader"` field (retired by ADR-0026) falls through as an ordinary
+      // computed field with no ACL effect.
       // Never primitive-coerced (that path drops arrays). PRESERVE-ON-EMPTY: a
       // degraded resolution keeps the prior stamp rather than dropping ACL (fails
       // closed — narrows, never widens).
@@ -1312,16 +1285,13 @@ async function stampComputedFields(
     payload[field.name] = coerceFieldValue(field, primitive);
   }
 
-  // ADR-0024 §2: materialize the envelope readers/authors as the $Readers-style
-  // projection — the creator BASE already on `doc` (its principals, captured at
-  // create; on later writes `doc.readers/authors` already carry it) UNIONED with
-  // every aclRole field's resolved principals. Additive by design: the creator
-  // base survives a write by a different editor, and a re-rolled `computed`
-  // author field appends (ADR-0024 Consequences: additive-only in practice). The
-  // projection lands on the same top-level `readers` field, so the m2-readers
-  // index (invariant 120) and the coarse-gate model (invariant 93) are untouched.
-  const { readers, authors } = rollupAclProjection({ readers: doc.readers, authors: doc.authors }, form.fields, payload);
-  return { ...doc, payload, readers, authors };
+  // ADR-0024 §2: materialize the envelope authors as the $Authors-style
+  // projection — the creator BASE already on `doc` (captured at create; on later
+  // writes `doc.authors` already carries it) UNIONED with every aclRole:"author"
+  // field's resolved principals. Additive by design: the creator base survives a
+  // write by a different editor. ADR-0026: there is no readers projection.
+  const { authors } = rollupAclProjection({ authors: doc.authors }, form.fields, payload);
+  return { ...doc, payload, authors };
 }
 
 app.get(
@@ -1457,20 +1427,20 @@ app.get(
         if (accessRank(level) < accessRank("reader")) return null;
         const appScope: PrincipalScope = { ...scope, accessLevel: level };
 
-        // Bind the existing ACL index (`m2-readers`): the `readers ∈ principals`
-        // predicate is the selective one, and `kind` plus the routing union are
-        // in-memory predicates on the scanned rows — the ADR-0020 cost class,
-        // literally the same index the ACL filter already relies on (no new index;
-        // three-site rule untouched). ADR-0025 §5: the work queue is the UNION of
-        // both routing facts (`responsible ∪ assignee`); a Mango selector cannot
-        // express that OR across two fields against a single index, so the selector
-        // binds `m2-readers`+`kind` only and the union runs in memory.
+        // ADR-0026: app-reader access covers every document, so the scan is all
+        // business docs in the app. Bind `m2-kind-docType-updatedAt` — Mango only
+        // uses a JSON index when the selector names every indexed field, hence the
+        // `$gt: null` presence predicates (every business doc carries both). No new
+        // index; three-site rule untouched. ADR-0025 §5: the work queue is the UNION
+        // of both routing facts (`responsible ∪ assignee`); a Mango selector cannot
+        // express that OR across two fields against a single index, so the union
+        // runs in memory.
         // Page the ACL-scoped scan to EXHAUSTION. The routing union is an in-memory
         // predicate applied AFTER the scan (ADR-0025 §5 forbids either routing field in
         // the selector — that would filter one arm of the OR server-side and silently
-        // drop the other). A fixed `limit` would therefore cap the coarse `readers` scan,
+        // drop the other). A fixed `limit` would therefore cap the coarse document scan,
         // not the routed subset: `applyTransition` clears the routing pairs on final
-        // states but NOT `readers`, so completed docs stay in the m2-readers scan and
+        // states, but completed docs stay in the scan and
         // would consume a fixed budget while matching nothing — truncating live routed
         // work behind them. Driving the same selector to exhaustion via `bookmark` keeps
         // the single-scan / one-`_id`-per-visit posture (no second query, no new index)
@@ -1483,8 +1453,8 @@ app.get(
           const result = await findDocs<BusinessDocument>(
             "local",
             {
-              selector: { kind: "document", ...accessSelector(appScope) },
-              use_index: "m2-readers",
+              selector: { kind: "document", docType: { $gt: null }, updatedAt: { $gt: null } },
+              use_index: "m2-kind-docType-updatedAt",
               limit: PAGE,
               ...(bookmark ? { bookmark } : {})
             },
@@ -1500,11 +1470,8 @@ app.get(
             });
           }
         }
-        // ACL post-filter mirrors every list route: the Mango `readers` predicate
-        // is a coarse gate; `canReadDocument` is the authority. Then narrow to the
-        // routing union — the pool set OR the individual is on this actor.
+        // Narrow to the routing union — the pool set OR the individual is on this actor.
         let readable = scanned
-          .filter((doc) => canReadDocument(doc, appScope))
           .filter(
             (doc) =>
               (Array.isArray(doc.responsible) && doc.responsible.some((r) => principals.includes(r))) ||
@@ -1907,11 +1874,12 @@ app.post(
   "/api/apps/:appId/replicate",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
-    const scope = await requireAppSession(request, appContext.database);
-    const replication = await replicateBidirectional(scope, appContext.database);
-    const purge = await purgeUnreadableLocalDocs(scope, appContext.database);
+    await requireAppSession(request, appContext.database);
+    // ADR-0026: no per-document purge — app-reader access covers every document;
+    // revocation is an app ACL change enforced at this gate.
+    const replication = await replicateBidirectional(true, appContext.database);
     const reconcile = await reconcileStates(appContext.database);
-    response.json({ ...replication, purge, reconcile });
+    response.json({ ...replication, reconcile });
   })
 );
 
@@ -1943,7 +1911,7 @@ app.get(
 // routes below let an operator agent read the app's shape cheaply — a lean
 // self-describing index first, then one definition at a time — instead of
 // pulling every field/column/state body up front. All are app-ACL-scoped
-// through `requireAppSession` (design reads, no per-document `readers`), and
+// through `requireAppSession` (design reads; ADR-0026: no per-document check), and
 // carry the ADR-0023 `description` prose so the lean listing explains itself.
 
 /** Trim a definition down to its self-describing header (ADR-0023). */
@@ -2151,9 +2119,9 @@ app.get(
   "/api/apps/:appId/documents",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
-    const scope = await requireAppSession(request, appContext.database);
+    await requireAppSession(request, appContext.database);
     const docType = typeof request.query.docType === "string" ? request.query.docType : "";
-    const docs = await getBusinessDocs("local", docType, scope, appContext.database);
+    const docs = await getBusinessDocs("local", docType, appContext.database);
     response.json(docs);
   })
 );
@@ -2167,8 +2135,9 @@ app.get(
     const sort = view.sort?.[0];
     const body: Record<string, unknown> = {
       // ADR-0020: authored filters (incl. @me substitution from THIS caller's
-      // principals) first, ACL selector spread last so it always wins.
-      selector: { ...mangoSelector(view.filters, view.docType, principalsFor(scope)), ...accessSelector(scope) },
+      // principals) first; ADR-0026: `kind` re-asserted last so a filter can never
+      // widen past business documents (the app ACL is the read gate).
+      selector: { ...mangoSelector(view.filters, view.docType, principalsFor(scope)), kind: "document" },
       limit: 200
     };
     if (sort && sort.field === "updatedAt") {
@@ -2180,8 +2149,8 @@ app.get(
       body.use_index = filtersByState ? "m3-docType-state-updatedAt" : "m2-kind-docType-updatedAt";
     }
     const result = await findDocs<BusinessDocument>("local", body, appContext.database);
-    const readable = result.docs.filter((doc) => canReadDocument(doc, scope));
-    // M9: free-text search narrows the ACL-scoped set with the shared matcher,
+    const readable = result.docs;
+    // M9: free-text search narrows the view's result set with the shared matcher,
     // so it never widens visibility. Form (local) supplies the searchable fields.
     const query = typeof request.query.q === "string" ? request.query.q : "";
     if (query.trim()) {
@@ -2198,7 +2167,7 @@ app.get(
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     const scope = await requireAppSession(request, appContext.database);
-    const doc = await getReadableDocument(routeParam(request.params.id), scope, appContext.database);
+    const doc = await getBusinessDocument(routeParam(request.params.id), appContext.database);
     // ADR-0023 Phase 2: opt-in runtime affordances. Absent the flag the response
     // is the bare document (back-compat with every existing reader); with it the
     // envelope is wrapped and the actor's currently-available transitions are
@@ -2233,13 +2202,13 @@ app.get(
 app.get(
   // ADR-0014: resolved values for a document's `type: "formula"` fields. Kept off
   // the document/list read paths — the client fetches this only when a form has
-  // formula fields. ACL-scoped to the caller both to read the document and inside
-  // each lookup (canReadDocument), so it can never widen visibility.
+  // formula fields. ACL-scoped to the caller both to read the document (app gate)
+  // and inside each lookup (target-app gate, ADR-0026), so it can never widen visibility.
   "/api/apps/:appId/documents/:id/formulas",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     const scope = await requireAppSession(request, appContext.database);
-    const doc = await getReadableDocument(routeParam(request.params.id), scope, appContext.database);
+    const doc = await getBusinessDocument(routeParam(request.params.id), appContext.database);
     let form: FormDefinition;
     try {
       form = await formForDocType(doc.docType, appContext.database);
@@ -2278,15 +2247,14 @@ app.post(
       response.status(422).json({ error: "validation_failed", errors });
       return;
     }
-    // ADR-0024: the creator's own principals are the readers/authors BASE; any
-    // extra readers/authors come from `aclRole`-flagged computed fields, unioned
-    // in by `stampComputedFields` (§2). No app-specific readers rule in base.
-    const readers = principalsFor(scope);
+    // ADR-0024: the creator is the authors BASE; extra authors come from
+    // `aclRole:"author"` computed fields, unioned in by `stampComputedFields` (§2).
+    // ADR-0026: no readers — visibility is the app ACL.
     // M12: stamp the document generically so any scaffolded docType is correct
     // (was hardcoded to expense/vendor).
     const doc = await stampComputedFields(
       form,
-      createDocument(docType, payload, scopeUser(scope), readers, appContext.appId),
+      createDocument(docType, payload, scopeUser(scope), appContext.appId),
       undefined,
       scope
     );
@@ -2299,8 +2267,8 @@ app.put(
   "/api/apps/:appId/documents/:id",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
-    const scope = await requireAppSession(request, appContext.database);
-    const existing = await getReadableDocument(routeParam(request.params.id), scope, appContext.database);
+    const scope = await requireAppSession(request, appContext.database, "author");
+    const existing = await getBusinessDocument(routeParam(request.params.id), appContext.database);
     if (!canEditDocument(existing, scope)) {
       response.status(403).json({ error: "forbidden", reason: "Document is not editable by current user" });
       return;
@@ -2327,13 +2295,13 @@ app.delete(
   "/api/apps/:appId/documents/:id",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
-    const scope = await requireAppSession(request, appContext.database);
-    const existing = await getReadableDocument(routeParam(request.params.id), scope, appContext.database);
+    const scope = await requireAppSession(request, appContext.database, "author");
+    const existing = await getBusinessDocument(routeParam(request.params.id), appContext.database);
     if (!canEditDocument(existing, scope)) {
       response.status(403).json({ error: "forbidden", reason: "Document is not editable by current user" });
       return;
     }
-    // Record the delete before removing the doc — the envelope (readers/actor) is
+    // Record the delete before removing the doc — the envelope (actor) is
     // gone afterward, and the CDC drain can't see a deleted body. Best-effort.
     await recordDeleteAudit(existing, scopeUser(scope), timestamp(), appContext.database);
     await deleteDoc("local", existing._id, existing._rev ?? "", appContext.database);
@@ -2346,7 +2314,7 @@ app.post(
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
     const scope = await requireAppSession(request, appContext.database);
-    const existing = await getReadableDocument(routeParam(request.params.id), scope, appContext.database);
+    const existing = await getBusinessDocument(routeParam(request.params.id), appContext.database);
     const def = await workflowForDocType(existing.docType, appContext.database);
     if (!def) {
       response.status(404).json({ error: "not_found", reason: `No workflow for ${existing.docType}` });
@@ -2482,13 +2450,12 @@ app.get(
   "/api/apps/:appId/audit",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
-    const principals = principalsFor(await requireAppSession(request, appContext.database));
+    await requireAppSession(request, appContext.database);
     const docId = typeof request.query.docId === "string" ? request.query.docId : undefined;
     const docType = typeof request.query.docType === "string" ? request.query.docType : undefined;
     const result = await findDocs<AuditEvent>("local", { selector: { kind: "auditevent" }, limit: 500 }, appContext.database);
-    // ACL: audit visibility mirrors the source document's readers (A5).
+    // ADR-0026: audit visibility is the app ACL (the gate above).
     const events = result.docs
-      .filter((event) => event.readers.some((reader) => principals.includes(reader)))
       .filter((event) => (docId ? event.docId === docId : true))
       .filter((event) => (docType ? event.docType === docType : true))
       .sort((left, right) => right.at.localeCompare(left.at));
@@ -2500,15 +2467,14 @@ app.get(
   "/api/apps/:appId/conflicts",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
-    const scope = await requireAppSession(request, appContext.database);
+    await requireAppSession(request, appContext.database);
     const result = await allDocs<CouchDocument>("local", {
       include_docs: true,
       conflicts: true
     }, appContext.database);
     const docs = result.rows
       .map((row) => row.doc)
-      .filter((doc): doc is CouchDocument => Boolean((doc as (CouchDocument & { _conflicts?: string[] }) | undefined)?._conflicts?.length))
-      .filter((doc) => doc.kind !== "document" || canReadDocument(doc, scope));
+      .filter((doc): doc is CouchDocument => Boolean((doc as (CouchDocument & { _conflicts?: string[] }) | undefined)?._conflicts?.length));
     response.json(docs);
   })
 );
@@ -2536,7 +2502,7 @@ app.put(
 );
 
 // M23: add the standard approval lifecycle to an existing document type. This
-// creates ordinary design docs only; business document readers/authors stay
+// creates ordinary design docs only; business document authors stay
 // untouched and transition authorization remains the existing workflow gate.
 app.post(
   "/api/apps/:appId/workflows/scaffold",
@@ -2619,7 +2585,8 @@ app.get(
   "/api/apps/:appId/conflicts/:id",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
-    const details = await conflictDetails(routeParam(request.params.id), await requireAppSession(request, appContext.database), appContext.database);
+    await requireAppSession(request, appContext.database);
+    const details = await conflictDetails(routeParam(request.params.id), appContext.database);
     if (!details) {
       response.status(404).json({ error: "not_found", reason: "Document has no local conflicts" });
       return;
@@ -2632,8 +2599,8 @@ app.post(
   "/api/apps/:appId/conflicts/:id/resolve",
   asyncRoute(async (request, response) => {
     const appContext = await appContextFromRequest(request);
-    const scope = await requireAppSession(request, appContext.database);
-    const details = await conflictDetails(routeParam(request.params.id), scope, appContext.database);
+    const scope = await requireAppSession(request, appContext.database, "author");
+    const details = await conflictDetails(routeParam(request.params.id), appContext.database);
     if (!details) {
       response.status(404).json({ error: "not_found", reason: "Document has no local conflicts" });
       return;
@@ -2658,7 +2625,7 @@ app.post(
     // user-input validatePayload (electing a historic revision must not be
     // blockable by later-tightened rules).
     let electedPayload = request.body.payload;
-    let electedEnvelope: { readers: string[]; authors: string[] } | undefined;
+    let electedEnvelope: { authors: string[] } | undefined;
     if (chosen.kind === "document") {
       const chosenDoc = chosen as BusinessDocument;
       electedPayload = electedPayload ?? chosenDoc.payload;
@@ -2671,12 +2638,12 @@ app.post(
         scope
       );
       electedPayload = stamped.payload;
-      // ADR-0024 §2: envelope readers/authors are a server-materialized projection
-      // of the aclRole fields in the elected payload. Persist the WHOLE stamped
-      // envelope, not just its payload — else a re-resolved aclRole principal lands
-      // in the payload field while readers/authors omit it (payload-vs-projection
-      // divergence). Matches the POST/PUT stamped-envelope writes.
-      electedEnvelope = { readers: stamped.readers, authors: stamped.authors };
+      // ADR-0024 §2: envelope authors are a server-materialized projection of the
+      // aclRole fields in the elected payload. Persist the stamped envelope, not
+      // just its payload — else a re-resolved aclRole principal lands in the payload
+      // field while authors omits it (payload-vs-projection divergence). Matches the
+      // POST/PUT stamped-envelope writes.
+      electedEnvelope = { authors: stamped.authors };
     }
     const resolved =
       chosen.kind === "document"
@@ -2785,27 +2752,6 @@ app.post(
 
     await replicateBidirectional();
     response.json({ id: base._id, details: await conflictDetails(base._id) });
-  })
-);
-
-app.post(
-  "/api/admin/revoke-reader",
-  asyncRoute(async (request, response) => {
-    await requireSession(request, "manager");
-    const id = String(request.body.id ?? "");
-    const readers = Array.isArray(request.body.readers) ? request.body.readers.map(String) : [];
-    if (!id || !readers.length) {
-      response.status(400).json({ error: "bad_request", reason: "id and readers are required" });
-      return;
-    }
-    const doc = await getDoc<BusinessDocument>("server", id);
-    const next: BusinessDocument = {
-      ...doc,
-      readers: doc.readers.filter((reader) => !readers.includes(reader)),
-      updatedAt: timestamp()
-    };
-    const result = await putDoc("server", next);
-    response.json({ ...next, _rev: result.rev });
   })
 );
 

@@ -78,7 +78,7 @@ Mapped to the path-tagged aspects in `docs/invariants.md`.
 | Web UI | React runtime (`src/client`) | e2e check (`npm run test:e2e`) |
 | Internal API | Express endpoints (`src/server`) | API behavior via e2e; caller-impact |
 | MCP Stdio | Local MCP process (`src/mcp`) | Build + unit tests; tool contract docs |
-| CLI/Script | `scripts/*.ts` (seed, reset, replicate, force-conflict, acl-spike) | Dry run or fixture-based check |
+| CLI/Script | `scripts/*.ts` (seed, reset, replicate, force-conflict) | Dry run or fixture-based check |
 | Playground CLI | `scripts/playground.ts` (company bootstraps, sidecars, persona shifts) | `npx tsc --noEmit`; `npm run playground -- field-services --once`; sidecar smoke when sidecar code changes |
 | Deploy Artifact | Docker image + `deploy/compose.yml` | `npm run test:deploy` |
 

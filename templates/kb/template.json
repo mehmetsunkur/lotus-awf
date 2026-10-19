@@ -11,7 +11,7 @@
       "_id": "acl:rules",
       "kind": "acl",
       "appId": "kb",
-      "policy": "kb.nsf: the company knowledge base. Handbook articles are for everyone (an aclRole reader field on the article form); procedures are scoped to the team that wrote them via the creator-principal mechanism (ADR-0024) — there is deliberately no per-document readers editor.",
+      "policy": "kb.nsf: the company knowledge base. Handbook articles and procedures are visible to everyone with access to this app (ADR-0026: document visibility is the app ACL); a procedure's department slug labels its owning team.",
       "entries": [
         {
           "principal": "group:admins",
@@ -66,14 +66,6 @@
           "label": "Body",
           "required": true,
           "searchable": true
-        },
-        {
-          "name": "aclReaders",
-          "type": "text",
-          "label": "Readers",
-          "aclRole": "reader",
-          "mode": "computed-once",
-          "formula": "[\"group:employees\"]"
         }
       ]
     },
@@ -107,7 +99,7 @@
           "label": "Department",
           "required": true,
           "searchable": true,
-          "helpText": "Slug of the owning department. Visibility comes from who CREATES the procedure (their principal set becomes the readers), not from this label."
+          "helpText": "Slug of the owning department. A label only — every app reader can see the procedure (ADR-0026)."
         },
         {
           "name": "body",

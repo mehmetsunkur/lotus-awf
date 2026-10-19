@@ -12,10 +12,8 @@ export function principalsFor(scope: PrincipalScope): string[] {
   return Array.from(new Set([scope.person, ...scope.groups, ...scope.principals].filter(Boolean)));
 }
 
-export function canReadDocument(doc: BusinessDocument, scope: PrincipalScope): boolean {
-  const principals = principalsFor(scope);
-  return doc.readers.some((reader) => principals.includes(reader));
-}
+// ADR-0026: there is no per-document read check. Document visibility is the app
+// ACL — `hasAccessLevel(scope, "reader")`, resolved per app by the session gate.
 
 export function canEditDocument(doc: BusinessDocument, scope: PrincipalScope): boolean {
   // ADR-0024 §5: Notes-faithful two-layer edit gate.
@@ -23,48 +21,36 @@ export function canEditDocument(doc: BusinessDocument, scope: PrincipalScope): b
   // regardless of the Authors field (as the ACL level implies). `scope.accessLevel`
   // is populated by `requireAppSession` on the PUT/DELETE/transition routes.
   if (hasAccessLevel(scope, "editor")) return true;
-  // Layer 2 — Authors-field intersection, group/role-aware: any of the writer's
-  // principals (person, groups, roles) appearing in `authors` grants edit. A
-  // `group:*`/`role:*` in `authors` is now honoured, not inert.
+  // Layer 2 — Authors-field intersection, group/role-aware: an app-level Author
+  // (ADR-0026: a Reader never edits, even when listed) whose principals (person,
+  // groups, roles) appear in `authors`. A `group:*`/`role:*` in `authors` is honoured.
+  if (!hasAccessLevel(scope, "author")) return false;
   return principalsFor(scope).some((principal) => doc.authors.includes(principal));
 }
 
 /**
- * ADR-0024 §2: materialize the `$Readers`-style projection onto the envelope.
- * `base` is the creator readers/authors already on the document (captured at
- * create, carried forward on later writes); each `aclRole` field's resolved
- * principal list is UNIONED in — reader fields feed `readers`, author fields feed
- * `authors`. Additive by construction: the creator base survives a write by a
- * different editor and the projection never narrows below it, so it lands on the
- * same top-level `readers` field the m2-readers index binds (invariant 120). A
- * field whose resolved value carries no principals contributes nothing
- * (PRESERVE-ON-EMPTY happens upstream at stamp time — the field keeps its prior
- * value there, so a degraded resolution narrows readership, never widens it).
+ * ADR-0024 §2: materialize the `$Authors`-style projection onto the envelope.
+ * `base` is the creator authors already on the document (captured at create,
+ * carried forward on later writes); each `aclRole:"author"` field's resolved
+ * principal list is UNIONED in. Additive by construction: the creator base
+ * survives a write by a different editor and the projection never narrows below
+ * it. A field whose resolved value carries no principals contributes nothing
+ * (PRESERVE-ON-EMPTY happens upstream at stamp time). ADR-0026 retired the
+ * reader half — `readers` is no longer projected.
  */
 export function rollupAclProjection(
-  base: { readers: string[]; authors: string[] },
+  base: { authors: string[] },
   fields: FormField[],
   payload: Record<string, unknown>
-): { readers: string[]; authors: string[] } {
-  const union = (existing: string[], add: string[]): string[] => Array.from(new Set([...existing, ...add]));
-  let readers = base.readers;
+): { authors: string[] } {
   let authors = base.authors;
   for (const field of fields) {
-    if (field.aclRole !== "reader" && field.aclRole !== "author") continue;
+    if (field.aclRole !== "author") continue;
     const values = normalizeResolvedPrincipals(payload[field.name]);
     if (!values.length) continue;
-    if (field.aclRole === "reader") readers = union(readers, values);
-    else authors = union(authors, values);
+    authors = Array.from(new Set([...authors, ...values]));
   }
-  return { readers, authors };
-}
-
-export function accessSelector(scope: PrincipalScope): Record<string, unknown> {
-  return {
-    readers: {
-      $in: principalsFor(scope)
-    }
-  };
+  return { authors };
 }
 
 const ACCESS_ORDER: AccessLevel[] = ["none", "reader", "author", "editor", "designer", "manager"];

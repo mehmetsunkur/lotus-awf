@@ -9,10 +9,10 @@ export const ME_SENTINEL = "@me";
 
 /**
  * Build the Mango selector for a view's authored filters. Pure and
- * unit-testable; the server spreads `accessSelector(scope)` over the result so
- * ACL filtering always applies LAST — an authored predicate can narrow the
- * ACL-scoped set but never widen it (and `readers`/`authors` filters are
- * rejected at authoring because that spread makes them dead).
+ * unit-testable. ADR-0026: there is no per-document ACL selector — the app ACL
+ * gates the route — so the server re-asserts `kind: "document"` LAST, ensuring an
+ * authored predicate can only narrow the business-document set, never reach
+ * design/runtime docs (`readers`/`authors` filters stay rejected at authoring).
  *
  * `principals` is REQUIRED (review M5): every caller must decide whose identity
  * `@me` resolves to. An empty set substitutes `$in: []`, which matches nothing —
