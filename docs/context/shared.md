@@ -2,8 +2,8 @@
 
 ## Doc Sync Metadata
 
-- Last code review baseline: `d5953bd`
-- Last reviewed date: `2026-10-12`
+- Last code review baseline: `8455f5a`
+- Last reviewed date: `2026-10-19`
 - Code areas:
   - `src/shared/**`
 - Tests:
@@ -27,22 +27,24 @@ No DOM, no Node/server-only APIs.
   `PersonDocument`, `GroupDocument`, `SessionDocument`, `SessionState`, `AccessLevel`, and M22
   app-access editor payloads.
 - `src/shared/types.ts` also carries M19 platform shell types: `SystemApp`, `PublicGroup`, and
-  `DirectoryState`.
+  `DirectoryState`, plus `AccessibleApp` (an app id/title/description with the caller's non-`none`
+  `accessLevel`, returned by `GET /api/apps`).
 - `src/shared/directory.ts` (ADR-0012) — pure names.nsf id normalization: `normalizeUsername`,
   `personIdForUsername`, `normalizeGroupSlug` (accepts an optional `group:` prefix in any case),
   `groupIdForSlug`, `normalizePersonPrincipal`. Used by the server directory routes (re-exported from
   `src/server/auth.ts`) and the MCP admin directory tools so both resolve ids identically.
-- `src/shared/access.ts` (M5/M18) — pure helpers for session-derived principal scopes, readable docs,
-  editable docs, app ACL levels, and access selectors. `canEditDocument` is the ADR-0024 two-layer gate
-  (Layer 1 Editor+ ACL bypass via `hasAccessLevel`; Layer 2 group/role-aware `authors` intersection).
-  `rollupAclProjection(base, fields, payload)` materializes the ADR-0024 `$Readers`-style envelope
-  projection — it UNIONS each `aclRole:"reader"|"author"` field's resolved principals onto the creator
-  base already on the doc (additive only; never narrows). New-doc readers are just the creator's
-  principals; extra readers/authors come from `aclRole` fields (ADR-0024 replaced ADR-0015's
-  `defaultReaders`; `readersForNewDocument` is gone).
+- `src/shared/access.ts` (M5/M18) — pure helpers for session-derived principal scopes, editable docs
+  and app ACL levels. ADR-0026: there is no per-document read helper (`canReadDocument` and
+  `accessSelector` are gone) — document visibility is the app ACL (`hasAccessLevel(scope, "reader")`,
+  resolved per app by the server). `canEditDocument` is the ADR-0024 two-layer gate (Layer 1 Editor+
+  ACL bypass via `hasAccessLevel`; Layer 2 an app Author+ — never a Reader — whose group/role-aware
+  principals intersect `authors`). `rollupAclProjection(base, fields, payload)` materializes the
+  `$Authors`-style envelope projection — it UNIONS each `aclRole:"author"` field's resolved principals
+  onto the creator base already on the doc (additive only; never narrows).
 - `src/shared/formula.ts` (ADR-0014) — the ASYNC evaluation lane. `evaluateFormulaAsync` permits
   `await DbColumn(appId; docType; column)` / `DbLookup(appId; docType; keyColumn; key; valueColumn)`,
-  every read ACL-filtered through `canReadDocument`. Distinct from `expression.ts` (the pure sync lane,
+  every read going through the injected `DbReader(appId, docType, scope)`, which is the ACL boundary
+  (the server's reader returns no rows below `reader` on the TARGET app — ADR-0026). Distinct from `expression.ts` (the pure sync lane,
   which forbids lookups). `formulaBlockedToken` gates the sandbox at authoring time. `type: "formula"`
   form fields carry a `formula` string, are read-only, server-resolved, and excluded from the payload
   (`isPayloadField` in `validation.ts`).
@@ -98,8 +100,9 @@ non-deterministic context value (sampled per side), so guards must not gate on i
 M4 adds shared definition validation: the browser uses it before saving from the authoring studio or
 JSON editor, and the API uses it before writing `form:*`, `view:*`, or `workflow:*` to local CouchDB.
 
-M5 adds shared access policy: the server uses the same `readers`/`authors` helpers for document lists,
-view rows, sourced select options, payload writes, transitions, replication selectors, and purge. M18
+M5 added shared access policy (per-document `readers`/`authors` helpers for lists, views, options,
+writes, replication selectors and purge); ADR-0026 removed the `readers` half, so reads are gated by
+the app ACL and `authors` governs payload writes. M18
 changes the actor source from fixed config to authenticated `PrincipalScope` values derived from a
 Person and direct Groups, and adds ranked app ACL levels (`reader` through `manager`).
 
@@ -149,8 +152,9 @@ definition shapes and validators, so no replicated document shape migration is r
 `src/shared/view-query.ts` owns the pure `mangoSelector` (moved from the server) with a
 REQUIRED `principals` argument: the reserved filter value `"@me"` (op `in` only, whole
 value only) substitutes the caller's principal set at query time — fail-closed on an
-empty scope, AND-ed with the ACL selector so it only narrows. Shared validation enforces
-the value-shape rules and rejects dead `readers`/`authors` filters.
+empty scope; the server re-asserts `kind: "document"` after it so a filter only narrows.
+Shared validation enforces the value-shape rules and rejects `readers`/`authors` (ACL envelope)
+filters.
 
 ## ADR-0018/0019 workflow & field-mode additions
 
@@ -174,13 +178,12 @@ final states and on states declaring neither `assignee` nor `assigneeFormula`. I
 pickup ("claim") is an ordinary transition, not a new engine op. Definition validation
 enforces the mode/field matrix and rejects the superseded `approverFormula`.
 
-ADR-0024 adds a third orthogonal `FormField` axis, `aclRole:"reader"|"author"` — the
-Notes-style Readers/Authors flag. It is COMPUTED-ONLY (`definition-validation.ts` rejects an
+ADR-0024 adds a third orthogonal `FormField` axis, `aclRole` — the Notes-style Authors flag
+(`"author"` only; ADR-0026 retired `"reader"`, which validation now rejects). It is COMPUTED-ONLY (`definition-validation.ts` rejects an
 `aclRole` field that is not `computed`/`computed-once` with a formula), so its value is
 server-resolved and tamper-safe. The field resolves to a principal LIST (normalized via
 `normalizeResolvedPrincipals`, never primitive-coerced); `rollupAclProjection` then unions
-those onto the envelope `readers`/`authors`. This replaces `FormDefinition.defaultReaders`
-(deleted).
+those onto the envelope `authors`. `FormDefinition.defaultReaders` is deleted.
 
 ## ADR-0023 self-describing schema
 
@@ -201,13 +204,14 @@ advisory — it annotates the parity-lane `availableTransitions` set, never a ne
 ## Invariants
 
 See `docs/invariants.md`: **Validation parity**, **Expression runtime**, **Definitions-as-data
-contract**, **ACL / readers**, and **Identity & sessions** govern this subsystem.
+contract**, **ACL**, and **Identity & sessions** govern this subsystem.
 
 ## Relevant Decisions
 
 - `docs/decisions/0001-definitions-as-data.md`
 - `docs/decisions/0010-directory-and-session-auth.md`
 - `docs/decisions/0023-self-describing-schema-and-scoped-reads.md`
+- `docs/decisions/0026-app-acl-document-visibility.md`
 
 ## Tests
 

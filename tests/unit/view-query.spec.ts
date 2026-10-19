@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { ME_SENTINEL, mangoSelector } from "../../src/shared/view-query";
-import { accessSelector } from "../../src/shared/access";
 import { validateViewDefinition } from "../../src/shared/definition-validation";
 import type { ViewDefinition, ViewFilter } from "../../src/shared/types";
 
@@ -40,17 +39,12 @@ describe("mangoSelector @me substitution", () => {
     expect(selector["payload.tags"]).toEqual({ $in: ["a", "b"] });
   });
 
-  it("ACL precedence (review M4): spreading accessSelector after the view selector always wins", () => {
-    // The route builds { ...mangoSelector(...), ...accessSelector(scope) } — even a
-    // (now-rejected at authoring) readers filter could never survive the spread.
-    const scope = { person: "person:frank", groups: ["group:cabin-crew"], principals: [] };
-    const viewSelector = mangoSelector(
-      [{ field: "readers", op: "in", value: ["group:everyone"] } as ViewFilter],
-      "x",
-      PRINCIPALS
-    );
-    const combined = { ...viewSelector, ...accessSelector(scope) };
-    expect(combined.readers).toEqual({ $in: ["person:frank", "group:cabin-crew"] });
+  it("kind precedence (ADR-0026): re-asserting kind after the view selector keeps reads on business docs", () => {
+    // The route builds { ...mangoSelector(...), kind: "document" } — a designer
+    // filter on `kind` can never widen a view to design/runtime documents.
+    const viewSelector = mangoSelector([{ field: "kind", op: "eq", value: "acl" } as ViewFilter], "x", PRINCIPALS);
+    const combined = { ...viewSelector, kind: "document" };
+    expect(combined.kind).toBe("document");
   });
 });
 
@@ -90,7 +84,7 @@ describe("validateFilter @me rules (ADR-0020)", () => {
     }
   });
 
-  it("rejects dead readers/authors filters (review M2)", () => {
+  it("rejects ACL envelope (readers/authors) filters (review M2, ADR-0026)", () => {
     expect(fieldsOf(view({ field: "readers", op: "in", value: ["group:x"] }))).toContain("filters.0.field");
     expect(fieldsOf(view({ field: "authors", op: "eq", value: "person:x" }))).toContain("filters.0.field");
   });

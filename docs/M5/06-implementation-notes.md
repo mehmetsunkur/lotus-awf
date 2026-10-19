@@ -1,5 +1,7 @@
 # 06 — Implementation Notes
 
+> **Amended by ADR-0026 (2026-10-19):** per-document `readers` (and the M5 revocation purge) were removed — document visibility is the app ACL. Readers-based statements below are historical; see `docs/decisions/0026-app-acl-document-visibility.md`.
+
 ## Implemented runtime behavior
 
 M5 centralizes the app/API access policy in `src/shared/access.ts` (M18 changes the source of these

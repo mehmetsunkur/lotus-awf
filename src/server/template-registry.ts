@@ -59,7 +59,7 @@ const SAMPLE_TEMPLATES: Record<string, SampleTemplateFiles> = {
     sampleDataPath: "templates/kb/sample-data.json",
     appId: "kb",
     title: "Knowledge base sample",
-    description: "Handbook articles for everyone; team procedures scoped to the team that wrote them."
+    description: "Handbook articles and team procedures for everyone with access to the app."
   },
   "sample:turnaround": {
     templatePath: "templates/turnaround/template.json",
@@ -119,7 +119,7 @@ function validateTemplateFile(template: TemplateArtifact, source: string): Templ
   };
 }
 
-function validateSampleDocument(doc: BusinessDocument, index: number, appId: string): string[] {
+export function validateSampleDocument(doc: BusinessDocument, index: number, appId: string): string[] {
   const prefix = `sampleData.${index}`;
   const messages: string[] = [];
   if (!doc._id?.startsWith(`doc:${doc.docType}:`)) messages.push(`${prefix} _id must start with doc:<docType>:`);
@@ -130,7 +130,8 @@ function validateSampleDocument(doc: BusinessDocument, index: number, appId: str
   if (!doc.updatedAt?.trim()) messages.push(`${prefix} updatedAt is required`);
   if (!doc.createdBy?.trim()) messages.push(`${prefix} createdBy is required`);
   if (!doc.updatedBy?.trim()) messages.push(`${prefix} updatedBy is required`);
-  if (!Array.isArray(doc.readers)) messages.push(`${prefix} readers must be an array`);
+  // ADR-0026: document visibility is the app ACL — sample data must not carry readers.
+  if ("readers" in doc) messages.push(`${prefix} must not include readers (ADR-0026)`);
   if (!Array.isArray(doc.authors)) messages.push(`${prefix} authors must be an array`);
   if (!doc.payload || typeof doc.payload !== "object" || Array.isArray(doc.payload)) {
     messages.push(`${prefix} payload must be an object`);

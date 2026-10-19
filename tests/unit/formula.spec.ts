@@ -5,7 +5,7 @@ import { normalizePayload, validatePayload } from "../../src/shared/validation";
 import type { PrincipalScope } from "../../src/shared/access";
 import type { BusinessDocument, FormDefinition } from "../../src/shared/types";
 
-function employee(slug: string, person: string, department: string, readers: string[]): BusinessDocument {
+function employee(slug: string, person: string, department: string): BusinessDocument {
   return {
     _id: `doc:employee:${slug}`,
     kind: "document",
@@ -15,20 +15,21 @@ function employee(slug: string, person: string, department: string, readers: str
     updatedAt: "2026-07-01T00:00:00.000Z",
     createdBy: "person:root",
     updatedBy: "person:root",
-    readers,
     authors: ["person:root"],
     payload: { person, department }
   };
 }
 
 const CORPUS: BusinessDocument[] = [
-  employee("alice", "person:alice", "finance", ["person:alice"]),
-  employee("bob", "person:bob", "sales", ["person:bob"]),
-  employee("carol", "person:carol", "eng", ["group:eng"])
+  employee("alice", "person:alice", "finance"),
+  employee("bob", "person:bob", "sales"),
+  employee("carol", "person:carol", "eng")
 ];
 
-const read: DbReader = async (appId, docType) =>
-  appId === "org" && docType === "employee" ? CORPUS : [];
+// ADR-0026: the injected reader is the ACL boundary — it models the target app's
+// ACL (here: `group:staff` holds Reader on `org`) and sees the caller's scope.
+const read: DbReader = async (appId, docType, scope) =>
+  appId === "org" && docType === "employee" && scope.principals.includes("group:staff") ? CORPUS : [];
 
 const scope = (person: string, ...principals: string[]): PrincipalScope => ({
   person,
@@ -37,24 +38,23 @@ const scope = (person: string, ...principals: string[]): PrincipalScope => ({
 });
 
 describe("formula async lane — @DbColumn/@DbLookup", () => {
-  it("scopes reads by the caller: the same formula returns only readable rows", async () => {
+  it("passes the caller's scope to the reader: an app reader sees every row, others none", async () => {
     const formula = "(await DbColumn('org', 'employee', 'payload.person')).length";
-    expect(await evaluateFormulaAsync(formula, { scope: scope("person:alice"), read })).toBe(1);
-    expect(await evaluateFormulaAsync(formula, { scope: scope("person:bob"), read })).toBe(1);
-    expect(await evaluateFormulaAsync(formula, { scope: scope("person:dave", "group:eng"), read })).toBe(1);
+    expect(await evaluateFormulaAsync(formula, { scope: scope("person:alice", "group:staff"), read })).toBe(3);
+    expect(await evaluateFormulaAsync(formula, { scope: scope("person:bob"), read })).toBe(0);
   });
 
-  it("@DbLookup never surfaces a value from an unreadable row", async () => {
+  it("@DbLookup surfaces nothing when the caller cannot read the target app", async () => {
     const lookup = "await DbLookup('org', 'employee', 'payload.person', 'person:bob', 'payload.department')";
-    expect(await evaluateFormulaAsync(lookup, { scope: scope("person:bob"), read })).toBe("sales");
-    expect(await evaluateFormulaAsync(lookup, { scope: scope("person:alice"), read })).toBeUndefined();
+    expect(await evaluateFormulaAsync(lookup, { scope: scope("person:alice", "group:staff"), read })).toBe("sales");
+    expect(await evaluateFormulaAsync(lookup, { scope: scope("person:bob"), read })).toBeUndefined();
   });
 
   it("supports inline await and reads the doc/payload context", async () => {
     const formula = "await DbLookup('org','employee','payload.person', payload.owner, 'payload.department')";
     const value = await evaluateFormulaAsync(formula, {
       payload: { owner: "person:bob" },
-      scope: scope("person:bob"),
+      scope: scope("person:bob", "group:staff"),
       read
     });
     expect(value).toBe("sales");

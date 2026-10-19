@@ -161,7 +161,6 @@ function buildSyntheticDocs(options: Options, appId: string): BusinessDocument[]
     const createdBy = actorCreated ? actor : OTHER_CREATORS[index % OTHER_CREATORS.length];
     const assignee = actorAssigned ? actorAssignee : OTHER_ASSIGNEES[index % OTHER_ASSIGNEES.length];
     const updatedAt = isoFromOffset(index);
-    const readers = Array.from(new Set([createdBy, "group:managers"]));
     const payload = {
       type: index % 7 === 0 ? "sick" : index % 5 === 0 ? "unpaid" : "annual",
       from: "2026-09-01",
@@ -180,7 +179,6 @@ function buildSyntheticDocs(options: Options, appId: string): BusinessDocument[]
       updatedAt,
       createdBy,
       updatedBy: createdBy,
-      readers,
       authors: [createdBy],
       payload,
       state: submitted ? "submitted" : index % 3 === 0 ? "approved" : "draft",
@@ -226,8 +224,7 @@ async function explainIndex(
             kind: "document",
             docType: { $eq: "leave-request" },
             state: { $eq: "submitted" },
-            responsible: { $in: principals },
-            readers: { $in: principals }
+            responsible: { $in: principals }
           },
           sort: [{ updatedAt: "desc" }],
           limit: 200,
@@ -238,8 +235,7 @@ async function explainIndex(
             selector: {
               kind: "document",
               docType: { $eq: "leave-request" },
-              state: { $eq: "submitted" },
-              readers: { $in: principals }
+              state: { $eq: "submitted" }
             },
             sort: [{ updatedAt: "desc" }],
             limit: 200,
@@ -249,8 +245,7 @@ async function explainIndex(
             selector: {
               kind: "document",
               docType: { $eq: "leave-request" },
-              createdBy: { $in: principals },
-              readers: { $in: principals }
+              createdBy: { $in: principals }
             },
             sort: [{ updatedAt: "desc" }],
             limit: 200,

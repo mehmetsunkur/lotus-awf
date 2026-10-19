@@ -9,11 +9,11 @@ import type { BusinessDocument } from "../../../../src/shared/types";
  * update route only accepts `payload` (the envelope, including `state`, is rebuilt
  * server-side). So the snapshot keeps exactly the facets a boundary violation would
  * have to move — workflow state, ADR-0018 responsible, the ADR-0019 stamped approver and
- * department, the ACL readers, the history length — plus the document count (a
+ * department, the authors, the history length — plus the document count (a
  * created or deleted document is also a change). Everything a within-authority edit
  * may touch (payload text, updatedAt, _rev) is deliberately excluded.
  *
- * Rows are sorted by id and readers within a row are sorted, with `null` standing in
+ * Rows are sorted by id and authors within a row are sorted, with `null` standing in
  * for absent fields, so two projections compare with a plain deep-equal
  * (`expect(after).toEqual(before)`) and a diff reads cleanly on failure.
  */
@@ -28,7 +28,7 @@ export type LeaveRequestProjection = {
     responsible: string[] | null;
     approver: string | null;
     department: string | null;
-    readers: string[];
+    authors: string[];
     historyLength: number;
   }>;
 };
@@ -36,9 +36,8 @@ export type LeaveRequestProjection = {
 /**
  * Compute the projection over every `leave-request` document in `appId`, read through
  * `reader`. The context must be able to SEE all of them for the comparison to mean
- * anything: use carol — `group:managers` comes from the `aclRole` reader field on the
- * leave-request form, so every request (seeded samples included) is readable to her.
- * The probing persona's own context would silently project only its own slice.
+ * anything: use carol — ADR-0026 makes every leave request visible to anyone with
+ * app access, and carol (group:managers) is an app editor.
  */
 export async function captureLeaveRequestProjection(
   reader: APIRequestContext,
@@ -56,7 +55,7 @@ export async function captureLeaveRequestProjection(
       responsible: doc.responsible ?? null,
       approver: typeof doc.payload.approver === "string" ? doc.payload.approver : null,
       department: typeof doc.payload.department === "string" ? doc.payload.department : null,
-      readers: [...doc.readers].sort(),
+      authors: [...doc.authors].sort(),
       historyLength: doc.history?.length ?? 0
     }))
     .sort((left, right) => left.id.localeCompare(right.id));
@@ -79,7 +78,7 @@ export type DocTypeProjection = {
     state: string | null;
     responsible: string[] | null;
     stamps: Record<string, string | null>;
-    readers: string[];
+    authors: string[];
     historyLength: number;
   }>;
 };
@@ -103,7 +102,7 @@ export async function captureDocTypeProjection(
       stamps: Object.fromEntries(
         stampKeys.map((key) => [key, typeof doc.payload[key] === "string" ? (doc.payload[key] as string) : null])
       ),
-      readers: [...doc.readers].sort(),
+      authors: [...doc.authors].sort(),
       historyLength: doc.history?.length ?? 0
     }))
     .sort((left, right) => left.id.localeCompare(right.id));

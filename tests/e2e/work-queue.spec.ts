@@ -219,7 +219,7 @@ test.describe("ADR-0022 cross-app work queue", () => {
     expect(actionable?.items?.map((item) => item._id)).toContain(request._id);
   });
 
-  test("ACL still wins: a responsible who cannot read the document sees no work", async ({ airline, page }) => {
+  test("ACL still wins: a responsible without app access sees no work (ADR-0026)", async ({ airline, page }) => {
     const app = airline.scenario.leaveRequestAppId;
     const ivy = await airline.as("ivy");
     const request = await createDoc(ivy, app, "leave-request", {
@@ -230,14 +230,8 @@ test.describe("ADR-0022 cross-app work queue", () => {
     });
     await transition(ivy, app, request._id, "submit"); // responsible = hank (ground-ops head)
 
-    // Hank keeps app access via a person ACL entry but loses DOCUMENT readership
-    // (removed from group:ground-ops). Responsible still matches; canReadDocument does not.
-    const access = (await page.request
-      .get(`/api/apps/${app}/access`)
-      .then((response) => response.json())) as { entries: Array<{ principal: string; level: string }> };
-    await page.request.put(`/api/apps/${app}/access`, {
-      data: { entries: [...access.entries, { principal: "person:hank", level: "author" }] }
-    });
+    // Hank loses app access (removed from group:ground-ops, his only ACL path).
+    // Responsible still matches, but the app is skipped below `reader`.
     const directory = (await page.request.get("/api/names/directory").then((response) => response.json())) as {
       groups: Array<{ _id: string; members: string[] }>;
     };
@@ -247,17 +241,16 @@ test.describe("ADR-0022 cross-app work queue", () => {
     });
 
     const hankQueue = entryFor(await workQueue(await airline.as("hank")), app);
-    expect(hankQueue?.items ?? []).not.toContainEqual(expect.objectContaining({ _id: request._id }));
+    expect(hankQueue).toBeUndefined();
   });
 
   test("surfaces routed work behind more than a page of readable-but-unrouted docs", async ({ airline }) => {
-    // ADR-0025 §5 routing is an in-memory OR applied AFTER the m2-readers scan, so the
+    // ADR-0025 §5 routing is an in-memory OR applied AFTER the document scan, so the
     // scan must reach EVERY readable candidate — a fixed page cap would truncate routed
-    // work sitting behind unrouted docs that share the caller's readers. Dave's drafts
-    // are readable by carol (the form projects group:managers as readers) but route to
-    // no one; pile up more than one page of them, then submit ONE routed to carol LAST
-    // (its ULID sorts to the tail of the m2-readers scan). A page-capped scan would drop
-    // it; the paged-to-exhaustion scan must still surface it.
+    // work sitting behind unrouted docs. Dave's drafts are readable by carol (an app
+    // editor; ADR-0026 visibility is the app ACL) but route to no one; pile up more
+    // than one page of them, then submit ONE routed to carol LAST. A page-capped scan
+    // would drop it; the paged-to-exhaustion scan must still surface it.
     test.setTimeout(120_000);
     const app = airline.scenario.leaveRequestAppId;
     const dave = await airline.as("dave");
@@ -288,13 +281,13 @@ test.describe("ADR-0022 cross-app work queue", () => {
     await transition(dave, app, routed._id, "submit");
 
     // Carol reads all 211 (manager) but is responsible for exactly the submitted one —
-    // it must appear despite sitting past the first page of the readers scan.
+    // it must appear despite sitting past the first page of the scan.
     const carol = await airline.as("carol");
     const carolLeave = entryFor(await workQueue(carol, "?items=true"), app);
     expect(carolLeave?.items?.map((item) => item._id), "routed work not truncated by paging").toContain(routed._id);
   });
 
-  test("the cross-app selector binds the existing ACL index m2-readers (no new index)", async ({
+  test("the cross-app selector binds the existing m2-kind-docType-updatedAt index (no new index)", async ({
     airline,
     page,
     localCouchUrl
@@ -302,24 +295,27 @@ test.describe("ADR-0022 cross-app work queue", () => {
     const app = airline.scenario.leaveRequestAppId;
     const couchAuth = { authorization: `Basic ${Buffer.from("admin:password").toString("base64")}` };
 
-    // The exact selector the endpoint issues per app db (ADR-0025 §5): only
-    // `kind` + the ACL `readers` predicate bind the index — the routing union
-    // (`responsible ∪ assignee`) is an in-memory OR on the scanned rows, so it is
-    // deliberately absent from the Mango selector (a single index cannot express
-    // that OR across two fields).
+    // The exact selector the endpoint issues per app db (ADR-0025 §5, ADR-0026):
+    // `kind` plus presence predicates on the remaining index fields (Mango only
+    // binds a JSON index when the selector names every indexed field). The routing
+    // union (`responsible ∪ assignee`) is an in-memory OR on the scanned rows, so it
+    // is deliberately absent from the Mango selector.
     const explain = await page.request.post(`${localCouchUrl}/${app}_app/_explain`, {
       headers: couchAuth,
       data: {
-        selector: {
-          kind: "document",
-          readers: { $in: ["person:carol", "group:managers"] }
-        },
+        selector: { kind: "document", docType: { $gt: null }, updatedAt: { $gt: null } },
         limit: 200,
-        use_index: "m2-readers"
+        use_index: "m2-kind-docType-updatedAt"
       }
     });
     expect(explain.status()).toBe(200);
     const plan = (await explain.json()) as { index: { name: string } };
-    expect(plan.index.name).toBe("m2-readers");
+    expect(plan.index.name).toBe("m2-kind-docType-updatedAt");
+
+    // The m2-readers index is gone from every app db (three-site rule, ADR-0026).
+    const indexes = (await page.request
+      .get(`${localCouchUrl}/${app}_app/_index`, { headers: couchAuth })
+      .then((response) => response.json())) as { indexes: Array<{ name: string }> };
+    expect(indexes.indexes.map((index) => index.name)).not.toContain("m2-readers");
   });
 });

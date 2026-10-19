@@ -55,15 +55,17 @@ test.describe("full-text search", () => {
     await expect(firstRow.getByText("zeta zeta summit")).toBeVisible();
   });
 
-  test("search never surfaces a document outside the user's readers", async ({ bobApi }) => {
-    // "Stationery" is readable only by Alice/finance; Bob must not see it even
-    // when his query matches it — search narrows the ACL-scoped set, never widens.
+  test("search never surfaces a document outside the user's app access (ADR-0026)", async ({ bobApi, page }) => {
+    // Every app reader searches the whole app — Bob finds Alice's "Stationery".
     const bobHit = (await bobApi.get("/api/apps/expense/views/view:all-expenses/documents?q=Stationery").then((r) => r.json())) as Doc[];
-    expect(bobHit.map((doc) => doc.payload.description)).not.toContain("Stationery");
+    expect(bobHit.map((doc) => doc.payload.description)).toContain("Stationery");
 
-    // Bob's own matching document is still found, so the empty result above is
-    // ACL scoping, not a broken query.
-    const bobOwn = (await bobApi.get("/api/apps/expense/views/view:all-expenses/documents?q=dinner").then((r) => r.json())) as Doc[];
-    expect(bobOwn.map((doc) => doc.payload.description)).toContain("Client dinner");
+    // Without app access, search is refused at the app gate rather than filtered.
+    const revoke = await page.request.put("/api/apps/expense/access", {
+      data: { entries: [{ principal: "group:finance", level: "manager" }] }
+    });
+    expect(revoke.ok()).toBeTruthy();
+    const refused = await bobApi.get("/api/apps/expense/views/view:all-expenses/documents?q=Stationery");
+    expect(refused.status()).toBe(403);
   });
 });

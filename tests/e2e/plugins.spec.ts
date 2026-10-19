@@ -18,6 +18,11 @@ test.describe("plugin runtime", () => {
     await expect(gross).toHaveValue("51");
     await expect(gross).toBeDisabled();
 
+    // Let the document route's follow-up fetches land first: a late re-fetch of the
+    // selected document resets the draft (pre-existing client behaviour), which made
+    // this test order-dependent.
+    await app.settle();
+
     // Editing the input recomputes the derived field with no save / round-trip.
     await app.fillField("amount", "200");
     await expect(gross).toHaveValue("240");

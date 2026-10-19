@@ -116,10 +116,13 @@ test.describe("Agentic Airlines PLC browser stories", () => {
       await openView(frank, scenario, "view:my-requests");
       await expect(rowContaining(frank.page, "2026-10-12")).toHaveCount(0);
 
-      const direct = await frank.page.request.get(
-        `/api/apps/${scenario.leaveRequestAppId}/documents/${encodeURIComponent(requestId)}`
-      );
-      expect([403, 404]).toContain(direct.status());
+      // ADR-0026: visibility is the app ACL — frank (an app author) can read Dave's
+      // request directly, but it is not in his personal view and he cannot edit it.
+      const docUrl = `/api/apps/${scenario.leaveRequestAppId}/documents/${encodeURIComponent(requestId)}`;
+      const direct = await frank.page.request.get(docUrl);
+      expect(direct.status()).toBe(200);
+      const frankEdit = await frank.page.request.put(docUrl, { data: { payload: (await direct.json()).payload } });
+      expect(frankEdit.status()).toBe(403);
     } finally {
       await Promise.all(contexts.map((context) => context.close()));
     }

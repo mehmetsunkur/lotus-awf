@@ -1,5 +1,7 @@
 # M18 - Directory And Login
 
+> **Amended by ADR-0026 (2026-10-19):** per-document `readers` (and the M5 revocation purge) were removed — document visibility is the app ACL. Readers-based statements below are historical; see `docs/decisions/0026-app-acl-document-visibility.md`.
+
 M18 turns `setup.nsf` into the first platform directory app. It introduces Notes-style Person and
 Group documents, username/password login, cookie-backed sessions, and session-derived access checks
 for installed apps.

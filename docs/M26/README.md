@@ -1,5 +1,7 @@
 # M26 — Agent personas over the MCP workspace surface
 
+> **Amended by ADR-0026 (2026-10-19):** per-document `readers` (and the M5 revocation purge) were removed — document visibility is the app ACL. Readers-based statements below are historical; see `docs/decisions/0026-app-acl-document-visibility.md`.
+
 The follow-up tier deferred from M25: AI coding-agent CLIs act as **business-user personas**
 of Agentic Airlines PLC over `/mcp/workspace` — an employee's agent files a leave request
 from a natural-language task, a manager's agent works their `view:my-approvals` inbox, and

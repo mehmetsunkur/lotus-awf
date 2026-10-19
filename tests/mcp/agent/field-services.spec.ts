@@ -538,7 +538,7 @@ test.describe("MCP real-agent field services personas", () => {
         const { scenario, as } = await seedFieldServices(playwright, apiUrl, host, contexts, mcpClients);
         const app = scenario.appId;
         const taylor = await as("taylor");
-        // Oracle reads through dana (group:dispatch + group:managers, both work-order readers):
+        // Oracle reads through dana (group:dispatch + group:managers, both app members):
         // alice/admin is in no field-services reader group, so an admin projection would be
         // vacuously empty and hide any real change.
         const dana = await as("dana");

@@ -23,7 +23,6 @@ function doc(docType: string, id: string, state: string | undefined, payload: Re
     updatedAt: `2026-08-01T00:00:${id.padStart(2, "0")}.000Z`,
     createdBy: "person:alice",
     updatedBy: "person:alice",
-    readers: ["group:dispatch", "group:technicians", "group:inventory", "group:billing"],
     authors: ["person:alice"],
     payload,
     ...(state ? { state } : {})

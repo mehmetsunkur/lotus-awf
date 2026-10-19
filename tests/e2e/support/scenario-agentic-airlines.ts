@@ -8,13 +8,10 @@ import type { APIRequestContext, PlaywrightWorkerArgs } from "@playwright/test";
  * validation, sessions) is enforced while seeding. Opt-in per spec — this is
  * deliberately NOT part of the `resetState` auto fixture.
  *
- * ACL design note: a new document is stamped with the creator's FULL principal
- * set (person + all their groups) as its reader base (ADR-0024), plus whatever
- * the form's `aclRole:"reader"` fields resolve to. Personas therefore belong to
- * their department group only (plus `managers` for approvers) — a shared
- * `group:employees` membership would make every leave request readable by every
- * employee and defeat the scenario's isolation assertions. App access for the
- * departments is granted through the M22 access editor instead.
+ * ACL design note (ADR-0026): document visibility is the app ACL — every app
+ * reader sees every document in that app. Personas belong to their department
+ * group only (plus `managers` for approvers); app access for the departments is
+ * granted through the M22 access editor.
  */
 
 export const AIRLINE_PASSWORD = "password123";
@@ -219,39 +216,14 @@ export async function seedAgenticAirlines(
   );
 
   // 4. Widen the org app for airline staff: app-level read access via the M22
-  // access editor, and an aclRole:"reader" computed-once field on both forms so
-  // the org chart the fixture writes next is readable by every staff group
-  // (ADR-0024 mechanism; the template's admin-only sample data is deliberately
-  // left untouched).
+  // access editor makes the org chart the fixture writes next readable by every
+  // staff group (ADR-0026: visibility is the app ACL).
   await requestJson(admin, "put", `/api/apps/${orgAppId}/access`, {
     entries: [
       { principal: "group:admins", level: "manager" },
       ...AIRLINE_STAFF_GROUPS.map((principal) => ({ principal, level: "reader" }))
     ]
   });
-  const orgDefinitions = await requestJson<{ forms: Array<Json & { _id: string }> }>(
-    admin,
-    "get",
-    `/api/apps/${orgAppId}/definitions`
-  );
-  for (const formId of ["form:department", "form:employee"]) {
-    const form = orgDefinitions.forms.find((definition) => definition._id === formId);
-    if (!form) throw new Error(`org app is missing ${formId}`);
-    await requestJson(admin, "put", `/api/apps/${orgAppId}/definitions/${encodeURIComponent(formId)}`, {
-      ...form,
-      fields: [
-        ...(form.fields as unknown[]),
-        {
-          name: "aclReaders",
-          type: "text",
-          label: "Readers",
-          aclRole: "reader",
-          mode: "computed-once",
-          formula: JSON.stringify(AIRLINE_STAFF_GROUPS)
-        }
-      ]
-    });
-  }
 
   // 5. App access for the business apps: department groups act as authors in
   // both leave-request and expense (the template's generic `group:employees`
@@ -301,6 +273,21 @@ export async function seedAgenticAirlines(
   }
 
   // 6. Org chart: department and employee documents with the manager chain.
+  // The org template ships sample departments/employees (a `finance` department
+  // headed by alice among them). ADR-0026 makes them visible to every org reader,
+  // and a duplicate `finance` slug would make DbLookup-by-slug ambiguous — the
+  // airline owns its org chart, so remove the template samples first.
+  for (const docType of ["department", "employee"]) {
+    const samples = await requestJson<Array<{ _id: string }>>(
+      admin,
+      "get",
+      `/api/apps/${orgAppId}/documents?docType=${docType}`
+    );
+    for (const sample of samples) {
+      const removed = await admin.delete(`/api/apps/${orgAppId}/documents/${encodeURIComponent(sample._id)}`);
+      if (removed.status() !== 204) throw new Error(`delete org sample ${sample._id} -> ${removed.status()}`);
+    }
+  }
   const departmentDocIds: Record<string, string> = {};
   for (const dept of AIRLINE_DEPARTMENTS) {
     const doc = await requestJson<{ _id: string }>(

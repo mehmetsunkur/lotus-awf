@@ -17,6 +17,8 @@ modes) with a third orthogonal field axis. Holds the
 ADR-0018 line — workflow routing (`assignee`) still never confers access — by explicitly
 rejecting workflow-state-driven authorship (see Alternatives 3).
 
+**Partly superseded by ADR-0026** (2026-10-19): the reader half — the `readers` projection (§2), §4 "creator is always included; readers stay an explicit allow-list" and Alternative 4 — is superseded; documents carry no `readers` and `aclRole` is `"author"` only. The two-layer edit gate (§5) stands, with Layer 2 now requiring app Author+.
+
 ## Context
 
 The engine already owns two envelope ACL fields — `readers: string[]` and `authors: string[]`

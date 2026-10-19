@@ -30,7 +30,7 @@ on both tiers, like every other definition.
 ## Runtime documents (never templated)
 
 - **`agentrun:<ulid>`** — a durable record of one execution: `agentId`, `trigger`, `sourceId`/
-  `sourceRev` (on-change only), `startedAt`, `ok`, `detail`, `readers`.
+  `sourceRev` (on-change only), `startedAt`, `ok`, `detail` (no `readers` since ADR-0026).
 - **`agent:state`** — the singleton checkpoint: the `_changes` `lastSeq` cursor and a per-agent
   `lastRunAt` map.
 

@@ -1,15 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { listSampleTemplates, loadSampleTemplate, sampleTemplateDocuments, validateTemplateDefinitions } from "../../src/server/template-registry";
+import {
+  listSampleTemplates,
+  loadSampleTemplate,
+  sampleTemplateDocuments,
+  validateSampleDocument,
+  validateTemplateDefinitions
+} from "../../src/server/template-registry";
 import { seedDocuments } from "../../src/server/seed-data";
 import type { BusinessDocument, TemplateArtifact } from "../../src/shared/types";
 
-// ADR-0024: extra readers are declared by an `aclRole:"reader"` computed-once
-// field whose formula returns a constant principal list (was `defaultReaders`).
-// Returns that list for a form definition, or undefined if the form has none.
-function aclReaderList(form: unknown): string[] | undefined {
-  const fields = (form as { fields?: Array<{ aclRole?: string; formula?: string }> } | undefined)?.fields ?? [];
-  const field = fields.find((candidate) => candidate.aclRole === "reader");
-  return field?.formula ? (JSON.parse(field.formula) as string[]) : undefined;
+// ADR-0026: document visibility is the app ACL. Returns the principals holding an
+// app ACL entry in a template's `acl:rules` definition.
+function aclPrincipals(definitions: unknown[]): string[] {
+  const rules = definitions.find((definition) => (definition as { _id?: string })._id === "acl:rules") as
+    | { entries?: Array<{ principal: string }> }
+    | undefined;
+  return (rules?.entries ?? []).map((entry) => entry.principal);
 }
 
 describe("sample template registry", () => {
@@ -92,9 +98,7 @@ describe("sample template registry", () => {
       "doc:leave-request:alice-annual",
       "doc:leave-request:bob-sick"
     ]);
-    expect(
-      sample.sampleData.every((doc) => doc.readers.includes("group:managers") && doc.readers.includes(doc.createdBy))
-    ).toBe(true);
+    expect(sample.sampleData.every((doc) => doc.authors.includes(doc.createdBy))).toBe(true);
   });
 
   it("lists and loads the Knowledge base template as design docs plus separate sample data", () => {
@@ -104,7 +108,7 @@ describe("sample template registry", () => {
           templateId: "sample:kb",
           appId: "kb",
           title: "Knowledge base sample",
-          description: "Handbook articles for everyone; team procedures scoped to the team that wrote them."
+          description: "Handbook articles and team procedures for everyone with access to the app."
         }
       ])
     );
@@ -123,10 +127,6 @@ describe("sample template registry", () => {
       "view:procedures"
     ]);
     expect(sample.sampleData.map((doc) => doc._id)).toEqual(["doc:article:welcome-sample"]);
-    // The procedure form deliberately has NO aclRole reader field: procedure visibility
-    // comes from the creator's principal set alone (ADR-0024 authorship scoping — M27).
-    const procedureForm = sample.template.definitions.find((definition) => definition._id === "form:procedure");
-    expect(aclReaderList(procedureForm)).toBeUndefined();
   });
 
   it("lists and loads the Turnaround template as design docs plus separate sample data", () => {
@@ -155,9 +155,11 @@ describe("sample template registry", () => {
     ]);
     expect(sample.sampleData.map((doc) => doc._id)).toEqual(["doc:flight:aa101-sample"]);
     // Flights are readable by the two working departments and deliberately NOT by
-    // group:managers, so finance (a managers member) has a real boundary (M27).
-    const flightForm = sample.template.definitions.find((definition) => definition._id === "form:flight");
-    expect(aclReaderList(flightForm)).toEqual(["group:flight-ops", "group:ground-ops"]);
+    // group:managers, so finance (a managers member) has a real boundary (M27) —
+    // since ADR-0026 that boundary is the app ACL itself.
+    const principals = aclPrincipals(sample.template.definitions);
+    expect(principals).toEqual(expect.arrayContaining(["group:flight-ops", "group:ground-ops"]));
+    expect(principals).not.toContain("group:managers");
   });
 
   it("lists and loads the Agent operations template as design docs plus separate sample data", () => {
@@ -309,5 +311,27 @@ describe("sample template registry", () => {
 
     expect(designDocs).toHaveLength(12);
     expect(businessDocs).toHaveLength(5);
+  });
+});
+
+describe("ADR-0026: templates carry no per-document readers", () => {
+  it("no sample document has readers and no form declares an aclRole reader field", () => {
+    for (const { templateId } of listSampleTemplates()) {
+      const sample = loadSampleTemplate(templateId);
+      expect(sample.sampleData.every((doc) => !("readers" in doc)), templateId).toBe(true);
+      const fields = sample.template.definitions.flatMap(
+        (definition) => ((definition as { fields?: Array<{ aclRole?: string }> }).fields ?? [])
+      );
+      expect(fields.some((field) => (field.aclRole as string | undefined) === "reader"), templateId).toBe(false);
+    }
+  });
+
+  it("rejects template sample data that carries readers", () => {
+    const sample = loadSampleTemplate("sample:expense");
+    expect(validateSampleDocument(sample.sampleData[0], 0, sample.template.appId)).toEqual([]);
+    const tainted = { ...sample.sampleData[0], readers: ["group:finance"] } as unknown as BusinessDocument;
+    expect(validateSampleDocument(tainted, 0, sample.template.appId)).toContain(
+      "sampleData.0 must not include readers (ADR-0026)"
+    );
   });
 });

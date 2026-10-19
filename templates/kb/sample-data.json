@@ -8,16 +8,12 @@
     "updatedAt": "2026-07-04T00:00:00.000Z",
     "createdBy": "person:alice",
     "updatedBy": "person:alice",
-    "readers": [
-      "person:alice",
-      "group:employees"
-    ],
     "authors": [
       "person:alice"
     ],
     "payload": {
       "title": "Welcome to your knowledge base",
-      "body": "Handbook articles here are readable by everyone. Team procedures are scoped to the team that wrote them: whoever creates a procedure stamps it with their own groups, so each team reads only its own procedures."
+      "body": "Handbook articles and team procedures here are readable by everyone with access to the knowledge base. Each procedure names its owning department."
     }
   }
 ]

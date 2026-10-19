@@ -12,20 +12,22 @@
  * transition-route contexts with fail-closed contracts — approver-gate resolution
  * (empty result falls back to requiredRole or denies) and assignee resolution
  * (empty result falls back to the static responsible or stamps nothing; never
- * fails the transition). Every lookup is filtered through the shared access
- * helpers, so a formula can never surface a document its caller could not
- * already read.
+ * fails the transition). Every lookup runs under the caller's scope and the
+ * injected reader gates it on the TARGET app's ACL (ADR-0026), so a formula can
+ * never surface a document its caller could not already read.
  */
 
-import { canReadDocument, type PrincipalScope } from "./access";
+import type { PrincipalScope } from "./access";
 import type { BusinessDocument } from "./types";
 
 /**
  * Async source of another app's business documents. In the server it reads the
  * LOCAL CouchDB replica (offline-first); it is injected so the ACL boundary and the
  * replica choice live in one place and the evaluator stays portable/testable.
+ * ADR-0026: the reader IS the ACL boundary — it must return no rows when `scope`
+ * is below `reader` on the target app (there is no per-document check).
  */
-export type DbReader = (appId: string, docType: string) => Promise<BusinessDocument[]>;
+export type DbReader = (appId: string, docType: string, scope: PrincipalScope) => Promise<BusinessDocument[]>;
 
 // Same sandbox posture as expression.ts, but `await` is permitted (it is a
 // space-separated keyword, not one of these tokens) so lookups can be inlined.
@@ -45,7 +47,7 @@ export type FormulaContext = {
   now?: string;
   /** Whose read rights the lookups run under — the security principal. */
   scope: PrincipalScope;
-  /** ACL is enforced on this reader's output, never bypassed. */
+  /** Enforces the target app's ACL for `scope`; never bypassed. */
   read: DbReader;
 };
 
@@ -90,8 +92,8 @@ export function formulaSyntaxError(formula: string): string | undefined {
 
 /**
  * Evaluate a formula in the async lane. The generated function is `async` so a
- * formula may `await DbColumn(...)` / `await DbLookup(...)` inline. Both readers
- * filter through `canReadDocument` against `ctx.scope` before returning anything.
+ * formula may `await DbColumn(...)` / `await DbLookup(...)` inline. Both read
+ * through `ctx.read` under `ctx.scope`, which gates on the target app's ACL.
  *
  * NEVER throws: a blocked token, a compile error, or a runtime error all fail
  * closed to `undefined`, so one broken formula can neither break the read path nor
@@ -103,8 +105,8 @@ export async function evaluateFormulaAsync(formula: string | undefined, ctx: For
 
   // @DbColumn(appId; docType; column) — the column across every readable row.
   const DbColumn = async (appId: string, docType: string, column: string): Promise<unknown[]> => {
-    const docs = await ctx.read(appId, docType);
-    return docs.filter((doc) => canReadDocument(doc, ctx.scope)).map((doc) => getPath(doc, column));
+    const docs = await ctx.read(appId, docType, ctx.scope);
+    return docs.map((doc) => getPath(doc, column));
   };
 
   // @DbLookup(appId; docType; keyColumn; key; valueColumn) — value from the first readable match.
@@ -115,8 +117,8 @@ export async function evaluateFormulaAsync(formula: string | undefined, ctx: For
     key: unknown,
     valueColumn: string
   ): Promise<unknown> => {
-    const docs = await ctx.read(appId, docType);
-    const hit = docs.filter((doc) => canReadDocument(doc, ctx.scope)).find((doc) => getPath(doc, keyColumn) === key);
+    const docs = await ctx.read(appId, docType, ctx.scope);
+    const hit = docs.find((doc) => getPath(doc, keyColumn) === key);
     return hit ? getPath(hit, valueColumn) : undefined;
   };
 

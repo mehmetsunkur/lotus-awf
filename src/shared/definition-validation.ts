@@ -111,15 +111,23 @@ function validateField(field: FormField, index: number): ValidationError[] {
   } else if (field.formula !== undefined) {
     errors.push(error(`${prefix}.formula`, "Only computed-mode fields may set a formula"));
   }
-  // ADR-0024 §1: the Readers/Authors flag. Orthogonal to `type`/`mode`, but
+  // ADR-0024 §1: the Authors flag. Orthogonal to `type`/`mode`, but
   // COMPUTED-ONLY — an ACL-flagged field must be `computed`/`computed-once` with a
   // formula so its value is server-resolved and tamper-safe by construction. A
-  // static reader list is a `computed-once` field returning a constant array;
+  // static author list is a `computed-once` field returning a constant array;
   // editable/static and `computed-for-display` shapes are rejected. The
   // formula-presence + sandbox + syntax checks are already enforced by the mode
   // block above.
   if (field.aclRole !== undefined) {
-    if (field.aclRole !== "reader" && field.aclRole !== "author") {
+    if ((field.aclRole as string) === "reader") {
+      // ADR-0026: document visibility is the app ACL; per-document Readers are deferred.
+      errors.push(
+        error(
+          `${prefix}.aclRole`,
+          `aclRole "reader" is not supported: document visibility is the app ACL (ADR-0026). Remove aclRole (or the field) to save this form`
+        )
+      );
+    } else if (field.aclRole !== "author") {
       errors.push(error(`${prefix}.aclRole`, `Field aclRole is invalid: ${String(field.aclRole)}`));
     } else if (field.mode !== "computed" && field.mode !== "computed-once") {
       errors.push(
@@ -171,11 +179,10 @@ function validateFilter(filter: ViewFilter, index: number): ValidationError[] {
   const errors: ValidationError[] = [];
   if (!nonEmpty(filter.field)) errors.push(error(`${prefix}.field`, "Filter field is required"));
   if (!FILTER_OPS.has(filter.op)) errors.push(error(`${prefix}.op`, `Filter op is invalid: ${String(filter.op)}`));
-  // ADR-0020: filters on the ACL envelope fields are always dead — the list
-  // route spreads accessSelector over the same selector keys after the view's
-  // filters, so an authored readers/authors predicate never applies (review M2).
+  // ADR-0020/0026: the ACL envelope is not a view filter surface — `authors` is
+  // edit metadata and `readers` no longer exists (ADR-0026).
   if (filter.field === "readers" || filter.field === "authors") {
-    errors.push(error(`${prefix}.field`, `Filters on ${filter.field} are overridden by ACL filtering; use "@me" on a payload/envelope field instead`));
+    errors.push(error(`${prefix}.field`, `Filters on ${filter.field} are not supported (ACL envelope field); use "@me" on a payload/envelope field instead`));
   }
   // ADR-0020 sentinel value-shape rules (review M1): "@me" must be the entire
   // value and pairs only with `in`; and `in` itself requires an array or "@me",

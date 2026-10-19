@@ -39,8 +39,10 @@ Each lens applies the same-named rule in `docs/invariants.md`, deepened into adv
 - **A4 Replication & conflict** — Does it break bidirectional sync, create conflicts the UI can't
   represent, or mishandle `_rev`/`_conflicts` (dropping a rev, resolving without deleting the
   loser)? Does a shape change break conflict comparison?
-- **A5 ACL / readers** — Does it expose a doc/field/row/option to a user or role that should not
-  see it? Are `readers`/`authors` correct? Does a new query path bypass `readers` filtering?
+- **A5 ACL / readers** — Does it expose a doc/field/row/option to a user without app access
+  (ADR-0026: visibility is the app ACL — there are no per-document `readers`)? Does every read
+  path, including cross-app lookups and aggregates, check the caller's level on the TARGET app?
+  Are `authors` correct, and does an edit path still require Author+ plus Layer 2?
 - **A6 Offline** — Does it add a hard dependency on the server replica or network for an action
   that must work offline (create, edit, validate, list, populate a select)?
 - **A7 Index & query** — Does a new view sort/filter need an index that does not exist? If an index

@@ -10,13 +10,12 @@ import {
 
 /**
  * Digital-twin extension of the Agentic Airlines fixture (M27): job descriptions on the
- * org chart, a knowledge-base app whose procedures are scoped by AUTHORSHIP (ADR-0015 —
- * a department member creates them, so their principal set becomes the readers; there is
- * deliberately no per-document readers API to use instead), a turnaround app whose
+ * org chart, a knowledge-base app whose procedures are AUTHORED by a department member
+ * (visible to every kb member — ADR-0026 made visibility the app ACL), a turnaround app whose
  * multi-hop workflow hands work across departments, and a staged "morning state" of
  * flights and expenses for the working-day agent shifts. Everything is seeded through
  * public HTTP APIs as the persona it would organically come from, so every stamp
- * (readers, responsible, computed heads, history) is produced by the substrate, never
+ * (authors, responsible, computed heads, history) is produced by the substrate, never
  * hand-written. See docs/M27/02-twin-contract.md.
  */
 
@@ -173,33 +172,9 @@ export async function seedDigitalTwin(
       ]
     });
 
-    // 3. Re-point definitions for the per-seed world: handbook articles become
-    // readable by all airline staff (same ADR-0015 mechanism as the org forms in the
-    // airline fixture), and the turnaround computed-head formulas look up the per-seed
-    // org app (same designer-level re-point as the leave-request approver formula).
-    const kbDefinitions = await requestJson<{ forms: Array<Json & { _id: string }> }>(
-      admin,
-      "get",
-      `/api/apps/${kbAppId}/definitions`
-    );
-    const articleForm = kbDefinitions.forms.find((definition) => definition._id === "form:article");
-    if (!articleForm) throw new Error("kb app is missing form:article");
-    // ADR-0024: article visibility is carried by the template's shipped
-    // `aclRole:"reader"` computed-once field (was `defaultReaders`). The kb template
-    // ships it returning `["group:employees"]`, which is inert in the airline fixture
-    // (that group intentionally does not exist); re-point that field's formula to the
-    // airline staff groups rather than appending a second one (duplicate field name).
-    const articleFields = articleForm.fields as Array<Json & { aclRole?: string }>;
-    const repointedArticleFields = articleFields.map((field) =>
-      field.aclRole === "reader" ? { ...field, formula: JSON.stringify(AIRLINE_STAFF_GROUPS) } : field
-    );
-    if (!repointedArticleFields.some((field) => field.aclRole === "reader")) {
-      throw new Error("kb form:article is missing its aclRole:\"reader\" field");
-    }
-    await requestJson(admin, "put", `/api/apps/${kbAppId}/definitions/${encodeURIComponent("form:article")}`, {
-      ...articleForm,
-      fields: repointedArticleFields
-    });
+    // 3. Re-point definitions for the per-seed world: the turnaround computed-head
+    // formulas look up the per-seed org app (same designer-level re-point as the
+    // leave-request approver formula). ADR-0026: kb visibility is the app ACL above.
     const turnaroundDefinitions = await requestJson<{ forms: Array<Json & { _id: string }> }>(
       admin,
       "get",
@@ -272,11 +247,8 @@ export async function seedDigitalTwin(
       [201]
     );
 
-    // 6. Department procedures — created BY a department member so authorship scopes
-    // them (ADR-0015: the creator's principal set becomes the readers; there is no
-    // per-document readers API, deliberately). dave and ivy hold exactly
-    // person + department group; grace also holds group:managers, a known and accepted
-    // wrinkle (docs/M27/02-twin-contract.md, Knowledge scoping).
+    // 6. Department procedures — created BY a department member, who becomes the
+    // procedure's author (edit rights). Every kb member can read them (ADR-0026).
     const procedureDocIds = {} as Record<TwinProcedureDepartment, string>;
     const procedures: Array<{ department: TwinProcedureDepartment; author: AirlinePersonaName; title: string; body: string }> = [
       {
@@ -325,7 +297,7 @@ export async function seedDigitalTwin(
 
     // 7. Morning state: flights, created and scheduled by dave (flight planning) and
     // walked to their staged state by the personas who own each hop, so responsibles,
-    // computed heads, readers, audit, and history are all organically stamped.
+    // computed heads, authors, audit, and history are all organically stamped.
     const dave = await as("dave");
     const carol = await as("carol");
     const ivy = await as("ivy");

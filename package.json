@@ -12,7 +12,6 @@
     "replicate": "tsx scripts/replicate.ts",
     "force-conflict": "tsx scripts/force-conflict.ts",
     "force-state-conflict": "tsx scripts/force-state-conflict.ts",
-    "acl-spike": "tsx scripts/acl-spike.ts",
     "app": "tsx scripts/app.ts",
     "mcp:admin": "tsx src/mcp/admin-server.ts",
     "mcp:designer": "tsx src/mcp/designer-server.ts",

@@ -16,7 +16,7 @@ import { assembleShiftPrompt } from "../../src/operator/prompt";
  * M28 FakeDriver operator lifecycle (PR gate — deterministic, no agent credentials):
  * the daemon module runs in-process against the worker harness with an injected fake
  * driver, proving the ADR-0021 mechanics end to end: @me queue discovery, claim,
- * derived-prompt equality, artifact mapping (cap + readers), completed/failed
+ * derived-prompt equality, artifact mapping (cap + authors), completed/failed
  * outcomes, double-claim 422, orphan sweep, and the daily spend cap.
  */
 
@@ -107,7 +107,7 @@ const test = base.extend<OperatorFixture>({
   }
 });
 
-type Doc = { _id: string; state?: string; responsible?: string[] | null; readers: string[]; payload: Record<string, unknown> };
+type Doc = { _id: string; state?: string; responsible?: string[] | null; authors: string[]; payload: Record<string, unknown> };
 
 const getDoc = async (context: APIRequestContext, appId: string, id: string): Promise<Doc> => {
   const response = await context.get(`/api/apps/${appId}/documents/${encodeURIComponent(id)}`);
@@ -185,22 +185,21 @@ test.describe("M28 agent operator (FakeDriver)", () => {
     const events = byName.get("events.jsonl")?.payload.content as string;
     expect(events).toContain("[truncated by operator");
     expect(events.length).toBeLessThan(ARTIFACT_CONTENT_CAP + 200);
-    // Readers: operator principals + the form's group:admins default — nothing wider.
+    // Artifacts carry no readers (ADR-0026) and are authored by the operator.
     for (const artifact of artifacts) {
-      expect(artifact.readers).toEqual(
-        expect.arrayContaining(["person:agent-operator", "group:agent-operators", "group:admins"])
-      );
-      expect(artifact.readers).not.toContain("group:managers");
+      expect(artifact).not.toHaveProperty("readers");
+      expect(artifact.authors).toContain("person:agent-operator");
     }
 
-    // The requester can read her session document (creator principals)...
+    // The requester can read her session document...
     const carolView = await getDoc(carol, world.ops.agentOpsAppId, session._id);
     expect(carolView.state).toBe("completed");
-    // ...but not the transcripts (ADR-0021 accepted limitation, pinned here).
+    // ...and, since ADR-0026 made visibility the app ACL, the transcripts too (the
+    // ADR-0021 operators+admins scoping is an accepted, deliberate loss).
     const carolArtifact = await carol.get(
       `/api/apps/${world.ops.agentOpsAppId}/documents/${encodeURIComponent(artifacts[0]._id)}`
     );
-    expect([403, 404]).toContain(carolArtifact.status());
+    expect(carolArtifact.status()).toBe(200);
   });
 
   test("fails cleanly on a driver error and refuses a duplicate claim", async ({ world, page }) => {

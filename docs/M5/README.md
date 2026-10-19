@@ -1,5 +1,7 @@
 # M5 — Security and Partial Replication Hardening
 
+> **Amended by ADR-0026 (2026-10-19):** per-document `readers` (and the M5 revocation purge) were removed — document visibility is the app ACL. Readers-based statements below are historical; see `docs/decisions/0026-app-acl-document-visibility.md`.
+
 M5 hardens the spike-level ACL model enough that runtime/API paths use one access predicate and
 revoked documents leave the local replica after sync.
 

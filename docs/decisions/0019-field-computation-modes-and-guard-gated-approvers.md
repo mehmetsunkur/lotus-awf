@@ -10,6 +10,8 @@ review returned one blocker and three majors — all folded into this design bef
 building (conflict-resolve stamping, preserve-on-empty, envelope-bound stamp context,
 docs-of-record coverage) — plus ten minor clusters resolved in the Decision notes.
 
+**Amended by ADR-0026** (2026-10-19): the "stamped approver must be able to *read* the document" template constraint is now satisfied by app access alone — every app reader reads every document.
+
 ## Context
 
 ADR-0017 enforced "the requester's department head approves" with a transition-level

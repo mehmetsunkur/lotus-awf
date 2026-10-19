@@ -1,5 +1,7 @@
 # 02 - Access Editor Contract
 
+> **Amended by ADR-0026 (2026-10-19):** document visibility is the app ACL, so granting app access now exposes every existing document in the app (access edits still never mutate document `authors`).
+
 ## API
 
 `GET /api/apps/:appId/access`

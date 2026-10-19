@@ -1,5 +1,7 @@
 # 02 — Access Policy
 
+> **Superseded in part by ADR-0026 (2026-10-19):** per-document `readers` are removed — document visibility is the app ACL. The `authors` edit rules below still apply (Layer 2 now also requires app Author+).
+
 ## Principals
 
 M18 supersedes the original fixed `APP_USER` model. The current actor is now resolved from an

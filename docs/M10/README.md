@@ -1,5 +1,7 @@
 # M10 — Audit & Retention
 
+> **Amended by ADR-0026 (2026-10-19):** per-document `readers` (and the M5 revocation purge) were removed — document visibility is the app ACL. Readers-based statements below are historical; see `docs/decisions/0026-app-acl-document-visibility.md`.
+
 M10 gives the platform an **audit trail**: a durable, ACL-scoped record of who changed what and when,
 recorded server-authoritatively from the change feed, with a retention policy that ages events out.
 This is the first slice of the vision's Phase 9 "hardening" bundle (the remaining Phase-9 item after

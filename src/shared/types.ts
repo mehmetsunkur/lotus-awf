@@ -99,19 +99,20 @@ export type FormField = {
    */
   formula?: string;
   /**
-   * ADR-0024: the Notes Readers/Authors *flag* — a third axis orthogonal to
-   * `type` (datatype) and `mode` (computation). When set, this field's resolved
-   * value (a principal list) contributes to the document's `readers`/`authors`
-   * projection (§2). Absent = an ordinary field with no ACL effect.
+   * ADR-0024: the Notes Authors *flag* — a third axis orthogonal to `type`
+   * (datatype) and `mode` (computation). When set, this field's resolved value
+   * (a principal list) is unioned into the document's `authors` (§2). Absent = an
+   * ordinary field with no ACL effect. ADR-0026 retired `"reader"`: document
+   * visibility is the app ACL, so there is no per-document Readers flag.
    *
    * ACL-flagged fields are COMPUTED-ONLY: `aclRole` requires `mode` of
    * `computed`/`computed-once` plus a `formula`, and forbids editable/static
    * shapes (`defaultValue`, `computed-for-display`). The value is therefore
    * always server-resolved (never client-set), which makes it tamper-safe by
-   * construction. A "static" reader list is a `computed-once` field whose
+   * construction. A "static" author list is a `computed-once` field whose
    * formula returns a constant array (e.g. `["group:finance"]`).
    */
-  aclRole?: "reader" | "author";
+  aclRole?: "author";
   /**
    * M9: opt this field into full-text search. Optional and back-compatible —
    * when absent, text-ish fields (`text`/`textarea`/`select`) are searchable by
@@ -137,9 +138,9 @@ export type FormDefinition = {
   description?: string;
   sections?: FormSection[];
   fields: FormField[];
-  // ADR-0024: `defaultReaders` (ADR-0015) is retired. A form declares extra
-  // readers/authors with an `aclRole`-flagged computed field (see `FormField.aclRole`);
-  // the engine materializes `readers`/`authors` from those fields (§2).
+  // ADR-0024: `defaultReaders` (ADR-0015) is retired, and ADR-0026 dropped
+  // per-document readers entirely. A form declares extra authors with an
+  // `aclRole:"author"` computed field (see `FormField.aclRole`).
 };
 
 export type ViewColumn = {
@@ -289,7 +290,6 @@ export type BusinessDocument = {
   updatedAt: string;
   createdBy: string;
   updatedBy: string;
-  readers: string[];
   authors: string[];
   payload: Record<string, unknown>;
   /**
@@ -363,7 +363,6 @@ export type AgentRun = {
   startedAt: string;
   ok: boolean;
   detail: string;
-  readers: string[];
 };
 
 /** Singleton checkpoint (`agent:state`): change-feed cursor + per-agent last-run stamps. Runtime data. */
@@ -482,7 +481,6 @@ export type AuditEvent = {
   action: AuditAction;
   actor: string;
   at: string;
-  readers: string[];
 };
 
 /** Singleton checkpoint (`audit:state`): the `_changes` cursor for the audit drain. Runtime data. */

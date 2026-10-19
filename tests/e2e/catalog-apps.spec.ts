@@ -104,7 +104,7 @@ test.describe("catalog-created apps", () => {
     expect(directory.groups.map((group: { _id: string }) => group._id)).not.toContain("group:org-managers");
   });
 
-  test("managers grant app access without widening existing document visibility", async ({ page, bobApi }) => {
+  test("managers grant app access, which exposes every app document (ADR-0026)", async ({ page, bobApi }) => {
     await page.request.post("/api/platform/apps", {
       data: { appId: "shared-reports", title: "Shared Reports", docType: "report", docTypeTitle: "Report" }
     });
@@ -139,9 +139,16 @@ test.describe("catalog-created apps", () => {
     });
     expect(aliceCreated.status()).toBe(201);
 
+    // ADR-0026: document visibility is the app ACL — the grant shows bob every
+    // report, Alice's included; he still cannot edit hers (Layer 2: not an author).
     const bobRows = await bobApi.get("/api/apps/shared-reports/views/view:report/documents").then((response) => response.json());
     expect(bobRows.map((doc: { payload: { title?: string } }) => doc.payload.title)).toContain("Bob report");
-    expect(bobRows.map((doc: { payload: { title?: string } }) => doc.payload.title)).not.toContain("Alice private report");
+    expect(bobRows.map((doc: { payload: { title?: string } }) => doc.payload.title)).toContain("Alice private report");
+    const aliceReport = (await aliceCreated.json()) as { _id: string; payload: Record<string, unknown> };
+    const bobEdit = await bobApi.put(`/api/apps/shared-reports/documents/${encodeURIComponent(aliceReport._id)}`, {
+      data: { payload: { ...aliceReport.payload, title: "Bob edit" } }
+    });
+    expect(bobEdit.status()).toBe(403);
 
     const exported = await page.request
       .post("/api/apps/shared-reports/templates/export", { data: { version: "vtest", source: "e2e" } })
@@ -230,18 +237,13 @@ test.describe("catalog-created apps", () => {
     await page.getByTestId("workflow-action-submit").click();
     await expect(page.getByTestId("workflow-state")).toHaveText("Submitted");
 
-    // Bob (app "author", group:sales) cannot even read Alice's report: document
-    // readers are the creator's principals only (this form declares no aclRole reader
-    // field, so the ADR-0024 projection adds nothing beyond the creator base), and app
-    // access level grants no document-read override — exactly the model the
-    // "without widening existing document visibility" test asserts. So the
-    // transition is rejected at the read gate (403 forbidden) before any role
-    // check, not as a role failure (422). (The transition handler has gated on
-    // getReadableDocument since this test was introduced — see git ff0ffaa.)
+    // Bob (app "author", group:sales) can read Alice's report — document visibility
+    // is the app ACL (ADR-0026) — but the approve transition requires group:admins,
+    // so it is refused as a role failure (422), not at a read gate.
     const bobApprove = await bobApi.post(`/api/apps/approval-reports/documents/${encodeURIComponent(documentId)}/transition`, {
       data: { transition: "approve" }
     });
-    expect(bobApprove.status()).toBe(403);
+    expect(bobApprove.status()).toBe(422);
 
     await page.getByTestId("workflow-action-approve").click();
     await expect(page.getByTestId("workflow-state")).toHaveText("Approved");

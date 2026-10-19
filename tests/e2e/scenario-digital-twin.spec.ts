@@ -41,7 +41,7 @@ type Doc = {
   _id: string;
   state?: string;
   responsible?: string[];
-  readers: string[];
+  authors: string[];
   history?: unknown[];
   payload: Record<string, unknown>;
 };
@@ -81,11 +81,9 @@ test.describe("Digital twin seeded world", () => {
       // ADR-0019 stamps, resolved from the per-seed org app at create time.
       expect(flight.payload.opsHead, `${expected.key} opsHead`).toBe("person:carol");
       expect(flight.payload.groundHead, `${expected.key} groundHead`).toBe("person:hank");
-      // Readers: dave's creator set plus the form's aclRole reader field — no group:managers.
-      expect(flight.readers).toEqual(
-        expect.arrayContaining(["person:dave", "group:flight-ops", "group:ground-ops"])
-      );
-      expect(flight.readers).not.toContain("group:managers");
+      // ADR-0026: no per-document readers — visibility is the turnaround app ACL.
+      expect(flight).not.toHaveProperty("readers");
+      expect(flight.authors).toContain("person:dave");
       // Staging went through real transitions, so each hop is in the history.
       expect(flight.history?.length ?? 0).toBeGreaterThan(0);
     }
@@ -115,7 +113,7 @@ test.describe("Digital twin seeded world", () => {
     }
   });
 
-  test("KB readability matrix: articles company-wide, procedures scoped by authorship", async ({ twin }) => {
+  test("KB readability: articles and procedures are visible to every kb member (ADR-0026)", async ({ twin }) => {
     const kb = twin.scenario.kbAppId;
     const { welcome } = twin.scenario.articleDocIds;
     const procedures = twin.scenario.procedureDocIds;
@@ -131,26 +129,18 @@ test.describe("Digital twin seeded world", () => {
     expect(welcomeDoc.payload.body).toContain(twin.scenario.turnaroundAppId);
     expect(welcomeDoc.payload.body).toContain(twin.scenario.orgAppId);
 
-    // Authorship scoping: each department member sees exactly their department's
-    // procedure in the view (readers narrow the listing, not a filter).
+    // Visibility is the kb app ACL: every member sees every department's procedure.
+    const allProcedures = [procedures["flight-ops"], procedures["ground-ops"], procedures.finance].sort();
     const dave = await twin.as("dave");
-    expect((await viewDocs(dave, kb, "view:procedures")).map((doc) => doc._id)).toEqual([procedures["flight-ops"]]);
-    const ivy = await twin.as("ivy");
-    expect((await viewDocs(ivy, kb, "view:procedures")).map((doc) => doc._id)).toEqual([procedures["ground-ops"]]);
+    expect((await viewDocs(dave, kb, "view:procedures")).map((doc) => doc._id).sort()).toEqual(allProcedures);
+    expect((await viewDocs(frank, kb, "view:procedures")).map((doc) => doc._id).sort()).toEqual(allProcedures);
 
-    // Direct reads across the boundary are refused.
-    for (const blocked of [procedures["ground-ops"], procedures.finance]) {
-      const direct = await dave.get(`/api/apps/${kb}/documents/${encodeURIComponent(blocked)}`);
-      expect([403, 404], `dave must not read ${blocked}`).toContain(direct.status());
-    }
-
-    // The documented wrinkle, pinned so it changes loudly: grace's creator set includes
-    // group:managers, so carol (a manager) CAN read the finance procedure.
-    const carol = await twin.as("carol");
-    const financeProcedure = await getDoc(carol, kb, procedures.finance);
-    expect(financeProcedure.readers).toEqual(
-      expect.arrayContaining(["person:grace", "group:finance", "group:managers"])
-    );
+    // Authorship still governs edits: dave (kb author) cannot edit ground-ops' procedure.
+    const groundOps = await getDoc(dave, kb, procedures["ground-ops"]);
+    const edit = await dave.put(`/api/apps/${kb}/documents/${encodeURIComponent(groundOps._id)}`, {
+      data: { payload: groundOps.payload }
+    });
+    expect(edit.status()).toBe(403);
   });
 
   test("finance boundary: grace processes expenses but cannot see flights", async ({ twin }) => {
@@ -166,7 +156,7 @@ test.describe("Digital twin seeded world", () => {
 
     // Flights: the boundary is app-level — grace holds no entry in the turnaround
     // ACL (template acl:rules name only admins and the two working departments), so
-    // even the listing is refused, before document readers ever apply.
+    // even the listing is refused (ADR-0026: the app ACL is the only read gate).
     const flights = await grace.get(`/api/apps/${twin.scenario.turnaroundAppId}/documents?docType=flight`);
     expect(flights.status()).toBe(403);
     const direct = await grace.get(

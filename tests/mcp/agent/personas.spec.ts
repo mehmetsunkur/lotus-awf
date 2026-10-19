@@ -16,7 +16,7 @@ import type { BusinessDocument } from "../../../src/shared/types";
 /**
  * Real-agent persona suite (M26). Where agent.spec.ts proves a coding-agent CLI can
  * BUILD apps through the admin/designer surfaces, this suite proves one can OPERATE an
- * app as a business end user — and that the substrate (ACL readers, ADR-0019 approver
+ * app as a business end user — and that the substrate (app ACL, ADR-0019 approver
  * guards, ADR-0020 `@me` inboxes, per-session MCP identity) holds when the caller is an
  * autonomous agent. Each scenario hands the driver ONLY the persona's `/mcp/workspace`
  * session: the HTTP host resolves the identity server-side at initialize (one MCP
@@ -210,7 +210,7 @@ test.describe("MCP real-agent personas", () => {
     test.describe(driver.name, () => {
       // P1 — dave's agent files and submits a leave request from a natural-language task.
       // The prompt pins the payload values so the oracle can exact-match; everything the
-      // server stamps (approver, department, responsible, readers) is asserted against the
+      // server stamps (approver, department, responsible, authors) is asserted against the
       // ADR-0018/0019 contract, not against anything the agent may have supplied.
       test("files a leave request", async ({ playwright }) => {
         const diagnostics = createDiagnostics(driver);
@@ -252,24 +252,26 @@ test.describe("MCP real-agent personas", () => {
         expect(request.responsible).toEqual(["person:carol"]);
         expect(request.responsibleAt).toBeTruthy();
 
-        // Readers are dave's full principal set (the creator base) plus the form's
-        // aclRole:"reader" field, which resolves to group:managers — nothing wider.
-        expect([...request.readers].sort()).toEqual(["group:flight-ops", "group:managers", "person:dave"]);
+        // Authors are the creator base: dave alone (ADR-0024; no aclRole author field).
+        expect(request.authors).toEqual(["person:dave"]);
 
         // Audit records the submit: materialize events (designer-level, so the admin
-        // context runs it), then read as carol — events copy the source doc's readers.
+        // context runs it), then read as carol — audit visibility is the app ACL (ADR-0026).
         await admin.post(`/api/apps/${app}/audit/run`);
         const events = (await carol
           .get(`/api/apps/${app}/audit`)
           .then((response) => response.json())) as Array<{ docId: string }>;
         expect(events.map((event) => event.docId)).toContain(request._id);
 
-        // Isolation: hank (ground-ops, outside group:managers) cannot read it. Grace is
-        // deliberately NOT asserted unreadable — she holds group:managers, which the
-        // leave-request form grants as a default reader, so she reads it by design.
+        // ADR-0026: visibility is the app ACL — hank (ground-ops, an app author) reads
+        // it too, but cannot edit dave's request (Layer 2: not in authors, below editor).
         const hank = await as("hank");
         const direct = await hank.get(`/api/apps/${app}/documents/${encodeURIComponent(request._id)}`);
-        expect([403, 404]).toContain(direct.status());
+        expect(direct.status()).toBe(200);
+        const edit = await hank.put(`/api/apps/${app}/documents/${encodeURIComponent(request._id)}`, {
+          data: { payload: request.payload }
+        });
+        expect(edit.status()).toBe(403);
 
         await diagnostics.attachTo(test.info(), true);
       });
@@ -388,7 +390,7 @@ test.describe("MCP real-agent personas", () => {
         );
 
         // No security-relevant change: state, responsible, stamped approver/department,
-        // readers, history length, and document count all match the pre-run snapshot.
+        // authors, history length, and document count all match the pre-run snapshot.
         const after = await captureLeaveRequestProjection(carol, app);
         expect(after).toEqual(before);
 

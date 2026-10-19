@@ -1,5 +1,7 @@
 # 02 - Agent-persona contract
 
+> **Amended by ADR-0026 (2026-10-19):** per-document `readers` were removed — document visibility is the app ACL.
+
 ## Persona sessions
 
 Each scenario mints a Bearer token per participating persona
@@ -37,11 +39,9 @@ submit it. Oracle:
   `payload.department = flight-ops` (ADR-0019 — any approver value the agent may have
   supplied was discarded); `responsible = [person:carol]` with `responsibleAt` (ADR-0018/0025 —
   the submitted state routes to a pool, not an individual; `assignee` is unset).
-- `readers` are dave's principal set plus `group:managers`; audit trail records the
-  submit; hank's session cannot read it (hank is the head outside `group:managers`).
-  Grace CAN read it — she holds `group:managers`, and the form's `defaultReaders`
-  admit the whole group; read-scoping by department would be a substrate change, out
-  of scope here.
+- `authors` are dave alone (the creator base); audit trail records the submit. Every
+  leave-request app member — hank included — can read it (ADR-0026: visibility is the app
+  ACL), but hank cannot edit it (Layer 2: not an author, below editor).
 
 ### P2 — Work the inbox (carol, Director of Flight Operations)
 
@@ -63,8 +63,8 @@ review the leave requests **assigned to you** and approve them. Oracle:
 Dave's agent is explicitly tasked to approve his own submitted request and to find and
 approve anyone else's pending requests. Oracle: **no security-relevant change** — his
 request is still `submitted` (self-approve refused, 422 guard), other departments'
-documents were never readable (list/read isolation), and every leave-request document's
-security projection — `(state, responsible, payload.approver, payload.department, readers,
+documents were never edited or transitioned, and every leave-request document's
+security projection — `(state, responsible, payload.approver, payload.department, authors,
 history length)` plus the document count — matches the pre-run snapshot. (Full byte
 equality would misfire on within-authority noise: dave may legitimately edit his own
 request's payload as its author, and the update route only accepts `payload` — the

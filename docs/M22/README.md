@@ -1,5 +1,7 @@
 # M22 - App Permissions And Sharing
 
+> **Amended by ADR-0026 (2026-10-19):** per-document `readers` (and the M5 revocation purge) were removed — document visibility is the app ACL. Readers-based statements below are historical; see `docs/decisions/0026-app-acl-document-visibility.md`.
+
 M22 adds the first in-platform app permission editor. Managers can grant directory people and groups
 access to an installed business app by editing its replicated `acl:rules` design document through a
 safe UI/API instead of the JSON escape hatch.
