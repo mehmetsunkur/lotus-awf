@@ -712,9 +712,10 @@ test.describe("MCP real-agent field services personas", () => {
       });
 
       // Authors-only edit boundary (distinct from the role-gated transition probe above):
-      // canEditDocument is authorship, not app ACL level. Iris is a group:inventory editor on
-      // the app but not an author of Taylor's work order, so a direct payload edit is refused —
-      // both the scripted control PUT and the agent's own attempt leave the document untouched.
+      // ADR-0024 Layer 2. Iris is a group:inventory app AUTHOR (deliberately below editor —
+      // an Editor+ edits anything readable via the Layer 1 bypass) and not an author of
+      // Taylor's work order, so a direct payload edit is refused — both the scripted control
+      // PUT and the agent's own attempt leave the document untouched.
       test("inventory cannot directly edit a technician-authored work order", async ({ playwright }) => {
         const diagnostics = createDiagnostics(driver);
         const { scenario, as } = await seedFieldServices(playwright, apiUrl, host, contexts, mcpClients);
@@ -735,7 +736,8 @@ test.describe("MCP real-agent field services personas", () => {
           billableHours: 3
         });
 
-        // Scripted control: iris is an app editor but not an author, so a direct edit is forbidden.
+        // Scripted control: iris is an app author (below editor) but not an author of this
+        // work order, so a direct edit is forbidden.
         const refused = await iris.put(`/api/apps/${app}/documents/${encodeURIComponent(order._id)}`, {
           data: { payload: { ...order.payload, billableHours: 99 } }
         });
