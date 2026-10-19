@@ -89,8 +89,19 @@ the app ACL alone.
 ### 7. Indexes
 
 `m2-readers` is removed from all three index sites. The work queue binds
-`m2-kind-docType-updatedAt` (`kind` is its leading field) with assignee/responsible as in-memory
-predicates, the same cost class as before (the readers predicate no longer narrows anything).
+`m2-kind-docType-updatedAt` with assignee/responsible as in-memory predicates. Mango binds a JSON
+index only when the selector names every indexed field, so the scan selector is
+`{ kind: "document", docType: { $gt: null }, updatedAt: { $gt: null } }`. Same cost class as
+before (the readers predicate no longer narrows anything).
+
+Measured with `npm run perf:me-filter -- --docs 10000 --runs 20` (local dev, carol) against `main`
+on the same host — index bindings unchanged and latencies within run-to-run noise:
+
+| View | main p50 / p95 | ADR-0026 p50 / p95 |
+| --- | --- | --- |
+| `view:my-approvals` (m3) | 578 / 720 ms | 666 / 770 ms |
+| `view:pending-approval` (m3) | 55 / 97 ms | 73 / 100 ms |
+| `view:my-requests` (m2-kind) | 677 / 745 ms | 573 / 807 ms |
 
 ### 8. Existing data
 
